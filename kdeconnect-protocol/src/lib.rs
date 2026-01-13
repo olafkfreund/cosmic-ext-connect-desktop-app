@@ -11,6 +11,7 @@ pub mod plugins;
 pub mod transport;
 
 mod error;
+pub use discovery::{DeviceInfo, DeviceType, Discovery};
 pub use error::{ProtocolError, Result};
 pub use packet::{current_timestamp, Packet};
 
