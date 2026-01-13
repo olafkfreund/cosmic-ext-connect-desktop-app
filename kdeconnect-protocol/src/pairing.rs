@@ -35,6 +35,7 @@ use crate::{Packet, ProtocolError, Result};
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls_pemfile::{certs, private_key};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -56,13 +57,15 @@ const CERT_ORG: &str = "KDE";
 const CERT_ORG_UNIT: &str = "Kde connect";
 
 /// Pairing status
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum PairingStatus {
     /// Not paired
     Unpaired,
     /// Pairing request sent, awaiting response
     Requested,
     /// Pairing request received, awaiting user confirmation
+    #[serde(rename = "requested_by_peer")]
     RequestedByPeer,
     /// Successfully paired
     Paired,
