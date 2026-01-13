@@ -84,8 +84,8 @@ jobs:
 
       - name: Run clippy
         run: |
-          # Run clippy on all packages except cosmic-applet-kdeconnect (has i18n-embed dependency issue)
-          cargo clippy --package kdeconnect-protocol --package kdeconnect-daemon --package cosmic-kdeconnect --all-targets --all-features -- -W clippy::all
+          # Run clippy only on protocol and daemon packages (cosmic packages have i18n-embed dependency issue)
+          cargo clippy --package kdeconnect-protocol --package kdeconnect-daemon --all-targets --all-features -- -W clippy::all
 
   check:
     name: Check Build
