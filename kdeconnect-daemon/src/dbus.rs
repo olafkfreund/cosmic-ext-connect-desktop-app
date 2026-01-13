@@ -291,9 +291,22 @@ impl KdeConnectInterface {
 
         drop(device_manager);
 
-        // TODO: Implement file sharing plugin packet sending
-        warn!("DBus: ShareFile not fully implemented yet");
-        Ok(())
+        // TODO: Implement file sharing with TCP payload transfer
+        // This requires:
+        // 1. Verify file exists and is readable
+        // 2. Get file metadata (size, timestamps)
+        // 3. Set up TCP server for payload transfer
+        // 4. Create share packet with FileShareInfo and port
+        // 5. Send packet via ConnectionManager
+        // 6. Handle incoming connection and stream file data
+        // 7. Track transfer progress and handle errors
+        //
+        // This is a complex feature requiring payload transfer infrastructure
+        // in the ConnectionManager and transport layer.
+        warn!("DBus: ShareFile not implemented - requires TCP payload transfer infrastructure");
+        Err(zbus::fdo::Error::Failed(
+            "File sharing not yet implemented - requires payload transfer support".to_string(),
+        ))
     }
 
     /// Share text or URL with a device
