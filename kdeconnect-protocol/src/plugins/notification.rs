@@ -599,6 +599,10 @@ impl Plugin for NotificationPlugin {
         "notification"
     }
 
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
             "kdeconnect.notification".to_string(),

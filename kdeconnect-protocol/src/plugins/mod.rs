@@ -108,6 +108,7 @@ pub mod share;
 
 use crate::{Device, Packet, ProtocolError, Result};
 use async_trait::async_trait;
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
@@ -163,11 +164,16 @@ pub trait PluginFactory: Send + Sync {
 /// - Gracefully handle unexpected packet formats
 /// - Log errors but continue operation when possible
 #[async_trait]
-pub trait Plugin: Send + Sync {
+pub trait Plugin: Send + Sync + Any {
     /// Get the plugin name
     ///
     /// This should be a short, lowercase identifier like "ping", "battery", "mpris".
     fn name(&self) -> &str;
+
+    /// Downcast to Any for type-specific queries
+    ///
+    /// This allows querying plugin-specific state through the trait object.
+    fn as_any(&self) -> &dyn Any;
 
     /// Get list of incoming packet types this plugin can handle
     ///
@@ -660,6 +666,34 @@ impl PluginManager {
             .get(device_id)
             .map(|plugins| plugins.len())
             .unwrap_or(0)
+    }
+
+    /// Get battery status for a specific device
+    ///
+    /// Queries the battery plugin for the device and returns the latest battery status.
+    ///
+    /// # Parameters
+    ///
+    /// - `device_id`: The device ID to query
+    ///
+    /// # Returns
+    ///
+    /// `Some(BatteryStatus)` if the device has a battery plugin with status data,
+    /// `None` if the device is not found, has no battery plugin, or no status has been received.
+    pub fn get_device_battery_status(&self, device_id: &str) -> Option<battery::BatteryStatus> {
+        // Get the device's plugins
+        let device_plugins = self.device_plugins.get(device_id)?;
+
+        // Get the battery plugin
+        let battery_plugin = device_plugins.get("battery")?;
+
+        // Downcast to BatteryPlugin
+        let battery_plugin = battery_plugin
+            .as_any()
+            .downcast_ref::<battery::BatteryPlugin>()?;
+
+        // Get the battery status
+        battery_plugin.get_battery_status()
     }
 
     /// Get number of registered plugins (deprecated)

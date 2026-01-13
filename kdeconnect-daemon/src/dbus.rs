@@ -392,13 +392,22 @@ impl KdeConnectInterface {
 
         drop(device_manager);
 
-        // TODO: Implement battery status querying from plugin
-        warn!("DBus: GetBatteryStatus not fully implemented yet");
+        // Query battery status from plugin manager
+        let plugin_manager = self.plugin_manager.read().await;
+        let status = plugin_manager
+            .get_device_battery_status(&device_id)
+            .ok_or_else(|| {
+                zbus::fdo::Error::Failed("No battery status available for device".to_string())
+            })?;
 
-        // Return placeholder data
+        info!(
+            "DBus: Battery status for {}: {}%, charging: {}",
+            device_id, status.current_charge, status.is_charging
+        );
+
         Ok(BatteryStatus {
-            level: 0,
-            is_charging: false,
+            level: status.current_charge,
+            is_charging: status.is_charging,
         })
     }
 

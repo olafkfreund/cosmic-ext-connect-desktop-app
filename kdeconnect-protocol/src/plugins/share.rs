@@ -621,6 +621,10 @@ impl Plugin for SharePlugin {
         "share"
     }
 
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
             "kdeconnect.share.request".to_string(),

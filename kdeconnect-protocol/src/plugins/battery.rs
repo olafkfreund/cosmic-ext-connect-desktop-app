@@ -403,6 +403,10 @@ impl Plugin for BatteryPlugin {
         "battery"
     }
 
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
             "kdeconnect.battery".to_string(),

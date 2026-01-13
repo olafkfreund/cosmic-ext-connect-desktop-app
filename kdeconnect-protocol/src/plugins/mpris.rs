@@ -1061,6 +1061,10 @@ impl Plugin for MprisPlugin {
         "mpris"
     }
 
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
             "kdeconnect.mpris".to_string(),
