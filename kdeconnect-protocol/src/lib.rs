@@ -18,8 +18,12 @@ pub use discovery::{
 };
 pub use error::{ProtocolError, Result};
 pub use packet::{current_timestamp, Packet};
-pub use pairing::{CertificateInfo, PairingHandler, PairingPacket, PairingStatus};
+pub use pairing::{
+    CertificateInfo, PairingConfig, PairingEvent, PairingHandler, PairingPacket, PairingService,
+    PairingStatus, PAIRING_TIMEOUT,
+};
 pub use plugins::{Plugin, PluginManager};
+pub use transport::TcpConnection;
 
 /// Protocol version we implement
 pub const PROTOCOL_VERSION: u32 = 7;

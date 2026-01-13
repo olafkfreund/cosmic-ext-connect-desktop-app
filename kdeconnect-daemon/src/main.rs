@@ -3,6 +3,7 @@ mod config;
 use anyhow::{Context, Result};
 use kdeconnect_protocol::{
     discovery::{DiscoveryConfig, DiscoveryEvent, DiscoveryService},
+    pairing::{PairingConfig, PairingEvent, PairingService, PairingStatus},
     plugins::{
         battery::BatteryPlugin, clipboard::ClipboardPlugin, mpris::MprisPlugin,
         notification::NotificationPlugin, ping::PingPlugin, share::SharePlugin, PluginManager,
@@ -36,6 +37,9 @@ struct Daemon {
 
     /// Discovery service
     discovery_service: Option<DiscoveryService>,
+
+    /// Pairing service
+    pairing_service: Option<PairingService>,
 }
 
 impl Daemon {
@@ -92,6 +96,7 @@ impl Daemon {
             plugin_manager,
             device_manager,
             discovery_service: None,
+            pairing_service: None,
         })
     }
 
@@ -250,6 +255,119 @@ impl Daemon {
         Ok(())
     }
 
+    /// Start pairing service
+    async fn start_pairing(&mut self) -> Result<()> {
+        info!("Starting pairing service...");
+
+        // Create pairing service with certificate directory from config
+        let pairing_config = PairingConfig {
+            cert_dir: self.config.paths.cert_dir.clone(),
+            timeout: Duration::from_secs(30),
+        };
+
+        let pairing_service = PairingService::new(
+            self.device_info.device_id.clone(),
+            pairing_config,
+        )
+        .context("Failed to create pairing service")?;
+
+        info!(
+            "Pairing service created (fingerprint: {})",
+            pairing_service.fingerprint()
+        );
+
+        // Subscribe to pairing events
+        let mut event_rx = pairing_service.subscribe().await;
+
+        // Store pairing service
+        self.pairing_service = Some(pairing_service);
+
+        // Spawn task to handle pairing events
+        let device_manager = self.device_manager.clone();
+        tokio::spawn(async move {
+            while let Some(event) = event_rx.recv().await {
+                if let Err(e) = Self::handle_pairing_event(event, &device_manager).await {
+                    error!("Error handling pairing event: {}", e);
+                }
+            }
+            info!("Pairing event handler stopped");
+        });
+
+        info!("Pairing service started");
+
+        Ok(())
+    }
+
+    /// Handle a pairing event
+    async fn handle_pairing_event(
+        event: PairingEvent,
+        device_manager: &Arc<RwLock<DeviceManager>>,
+    ) -> Result<()> {
+        match event {
+            PairingEvent::RequestSent {
+                device_id,
+                our_fingerprint,
+            } => {
+                info!(
+                    "Pairing request sent to device {} (our fingerprint: {})",
+                    device_id, our_fingerprint
+                );
+            }
+            PairingEvent::RequestReceived {
+                device_id,
+                device_name,
+                their_fingerprint,
+            } => {
+                info!(
+                    "Pairing request received from {} ({}) - fingerprint: {}",
+                    device_name, device_id, their_fingerprint
+                );
+                info!("User should verify fingerprints match on both devices");
+                // TODO: Notify UI to show pairing request and fingerprint
+            }
+            PairingEvent::PairingAccepted {
+                device_id,
+                device_name,
+            } => {
+                info!("Pairing accepted with {} ({})", device_name, device_id);
+                // Device is now paired - DeviceManager will be updated separately
+                // TODO: Notify UI of successful pairing
+            }
+            PairingEvent::PairingRejected { device_id, reason } => {
+                info!(
+                    "Pairing rejected with device {} (reason: {:?})",
+                    device_id, reason
+                );
+                // TODO: Notify UI of rejected pairing
+            }
+            PairingEvent::StatusChanged { device_id, status } => {
+                debug!("Pairing status changed for {}: {:?}", device_id, status);
+            }
+            PairingEvent::DeviceUnpaired { device_id } => {
+                info!("Device unpaired: {}", device_id);
+                let mut manager = device_manager.write().await;
+                if let Err(e) = manager.update_pairing_status(&device_id, PairingStatus::Unpaired)
+                {
+                    warn!("Failed to update device {} pairing status: {}", device_id, e);
+                } else if let Err(e) = manager.save_registry() {
+                    warn!("Failed to save device registry: {}", e);
+                }
+            }
+            PairingEvent::PairingTimeout { device_id } => {
+                warn!("Pairing request timed out for device {}", device_id);
+                // TODO: Notify UI of timeout
+            }
+            PairingEvent::Error { device_id, message } => {
+                error!(
+                    "Pairing error for device {:?}: {}",
+                    device_id, message
+                );
+                // TODO: Notify UI of error
+            }
+        }
+        Ok(())
+    }
+
     /// Handle a discovery event
     async fn handle_discovery_event(
         event: DiscoveryEvent,
@@ -405,6 +523,12 @@ async fn main() -> Result<()> {
         .start_discovery()
         .await
         .context("Failed to start discovery")?;
+
+    // Start pairing
+    daemon
+        .start_pairing()
+        .await
+        .context("Failed to start pairing")?;
 
     // Run daemon
     let result = daemon.run().await;

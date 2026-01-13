@@ -213,6 +213,14 @@ impl Device {
         self.certificate_fingerprint = Some(fingerprint);
     }
 
+    /// Mark device as paired with certificate
+    pub fn mark_paired(&mut self, fingerprint: String) {
+        self.pairing_status = PairingStatus::Paired;
+        self.is_trusted = true;
+        self.certificate_fingerprint = Some(fingerprint);
+        self.update_last_seen();
+    }
+
     /// Check if device has a specific incoming capability
     pub fn has_incoming_capability(&self, capability: &str) -> bool {
         self.info
@@ -397,6 +405,17 @@ impl DeviceManager {
             .ok_or_else(|| ProtocolError::DeviceNotFound(device_id.to_string()))?;
 
         device.update_pairing_status(status);
+        Ok(())
+    }
+
+    /// Mark device as paired with certificate
+    pub fn mark_paired(&mut self, device_id: &str, fingerprint: String) -> Result<()> {
+        let device = self
+            .devices
+            .get_mut(device_id)
+            .ok_or_else(|| ProtocolError::DeviceNotFound(device_id.to_string()))?;
+
+        device.mark_paired(fingerprint);
         Ok(())
     }
 
