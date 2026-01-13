@@ -100,6 +100,7 @@
 //! - [KDE Connect GitHub](https://github.com/KDE/kdeconnect-kde)
 
 pub mod battery;
+pub mod clipboard;
 pub mod notification;
 pub mod ping;
 pub mod share;
