@@ -34,17 +34,17 @@ serde_json = "1.0"
 # Networking
 rustls = "0.23"
 tokio-rustls = "0.26"
-rcgen = { version = "0.13", features = ["aws_lc_rs"] }
+rcgen = { version = "0.14", features = ["aws_lc_rs"] }
 rustls-pemfile = "2.2"
 
 # Service Discovery
-mdns-sd = "0.11"
+mdns-sd = "0.17"
 
 # DBus
-zbus = "4"
+zbus = "5"
 
 # Error Handling
-thiserror = "1.0"
+thiserror = "2.0"
 anyhow = "1.0"
 
 # Logging
@@ -54,7 +54,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Utilities
 chrono = "0.4"
 uuid = { version = "1.0", features = ["v4", "serde"] }
-dirs = "5.0"
+dirs = "6.0"
 base64 = "0.22"
 hex = "0.4"
 
@@ -66,7 +66,7 @@ ring = "0.17"
 keyring = "3.0"
 
 # Configuration
-toml = "0.8"
+toml = "0.9"
 
 [profile.dev]
 opt-level = 0
