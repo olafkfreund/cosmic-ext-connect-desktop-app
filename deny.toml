@@ -4,14 +4,15 @@
 [advisories]
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
-vulnerability = "deny"
-unmaintained = "none"
 yanked = "warn"
-notice = "warn"
 ignore = []
+# When to fail on unmaintained crates: all, workspace, transitive, none
+unmaintained = "none"
+# When to fail on unsound crates: all, workspace, transitive, none
+unsound = "workspace"
 
 [licenses]
-unlicensed = "deny"
+# List of allowed licenses
 allow = [
     "MIT",
     "Apache-2.0",
@@ -24,10 +25,6 @@ allow = [
     "Zlib",
     "Unicode-DFS-2016",
 ]
-deny = []
-copyleft = "warn"
-allow-osi-fsf-free = "either"
-default = "deny"
 confidence-threshold = 0.8
 
 [[licenses.clarify]]
