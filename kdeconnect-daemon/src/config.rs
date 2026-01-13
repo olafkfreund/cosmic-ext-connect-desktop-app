@@ -184,10 +184,10 @@ impl Config {
         let config_path = config_dir.join("daemon.toml");
 
         if config_path.exists() {
-            let contents = fs::read_to_string(&config_path)
-                .context("Failed to read config file")?;
-            let config: Config = toml::from_str(&contents)
-                .context("Failed to parse config file")?;
+            let contents =
+                fs::read_to_string(&config_path).context("Failed to read config file")?;
+            let config: Config =
+                toml::from_str(&contents).context("Failed to parse config file")?;
             Ok(config)
         } else {
             // Create default config
@@ -200,25 +200,20 @@ impl Config {
     /// Save configuration to file
     pub fn save(&self) -> Result<()> {
         // Ensure config directory exists
-        fs::create_dir_all(&self.paths.config_dir)
-            .context("Failed to create config directory")?;
+        fs::create_dir_all(&self.paths.config_dir).context("Failed to create config directory")?;
 
         let config_path = self.paths.config_dir.join("daemon.toml");
-        let contents = toml::to_string_pretty(self)
-            .context("Failed to serialize config")?;
+        let contents = toml::to_string_pretty(self).context("Failed to serialize config")?;
 
-        fs::write(&config_path, contents)
-            .context("Failed to write config file")?;
+        fs::write(&config_path, contents).context("Failed to write config file")?;
 
         Ok(())
     }
 
     /// Ensure all required directories exist
     pub fn ensure_directories(&self) -> Result<()> {
-        fs::create_dir_all(&self.paths.config_dir)
-            .context("Failed to create config directory")?;
-        fs::create_dir_all(&self.paths.data_dir)
-            .context("Failed to create data directory")?;
+        fs::create_dir_all(&self.paths.config_dir).context("Failed to create config directory")?;
+        fs::create_dir_all(&self.paths.data_dir).context("Failed to create data directory")?;
         fs::create_dir_all(&self.paths.cert_dir)
             .context("Failed to create certificate directory")?;
         Ok(())

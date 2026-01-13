@@ -1,5 +1,5 @@
 {
-  description = "COSMIC applet for KDE Connect - Development Environment";
+  description = "COSMIC applet for KDE Connect - Device synchronization for COSMIC Desktop";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -8,6 +8,16 @@
   };
 
   outputs = { self, nixpkgs, rust-overlay, flake-utils }:
+    let
+      # Overlay for this package
+      overlay = final: prev: {
+        cosmic-applet-kdeconnect = final.callPackage ./nix/package.nix { };
+      };
+
+      # NixOS module
+      nixosModule = import ./nix/module.nix;
+
+    in
     flake-utils.lib.eachDefaultSystem (system:
       let
         overlays = [ (import rust-overlay) ];
@@ -117,33 +127,24 @@
           RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
         };
 
-        # Package definition
-        packages.default = pkgs.rustPlatform.buildRustPackage {
-          pname = "cosmic-applet-kdeconnect";
-          version = "0.1.0";
-
-          src = ./.;
-
-          cargoLock = {
-            lockFile = ./Cargo.lock;
-          };
-
-          nativeBuildInputs = [ pkgs.pkg-config pkgs.cmake ];
-          buildInputs = cosmicLibs ++ [ pkgs.openssl ];
-
-          meta = with pkgs.lib; {
-            description = "KDE Connect applet for COSMIC Desktop";
-            homepage = "https://github.com/yourusername/cosmic-applet-kdeconnect";
-            license = licenses.gpl3Plus;
-            maintainers = [ ];
-            platforms = platforms.linux;
-          };
-        };
+        # Package definition - use the one from nix/package.nix
+        packages.default = pkgs.callPackage ./nix/package.nix { };
 
         # Apps for running
         apps.default = flake-utils.lib.mkApp {
           drv = self.packages.${system}.default;
         };
+
+        # Tests
+        checks = import ./nix/tests.nix { inherit pkgs; };
       }
-    );
+    ) // {
+      # Flake-level outputs (not system-specific)
+      overlays.default = overlay;
+      nixosModules.default = nixosModule;
+
+      # Convenience aliases
+      nixosModules.cosmic-kdeconnect = nixosModule;
+      overlays.cosmic-kdeconnect = overlay;
+    };
 }
