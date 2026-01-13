@@ -1,15 +1,12 @@
+use cosmic::iced::widget::{column, container, row, scrollable, text};
 use cosmic::{
     app::{Core, Task},
-    iced::{
-        alignment::Horizontal,
-        window, Length, Padding, Rectangle,
-    },
+    iced::{alignment::Horizontal, window, Length, Padding, Rectangle},
     iced_runtime::core::layout::Limits,
     surface::action::{app_popup, destroy_popup},
     widget::{button, divider, icon},
     Element,
 };
-use cosmic::iced::widget::{column, container, row, scrollable, text};
 use kdeconnect_protocol::{ConnectionState, Device, DeviceInfo, DeviceType, PairingStatus};
 
 fn main() -> cosmic::iced::Result {
@@ -352,8 +349,6 @@ impl KdeConnectApplet {
         .align_y(cosmic::iced::Alignment::Center)
         .width(Length::Fill);
 
-        container(content)
-            .width(Length::Fill)
-            .into()
+        container(content).width(Length::Fill).into()
     }
 }
