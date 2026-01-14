@@ -61,6 +61,10 @@ enum Message {
     UnpairDevice(String),
     SelectDevice(String),
     BackToDeviceList,
+    SendPing(String),
+    FindPhone(String),
+    SendFile(String),
+    ShareText(String),
 }
 
 impl Application for KdeConnectApp {
@@ -154,6 +158,34 @@ impl Application for KdeConnectApp {
             Message::BackToDeviceList => {
                 tracing::info!("Returning to device list");
                 self.selected_device_id = None;
+                Task::none()
+            }
+            Message::SendPing(device_id) => {
+                tracing::info!("Sending ping to device: {}", device_id);
+                Task::perform(send_ping(device_id), |result| {
+                    if let Err(e) = result {
+                        tracing::error!("Failed to send ping: {}", e);
+                    }
+                    cosmic::Action::App(Message::RefreshDevices)
+                })
+            }
+            Message::FindPhone(device_id) => {
+                tracing::info!("Finding phone: {}", device_id);
+                Task::perform(find_phone(device_id), |result| {
+                    if let Err(e) = result {
+                        tracing::error!("Failed to find phone: {}", e);
+                    }
+                    cosmic::Action::App(Message::RefreshDevices)
+                })
+            }
+            Message::SendFile(device_id) => {
+                tracing::info!("Send file requested for device: {}", device_id);
+                // TODO: Open file picker dialog
+                Task::none()
+            }
+            Message::ShareText(device_id) => {
+                tracing::info!("Share text requested for device: {}", device_id);
+                // TODO: Open text input dialog
                 Task::none()
             }
         }
@@ -393,19 +425,29 @@ impl KdeConnectApp {
             });
 
         // Actions section (if device is paired and connected)
+        let device_id_for_actions = device.id.clone();
         let actions: Element<Message> = if device.is_paired && device.is_connected {
+            let id1 = device_id_for_actions.clone();
+            let id2 = device_id_for_actions.clone();
+            let id3 = device_id_for_actions.clone();
+            let id4 = device_id_for_actions.clone();
+
             widget::container(
                 column![
                     widget::text("Actions").size(18),
                     widget::divider::horizontal::default(),
                     row![
-                        widget::button::standard("Send Ping"),
-                        widget::button::standard("Send File"),
+                        widget::button::standard("Send Ping")
+                            .on_press(Message::SendPing(id1)),
+                        widget::button::standard("Send File")
+                            .on_press(Message::SendFile(id2)),
                     ]
                     .spacing(8),
                     row![
-                        widget::button::standard("Find Phone"),
-                        widget::button::standard("Share Text"),
+                        widget::button::standard("Find Phone")
+                            .on_press(Message::FindPhone(id3)),
+                        widget::button::standard("Share Text")
+                            .on_press(Message::ShareText(id4)),
                     ]
                     .spacing(8),
                 ]
@@ -515,4 +557,20 @@ async fn unpair_device(device_id: String) {
             tracing::error!("Failed to unpair device {}: {}", device_id, e);
         }
     }
+}
+
+/// Send ping to device
+async fn send_ping(device_id: String) -> anyhow::Result<()> {
+    let (client, _) = DbusClient::connect().await?;
+    client.send_ping(&device_id, "Hello from COSMIC!").await?;
+    tracing::info!("Ping sent to device {}", device_id);
+    Ok(())
+}
+
+/// Find phone (ring it)
+async fn find_phone(device_id: String) -> anyhow::Result<()> {
+    let (client, _) = DbusClient::connect().await?;
+    client.find_phone(&device_id).await?;
+    tracing::info!("Find phone triggered for device {}", device_id);
+    Ok(())
 }
