@@ -1,4 +1,5 @@
 mod config;
+mod cosmic_notifications;
 mod dbus;
 mod device_config;
 
@@ -51,6 +52,9 @@ struct Daemon {
 
     /// Connection manager (wrapped for shared access)
     connection_manager: Arc<RwLock<ConnectionManager>>,
+
+    /// COSMIC notifications client
+    cosmic_notifier: Option<Arc<cosmic_notifications::CosmicNotifier>>,
 
     /// DBus server
     dbus_server: Option<Arc<DbusServer>>,
@@ -127,6 +131,19 @@ impl Daemon {
             connection_config,
         )));
 
+        // Initialize COSMIC notifications client
+        let cosmic_notifier = match cosmic_notifications::CosmicNotifier::new().await {
+            Ok(notifier) => {
+                info!("COSMIC notifications client initialized");
+                Some(Arc::new(notifier))
+            }
+            Err(e) => {
+                warn!("Failed to initialize COSMIC notifications: {}", e);
+                warn!("Notifications will be disabled");
+                None
+            }
+        };
+
         Ok(Self {
             config,
             certificate,
@@ -137,6 +154,7 @@ impl Daemon {
             discovery_service: None,
             pairing_service: None,
             connection_manager,
+            cosmic_notifier,
             dbus_server: None,
         })
     }
@@ -315,10 +333,11 @@ impl Daemon {
         // Spawn task to handle pairing events
         let device_manager = self.device_manager.clone();
         let dbus_server = self.dbus_server.clone();
+        let cosmic_notifier = self.cosmic_notifier.clone();
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
                 if let Err(e) =
-                    Self::handle_pairing_event(event, &device_manager, &dbus_server).await
+                    Self::handle_pairing_event(event, &device_manager, &dbus_server, &cosmic_notifier).await
                 {
                     error!("Error handling pairing event: {}", e);
                 }
@@ -336,6 +355,7 @@ impl Daemon {
         event: PairingEvent,
         device_manager: &Arc<RwLock<DeviceManager>>,
         dbus_server: &Option<Arc<DbusServer>>,
+        cosmic_notifier: &Option<Arc<cosmic_notifications::CosmicNotifier>>,
     ) -> Result<()> {
         match event {
             PairingEvent::RequestSent {
@@ -362,6 +382,13 @@ impl Daemon {
                 if let Some(dbus) = dbus_server {
                     if let Err(e) = dbus.emit_pairing_request(&device_id).await {
                         warn!("Failed to emit PairingRequest signal: {}", e);
+                    }
+                }
+
+                // Show COSMIC notification for pairing request
+                if let Some(notifier) = cosmic_notifier {
+                    if let Err(e) = notifier.notify_pairing_request(&device_name).await {
+                        warn!("Failed to send pairing request notification: {}", e);
                     }
                 }
             }
@@ -446,6 +473,7 @@ impl Daemon {
         let device_manager = self.device_manager.clone();
         let plugin_manager = self.plugin_manager.clone();
         let dbus_server = self.dbus_server.clone();
+        let cosmic_notifier = self.cosmic_notifier.clone();
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
                 if let Err(e) = Self::handle_connection_event(
@@ -453,6 +481,7 @@ impl Daemon {
                     &device_manager,
                     &plugin_manager,
                     &dbus_server,
+                    &cosmic_notifier,
                 )
                 .await
                 {
@@ -493,6 +522,7 @@ impl Daemon {
         device_manager: &Arc<RwLock<DeviceManager>>,
         plugin_manager: &Arc<RwLock<PluginManager>>,
         dbus_server: &Option<Arc<DbusServer>>,
+        cosmic_notifier: &Option<Arc<cosmic_notifications::CosmicNotifier>>,
     ) -> Result<()> {
         match event {
             ConnectionEvent::Connected {
@@ -500,6 +530,12 @@ impl Daemon {
                 remote_addr,
             } => {
                 info!("Device {} connected from {}", device_id, remote_addr);
+
+                // Get device name for notifications
+                let device_name = {
+                    let dev_manager = device_manager.read().await;
+                    dev_manager.get_device(&device_id).map(|d| d.name().to_string())
+                };
 
                 // Initialize per-device plugins
                 {
@@ -531,9 +567,24 @@ impl Daemon {
                         warn!("Failed to emit DeviceStateChanged signal: {}", e);
                     }
                 }
+
+                // Show COSMIC notification for device connection
+                if let Some(notifier) = cosmic_notifier {
+                    if let Some(name) = device_name {
+                        if let Err(e) = notifier.notify_device_connected(&name).await {
+                            warn!("Failed to send device connected notification: {}", e);
+                        }
+                    }
+                }
             }
             ConnectionEvent::Disconnected { device_id, reason } => {
                 info!("Device {} disconnected (reason: {:?})", device_id, reason);
+
+                // Get device name for notifications
+                let device_name = {
+                    let dev_manager = device_manager.read().await;
+                    dev_manager.get_device(&device_id).map(|d| d.name().to_string())
+                };
 
                 // Cleanup per-device plugins
                 {
@@ -551,6 +602,15 @@ impl Daemon {
                         warn!("Failed to emit DeviceStateChanged signal: {}", e);
                     }
                 }
+
+                // Show COSMIC notification for device disconnection
+                if let Some(notifier) = cosmic_notifier {
+                    if let Some(name) = device_name {
+                        if let Err(e) = notifier.notify_device_disconnected(&name).await {
+                            warn!("Failed to send device disconnected notification: {}", e);
+                        }
+                    }
+                }
             }
             ConnectionEvent::PacketReceived { device_id, packet } => {
                 debug!(
@@ -561,6 +621,8 @@ impl Daemon {
                 // Get device from device manager
                 let mut dev_manager = device_manager.write().await;
                 if let Some(device) = dev_manager.get_device_mut(&device_id) {
+                    let device_name = device.name().to_string();
+
                     // Route packet to plugin manager
                     let mut plug_manager = plugin_manager.write().await;
                     if let Err(e) = plug_manager
@@ -568,6 +630,64 @@ impl Daemon {
                         .await
                     {
                         error!("Error handling packet from device {}: {}", device_id, e);
+                    }
+                    drop(plug_manager);
+                    drop(dev_manager);
+
+                    // Send COSMIC notifications for specific packet types
+                    if let Some(notifier) = &cosmic_notifier {
+                        match packet.packet_type.as_str() {
+                            "kdeconnect.ping" => {
+                                // Show notification for ping
+                                let message = packet
+                                    .body
+                                    .get("message")
+                                    .and_then(|v| v.as_str());
+
+                                if let Err(e) = notifier.notify_ping(&device_name, message).await {
+                                    warn!("Failed to send ping notification: {}", e);
+                                }
+                            }
+                            "kdeconnect.notification" => {
+                                // Check if it's a cancel notification
+                                let is_cancel = packet.body.get("isCancel")
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
+
+                                if !is_cancel {
+                                    // Check if notification is silent (preexisting)
+                                    let is_silent = packet.body.get("silent")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s == "true")
+                                        .unwrap_or(false);
+
+                                    // Only show COSMIC notification for new notifications
+                                    if !is_silent {
+                                        let app_name = packet.body.get("appName")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("");
+                                        let title = packet.body.get("title")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("Notification");
+                                        let text = packet.body.get("text")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("");
+
+                                        if let Err(e) = notifier.notify_from_device(
+                                            &device_name,
+                                            app_name,
+                                            title,
+                                            text
+                                        ).await {
+                                            warn!("Failed to send device notification: {}", e);
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {
+                                // Other packet types don't trigger notifications
+                            }
+                        }
                     }
                 } else {
                     warn!("Received packet from unknown device: {}", device_id);
