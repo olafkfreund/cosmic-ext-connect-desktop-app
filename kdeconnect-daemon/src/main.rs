@@ -624,6 +624,7 @@ impl Daemon {
             self.connection_manager.clone(),
             self.device_config_registry.clone(),
             self.pairing_service.clone(),
+            self.mpris_manager.clone(),
         )
         .await
         .context("Failed to start DBus server")?;

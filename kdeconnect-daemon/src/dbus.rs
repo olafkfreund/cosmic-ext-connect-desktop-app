@@ -81,6 +81,8 @@ pub struct KdeConnectInterface {
     device_config_registry: Arc<RwLock<crate::device_config::DeviceConfigRegistry>>,
     /// Pairing service (optional - may not be started yet)
     pairing_service: Option<Arc<RwLock<kdeconnect_protocol::pairing::PairingService>>>,
+    /// MPRIS manager for local media player control (optional)
+    mpris_manager: Option<Arc<crate::mpris_manager::MprisManager>>,
 }
 
 impl KdeConnectInterface {
@@ -91,6 +93,7 @@ impl KdeConnectInterface {
         connection_manager: Arc<RwLock<ConnectionManager>>,
         device_config_registry: Arc<RwLock<crate::device_config::DeviceConfigRegistry>>,
         pairing_service: Option<Arc<RwLock<kdeconnect_protocol::pairing::PairingService>>>,
+        mpris_manager: Option<Arc<crate::mpris_manager::MprisManager>>,
     ) -> Self {
         Self {
             device_manager,
@@ -98,6 +101,7 @@ impl KdeConnectInterface {
             connection_manager,
             device_config_registry,
             pairing_service,
+            mpris_manager,
         }
     }
 }
@@ -990,6 +994,7 @@ impl DbusServer {
     /// * `connection_manager` - Connection manager reference
     /// * `device_config_registry` - Device configuration registry
     /// * `pairing_service` - Optional pairing service reference
+    /// * `mpris_manager` - Optional MPRIS manager for local media player control
     ///
     /// # Returns
     /// DBus server instance with active connection
@@ -999,6 +1004,7 @@ impl DbusServer {
         connection_manager: Arc<RwLock<ConnectionManager>>,
         device_config_registry: Arc<RwLock<crate::device_config::DeviceConfigRegistry>>,
         pairing_service: Option<Arc<RwLock<kdeconnect_protocol::pairing::PairingService>>>,
+        mpris_manager: Option<Arc<crate::mpris_manager::MprisManager>>,
     ) -> Result<Self> {
         info!("Starting DBus server on {}", SERVICE_NAME);
 
@@ -1008,6 +1014,7 @@ impl DbusServer {
             connection_manager,
             device_config_registry,
             pairing_service,
+            mpris_manager,
         );
 
         let connection = connection::Builder::session()?
