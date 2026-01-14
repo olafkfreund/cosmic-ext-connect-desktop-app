@@ -536,7 +536,8 @@ impl NotificationPlugin {
                 device.name(),
                 device.id()
             );
-            // TODO: Send all our notifications
+            // Future: Send all our local notifications to device
+            // Requires: Integration with COSMIC notification system to enumerate active notifications
             return;
         }
 
@@ -548,7 +549,8 @@ impl NotificationPlugin {
                 device.name(),
                 device.id()
             );
-            // TODO: Dismiss our local notification
+            // Future: Dismiss our local notification
+            // Requires: Track notification IDs and call CosmicNotifier.close(id)
         }
     }
 
@@ -565,7 +567,8 @@ impl NotificationPlugin {
                 device.name(),
                 device.id()
             );
-            // TODO: Trigger the action
+            // Future: Trigger the notification action button
+            // Requires: Store action callbacks and execute on action packet
         }
     }
 
@@ -582,7 +585,8 @@ impl NotificationPlugin {
                 device.name(),
                 device.id()
             );
-            // TODO: Send the reply
+            // Future: Send inline reply to originating app
+            // Requires: Platform-specific integration with messaging apps
         }
     }
 }
