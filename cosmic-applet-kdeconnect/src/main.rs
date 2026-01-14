@@ -14,7 +14,7 @@ use cosmic::{
     widget::{button, divider, icon},
     Element,
 };
-use kdeconnect_protocol::{ConnectionState, Device, DeviceType, PairingStatus};
+use kdeconnect_protocol::{ConnectionState, Device, DeviceInfo as ProtocolDeviceInfo, DeviceType, PairingStatus};
 
 use dbus_client::DbusClient;
 
@@ -50,6 +50,7 @@ enum Message {
     Surface(cosmic::surface::Action),
     // Daemon responses
     DeviceListUpdated(HashMap<String, dbus_client::DeviceInfo>),
+    BatteryStatusesUpdated(HashMap<String, dbus_client::BatteryStatus>),
 }
 
 /// Fetches device list from the daemon via D-Bus
@@ -97,6 +98,20 @@ fn fetch_devices_task() -> Task<Message> {
     })
 }
 
+/// Fetches battery status for a list of device IDs
+async fn fetch_battery_statuses(device_ids: Vec<String>) -> HashMap<String, dbus_client::BatteryStatus> {
+    let mut statuses = HashMap::new();
+    let Ok((client, _)) = DbusClient::connect().await else {
+        return statuses;
+    };
+    for device_id in device_ids {
+        if let Ok(status) = client.get_battery_status(&device_id).await {
+            statuses.insert(device_id, status);
+        }
+    }
+    statuses
+}
+
 /// Creates a task that executes a device operation then refreshes the device list
 fn device_operation_task<F, Fut>(
     device_id: String,
@@ -111,6 +126,51 @@ where
         async move { execute_device_operation(device_id, operation_name, operation).await },
         |_| cosmic::Action::App(Message::RefreshDevices),
     )
+}
+
+/// Converts a D-Bus DeviceInfo to our internal DeviceState
+fn convert_device_info(info: &dbus_client::DeviceInfo) -> DeviceState {
+    let device_type = match info.device_type.as_str() {
+        "phone" => DeviceType::Phone,
+        "tablet" => DeviceType::Tablet,
+        "laptop" => DeviceType::Laptop,
+        "tv" => DeviceType::Tv,
+        _ => DeviceType::Desktop,
+    };
+
+    let connection_state = if info.is_connected {
+        ConnectionState::Connected
+    } else {
+        ConnectionState::Disconnected
+    };
+
+    let pairing_status = if info.is_paired {
+        PairingStatus::Paired
+    } else {
+        PairingStatus::Unpaired
+    };
+
+    let mut protocol_info = ProtocolDeviceInfo::new(&info.name, device_type, 1716);
+    protocol_info.device_id = info.id.clone();
+
+    let device = Device {
+        info: protocol_info,
+        connection_state,
+        pairing_status,
+        is_trusted: info.is_paired,
+        last_seen: info.last_seen as u64,
+        last_connected: if info.is_connected { Some(info.last_seen as u64) } else { None },
+        host: None,
+        port: None,
+        certificate_fingerprint: None,
+        certificate_data: None,
+    };
+
+    DeviceState {
+        device,
+        battery_level: None,
+        is_charging: false,
+    }
 }
 
 impl cosmic::Application for KdeConnectApplet {
@@ -151,8 +211,35 @@ impl cosmic::Application for KdeConnectApplet {
             }
             Message::DeviceListUpdated(devices) => {
                 tracing::info!("Device list updated: {} devices", devices.len());
-                // TODO: Convert dbus_client::DeviceInfo to our DeviceState
-                self.devices.clear();
+
+                self.devices = devices.values().map(convert_device_info).collect();
+
+                let connected_ids: Vec<String> = self
+                    .devices
+                    .iter()
+                    .filter(|d| d.device.is_connected())
+                    .map(|d| d.device.info.device_id.clone())
+                    .collect();
+
+                if connected_ids.is_empty() {
+                    return Task::none();
+                }
+
+                tracing::debug!("Fetching battery status for {} connected devices", connected_ids.len());
+                Task::perform(fetch_battery_statuses(connected_ids), |statuses| {
+                    cosmic::Action::App(Message::BatteryStatusesUpdated(statuses))
+                })
+            }
+            Message::BatteryStatusesUpdated(statuses) => {
+                tracing::debug!("Battery statuses updated for {} devices", statuses.len());
+
+                for device_state in &mut self.devices {
+                    if let Some(status) = statuses.get(&device_state.device.info.device_id) {
+                        device_state.battery_level = Some((status.level as u8).min(100));
+                        device_state.is_charging = status.is_charging;
+                    }
+                }
+
                 Task::none()
             }
             Message::PairDevice(device_id) => {
