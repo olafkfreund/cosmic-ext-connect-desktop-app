@@ -77,6 +77,8 @@ pub struct KdeConnectInterface {
     plugin_manager: Arc<RwLock<PluginManager>>,
     /// Connection manager
     connection_manager: Arc<RwLock<ConnectionManager>>,
+    /// Device configuration registry
+    device_config_registry: Arc<RwLock<crate::device_config::DeviceConfigRegistry>>,
 }
 
 impl KdeConnectInterface {
@@ -85,11 +87,13 @@ impl KdeConnectInterface {
         device_manager: Arc<RwLock<DeviceManager>>,
         plugin_manager: Arc<RwLock<PluginManager>>,
         connection_manager: Arc<RwLock<ConnectionManager>>,
+        device_config_registry: Arc<RwLock<crate::device_config::DeviceConfigRegistry>>,
     ) -> Self {
         Self {
             device_manager,
             plugin_manager,
             connection_manager,
+            device_config_registry,
         }
     }
 }
@@ -460,6 +464,122 @@ impl KdeConnectInterface {
         })
     }
 
+    /// Set device nickname
+    ///
+    /// # Arguments
+    /// * `device_id` - The device ID
+    /// * `nickname` - The new nickname (empty string to clear)
+    async fn set_device_nickname(
+        &self,
+        device_id: String,
+        nickname: String,
+    ) -> Result<(), zbus::fdo::Error> {
+        info!(
+            "DBus: SetDeviceNickname called for {}: {}",
+            device_id, nickname
+        );
+
+        let mut registry = self.device_config_registry.write().await;
+        let config = registry.get_or_create(&device_id);
+
+        if nickname.is_empty() {
+            config.nickname = None;
+        } else {
+            config.nickname = Some(nickname);
+        }
+
+        registry.save().map_err(|e| {
+            zbus::fdo::Error::Failed(format!("Failed to save device config: {}", e))
+        })?;
+
+        Ok(())
+    }
+
+    /// Set plugin enabled state for a device
+    ///
+    /// # Arguments
+    /// * `device_id` - The device ID
+    /// * `plugin_name` - The plugin name (ping, battery, notification, share, clipboard, mpris)
+    /// * `enabled` - Whether the plugin should be enabled
+    async fn set_device_plugin_enabled(
+        &self,
+        device_id: String,
+        plugin_name: String,
+        enabled: bool,
+    ) -> Result<(), zbus::fdo::Error> {
+        info!(
+            "DBus: SetDevicePluginEnabled called for {}, plugin {}: {}",
+            device_id, plugin_name, enabled
+        );
+
+        let mut registry = self.device_config_registry.write().await;
+        let config = registry.get_or_create(&device_id);
+
+        config.set_plugin_enabled(&plugin_name, enabled);
+
+        registry.save().map_err(|e| {
+            zbus::fdo::Error::Failed(format!("Failed to save device config: {}", e))
+        })?;
+
+        info!(
+            "DBus: Plugin {} {} for device {}",
+            plugin_name,
+            if enabled { "enabled" } else { "disabled" },
+            device_id
+        );
+
+        Ok(())
+    }
+
+    /// Clear device-specific plugin override (use global config)
+    ///
+    /// # Arguments
+    /// * `device_id` - The device ID
+    /// * `plugin_name` - The plugin name
+    async fn clear_device_plugin_override(
+        &self,
+        device_id: String,
+        plugin_name: String,
+    ) -> Result<(), zbus::fdo::Error> {
+        info!(
+            "DBus: ClearDevicePluginOverride called for {}, plugin {}",
+            device_id, plugin_name
+        );
+
+        let mut registry = self.device_config_registry.write().await;
+        let config = registry.get_or_create(&device_id);
+
+        config.clear_plugin_override(&plugin_name);
+
+        registry.save().map_err(|e| {
+            zbus::fdo::Error::Failed(format!("Failed to save device config: {}", e))
+        })?;
+
+        Ok(())
+    }
+
+    /// Get device configuration as JSON string
+    ///
+    /// # Arguments
+    /// * `device_id` - The device ID
+    ///
+    /// # Returns
+    /// JSON string with device configuration
+    async fn get_device_config(&self, device_id: String) -> Result<String, zbus::fdo::Error> {
+        debug!("DBus: GetDeviceConfig called for {}", device_id);
+
+        let registry = self.device_config_registry.read().await;
+
+        let config = registry.get(&device_id).ok_or_else(|| {
+            zbus::fdo::Error::Failed(format!("No config found for device: {}", device_id))
+        })?;
+
+        let json = serde_json::to_string_pretty(&config)
+            .map_err(|e| zbus::fdo::Error::Failed(format!("Failed to serialize config: {}", e)))?;
+
+        Ok(json)
+    }
+
     /// Signal: Device was added (discovered)
     ///
     /// Emitted when a new device is discovered on the network.
@@ -556,6 +676,7 @@ impl DbusServer {
     /// * `device_manager` - Device manager reference
     /// * `plugin_manager` - Plugin manager reference
     /// * `connection_manager` - Connection manager reference
+    /// * `device_config_registry` - Device configuration registry
     ///
     /// # Returns
     /// DBus server instance with active connection
@@ -563,11 +684,16 @@ impl DbusServer {
         device_manager: Arc<RwLock<DeviceManager>>,
         plugin_manager: Arc<RwLock<PluginManager>>,
         connection_manager: Arc<RwLock<ConnectionManager>>,
+        device_config_registry: Arc<RwLock<crate::device_config::DeviceConfigRegistry>>,
     ) -> Result<Self> {
         info!("Starting DBus server on {}", SERVICE_NAME);
 
-        let interface =
-            KdeConnectInterface::new(device_manager, plugin_manager, connection_manager);
+        let interface = KdeConnectInterface::new(
+            device_manager,
+            plugin_manager,
+            connection_manager,
+            device_config_registry,
+        );
 
         let connection = connection::Builder::session()?
             .name(SERVICE_NAME)?

@@ -1,5 +1,6 @@
 mod config;
 mod dbus;
+mod device_config;
 
 use anyhow::{Context, Result};
 use dbus::DbusServer;
@@ -38,6 +39,9 @@ struct Daemon {
 
     /// Device manager (tracks discovered/paired devices)
     device_manager: Arc<RwLock<DeviceManager>>,
+
+    /// Per-device configuration registry
+    device_config_registry: Arc<RwLock<device_config::DeviceConfigRegistry>>,
 
     /// Discovery service
     discovery_service: Option<DiscoveryService>,
@@ -99,6 +103,14 @@ impl Daemon {
                 .context("Failed to create device manager")?,
         ));
 
+        // Create and load device configuration registry
+        let mut device_config_registry =
+            device_config::DeviceConfigRegistry::new(&config.paths.config_dir);
+        device_config_registry
+            .load()
+            .context("Failed to load device configurations")?;
+        let device_config_registry = Arc::new(RwLock::new(device_config_registry));
+
         // Create connection config
         let connection_config = ConnectionConfig {
             listen_addr: format!("0.0.0.0:{}", config.network.discovery_port)
@@ -121,6 +133,7 @@ impl Daemon {
             device_info,
             plugin_manager,
             device_manager,
+            device_config_registry,
             discovery_service: None,
             pairing_service: None,
             connection_manager,
@@ -462,6 +475,7 @@ impl Daemon {
             self.device_manager.clone(),
             self.plugin_manager.clone(),
             self.connection_manager.clone(),
+            self.device_config_registry.clone(),
         )
         .await
         .context("Failed to start DBus server")?;
