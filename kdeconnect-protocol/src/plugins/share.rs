@@ -514,6 +514,7 @@ impl SharePlugin {
     /// Handle an incoming share request packet
     ///
     /// Processes share packets and records them in history.
+    /// For file shares, initiates download via PayloadClient.
     async fn handle_share_request(&self, packet: &Packet, device: &Device) {
         let device_id = device.id().to_string();
 
@@ -539,6 +540,74 @@ impl SharePlugin {
                 filename,
                 file_info.size
             );
+
+            // Check if we need to download the file
+            if let Some(transfer_info) = &packet.payload_transfer_info {
+                // Extract port from payloadTransferInfo
+                if let Some(port_value) = transfer_info.get("port") {
+                    let port = port_value.as_i64().unwrap_or(0) as u16;
+
+                    // Get remote host from device
+                    if let Some(host) = &device.host {
+                        let host_clone = host.clone();
+                        let filename_clone = filename.to_string();
+                        let size = file_info.size;
+                        let device_name = device.name().to_string();
+
+                        // Spawn background task to download file
+                        tokio::spawn(async move {
+                            // Create downloads directory
+                            let downloads_dir = std::path::PathBuf::from(
+                                std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())
+                            ).join("Downloads");
+
+                            if let Err(e) = tokio::fs::create_dir_all(&downloads_dir).await {
+                                warn!("Failed to create downloads directory: {}", e);
+                                return;
+                            }
+
+                            let file_path = downloads_dir.join(&filename_clone);
+
+                            info!(
+                                "Downloading file '{}' from {} ({}:{}) to {:?}",
+                                filename_clone, device_name, host_clone, port, file_path
+                            );
+
+                            // Connect to payload server and download file
+                            use crate::PayloadClient;
+                            match PayloadClient::new(&host_clone, port).await {
+                                Ok(client) => {
+                                    match client.receive_file(&file_path, size as u64).await {
+                                        Ok(()) => {
+                                            info!(
+                                                "Successfully downloaded file '{}' from {}",
+                                                filename_clone, device_name
+                                            );
+                                            // TODO: Emit event/signal for COSMIC notification
+                                        }
+                                        Err(e) => {
+                                            warn!(
+                                                "Failed to download file '{}' from {}: {}",
+                                                filename_clone, device_name, e
+                                            );
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "Failed to connect to payload server {}:{}: {}",
+                                        host_clone, port, e
+                                    );
+                                }
+                            }
+                        });
+                    } else {
+                        warn!("Cannot download file: device host not available");
+                    }
+                } else {
+                    warn!("Cannot download file: no port in payloadTransferInfo");
+                }
+            }
 
             ShareContent::File(file_info)
         } else if let Some(text) = packet.body.get("text").and_then(|v| v.as_str()) {
