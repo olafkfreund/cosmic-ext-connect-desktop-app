@@ -428,6 +428,45 @@ impl KdeConnectInterface {
         Ok(())
     }
 
+    /// Share a URL with a device
+    ///
+    /// # Arguments
+    /// * `device_id` - The device ID to share with
+    /// * `url` - URL to share (will be opened in default browser on receiving device)
+    async fn share_url(&self, device_id: String, url: String) -> Result<(), zbus::fdo::Error> {
+        info!(
+            "DBus: ShareUrl called for {} with URL '{}'",
+            device_id, url
+        );
+
+        let device_manager = self.device_manager.read().await;
+        let device = device_manager
+            .get_device(&device_id)
+            .ok_or_else(|| zbus::fdo::Error::Failed(format!("Device not found: {}", device_id)))?;
+
+        if !device.is_connected() {
+            return Err(zbus::fdo::Error::Failed("Device not connected".to_string()));
+        }
+
+        drop(device_manager);
+
+        // Create share URL packet
+        use kdeconnect_protocol::Packet;
+        use serde_json::json;
+
+        let packet = Packet::new("kdeconnect.share.request", json!({ "url": url }));
+
+        // Send packet via ConnectionManager
+        let conn_manager = self.connection_manager.read().await;
+        conn_manager
+            .send_packet(&device_id, &packet)
+            .await
+            .map_err(|e| zbus::fdo::Error::Failed(format!("Failed to share URL: {}", e)))?;
+
+        info!("DBus: URL shared successfully to {}", device_id);
+        Ok(())
+    }
+
     /// Send a notification to a device
     ///
     /// # Arguments
