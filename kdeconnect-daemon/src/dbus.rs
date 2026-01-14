@@ -79,6 +79,8 @@ pub struct KdeConnectInterface {
     connection_manager: Arc<RwLock<ConnectionManager>>,
     /// Device configuration registry
     device_config_registry: Arc<RwLock<crate::device_config::DeviceConfigRegistry>>,
+    /// Pairing service (optional - may not be started yet)
+    pairing_service: Option<Arc<RwLock<kdeconnect_protocol::pairing::PairingService>>>,
 }
 
 impl KdeConnectInterface {
@@ -88,12 +90,14 @@ impl KdeConnectInterface {
         plugin_manager: Arc<RwLock<PluginManager>>,
         connection_manager: Arc<RwLock<ConnectionManager>>,
         device_config_registry: Arc<RwLock<crate::device_config::DeviceConfigRegistry>>,
+        pairing_service: Option<Arc<RwLock<kdeconnect_protocol::pairing::PairingService>>>,
     ) -> Self {
         Self {
             device_manager,
             plugin_manager,
             connection_manager,
             device_config_registry,
+            pairing_service,
         }
     }
 }
@@ -147,20 +151,43 @@ impl KdeConnectInterface {
     async fn pair_device(&self, device_id: String) -> Result<(), zbus::fdo::Error> {
         info!("DBus: PairDevice called for {}", device_id);
 
-        // Check if device exists
+        // Check if pairing service is available
+        let pairing_service = self.pairing_service.as_ref().ok_or_else(|| {
+            zbus::fdo::Error::Failed("Pairing service not initialized".to_string())
+        })?;
+
+        // Get device info from device manager
         let device_manager = self.device_manager.read().await;
-        let _device = device_manager
+        let device = device_manager
             .get_device(&device_id)
             .ok_or_else(|| zbus::fdo::Error::Failed(format!("Device not found: {}", device_id)))?;
+
+        // Check if already paired
+        if device.is_paired() {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Device {} is already paired",
+                device_id
+            )));
+        }
+
+        let device_info = device.info.clone();
+        let remote_addr = format!("{}:{}", device.host.as_deref().unwrap_or("0.0.0.0"), device.port.unwrap_or(1716))
+            .parse()
+            .map_err(|e| zbus::fdo::Error::Failed(format!("Invalid remote address: {}", e)))?;
+
         drop(device_manager);
 
-        // TODO: Need to integrate with PairingService to actually request pairing
-        // This requires passing PairingService to DBus interface or using a command channel
-        warn!("DBus: PairDevice not fully implemented - needs PairingService integration");
+        // Request pairing
+        let pairing_service = pairing_service.read().await;
+        pairing_service
+            .request_pairing(device_info, remote_addr)
+            .await
+            .map_err(|e| {
+                zbus::fdo::Error::Failed(format!("Failed to request pairing: {}", e))
+            })?;
 
-        Err(zbus::fdo::Error::Failed(
-            "Pairing not yet implemented in DBus interface".to_string(),
-        ))
+        info!("Pairing request sent to device {}", device_id);
+        Ok(())
     }
 
     /// Unpair a device
@@ -173,20 +200,35 @@ impl KdeConnectInterface {
     async fn unpair_device(&self, device_id: String) -> Result<(), zbus::fdo::Error> {
         info!("DBus: UnpairDevice called for {}", device_id);
 
+        // Check if pairing service is available
+        let pairing_service = self.pairing_service.as_ref().ok_or_else(|| {
+            zbus::fdo::Error::Failed("Pairing service not initialized".to_string())
+        })?;
+
         // Check if device exists
         let device_manager = self.device_manager.read().await;
-        let _device = device_manager
+        let device = device_manager
             .get_device(&device_id)
             .ok_or_else(|| zbus::fdo::Error::Failed(format!("Device not found: {}", device_id)))?;
+
+        // Check if device is paired
+        if !device.is_paired() {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Device {} is not paired",
+                device_id
+            )));
+        }
+
         drop(device_manager);
 
-        // TODO: Need to integrate with PairingService to actually unpair
-        // This requires passing PairingService to DBus interface or using a command channel
-        warn!("DBus: UnpairDevice not fully implemented - needs PairingService integration");
+        // Unpair the device
+        let pairing_service = pairing_service.read().await;
+        pairing_service.unpair(&device_id).await.map_err(|e| {
+            zbus::fdo::Error::Failed(format!("Failed to unpair device: {}", e))
+        })?;
 
-        Err(zbus::fdo::Error::Failed(
-            "Unpairing not yet implemented in DBus interface".to_string(),
-        ))
+        info!("Device {} unpaired successfully", device_id);
+        Ok(())
     }
 
     /// Trigger device discovery
@@ -677,6 +719,7 @@ impl DbusServer {
     /// * `plugin_manager` - Plugin manager reference
     /// * `connection_manager` - Connection manager reference
     /// * `device_config_registry` - Device configuration registry
+    /// * `pairing_service` - Optional pairing service reference
     ///
     /// # Returns
     /// DBus server instance with active connection
@@ -685,6 +728,7 @@ impl DbusServer {
         plugin_manager: Arc<RwLock<PluginManager>>,
         connection_manager: Arc<RwLock<ConnectionManager>>,
         device_config_registry: Arc<RwLock<crate::device_config::DeviceConfigRegistry>>,
+        pairing_service: Option<Arc<RwLock<kdeconnect_protocol::pairing::PairingService>>>,
     ) -> Result<Self> {
         info!("Starting DBus server on {}", SERVICE_NAME);
 
@@ -693,6 +737,7 @@ impl DbusServer {
             plugin_manager,
             connection_manager,
             device_config_registry,
+            pairing_service,
         );
 
         let connection = connection::Builder::session()?

@@ -47,8 +47,8 @@ struct Daemon {
     /// Discovery service
     discovery_service: Option<DiscoveryService>,
 
-    /// Pairing service
-    pairing_service: Option<PairingService>,
+    /// Pairing service (wrapped for shared access with DBus)
+    pairing_service: Option<Arc<RwLock<PairingService>>>,
 
     /// Connection manager (wrapped for shared access)
     connection_manager: Arc<RwLock<ConnectionManager>>,
@@ -324,11 +324,17 @@ impl Daemon {
             pairing_service.fingerprint()
         );
 
+        // Wrap in Arc<RwLock> for shared access
+        let pairing_service = Arc::new(RwLock::new(pairing_service));
+
         // Subscribe to pairing events
-        let mut event_rx = pairing_service.subscribe().await;
+        let mut event_rx = {
+            let service = pairing_service.read().await;
+            service.subscribe().await
+        };
 
         // Store pairing service
-        self.pairing_service = Some(pairing_service);
+        self.pairing_service = Some(pairing_service.clone());
 
         // Spawn task to handle pairing events
         let device_manager = self.device_manager.clone();
@@ -505,6 +511,7 @@ impl Daemon {
             self.plugin_manager.clone(),
             self.connection_manager.clone(),
             self.device_config_registry.clone(),
+            self.pairing_service.clone(),
         )
         .await
         .context("Failed to start DBus server")?;
