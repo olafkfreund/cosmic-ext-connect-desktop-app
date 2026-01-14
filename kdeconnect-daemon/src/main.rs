@@ -523,6 +523,91 @@ impl Daemon {
         Ok(())
     }
 
+    /// Start clipboard monitoring
+    async fn start_clipboard_monitor(&self) -> Result<()> {
+        if !self.config.plugins.enable_clipboard {
+            info!("Clipboard plugin disabled, skipping clipboard monitor");
+            return Ok(());
+        }
+
+        info!("Starting clipboard monitor...");
+
+        let device_manager = self.device_manager.clone();
+        let plugin_manager = self.plugin_manager.clone();
+        let connection_manager = self.connection_manager.clone();
+
+        // Spawn background task to monitor clipboard
+        tokio::spawn(async move {
+            use arboard::Clipboard;
+            use std::time::Duration;
+
+            // Initialize clipboard
+            let mut clipboard = match Clipboard::new() {
+                Ok(cb) => cb,
+                Err(e) => {
+                    error!("Failed to initialize clipboard: {}", e);
+                    return;
+                }
+            };
+
+            let mut last_content = String::new();
+            let poll_interval = Duration::from_millis(500);
+
+            info!("Clipboard monitor started (polling every {:?})", poll_interval);
+
+            loop {
+                tokio::time::sleep(poll_interval).await;
+
+                // Read current clipboard content
+                let current_content = match clipboard.get_text() {
+                    Ok(text) => text,
+                    Err(_) => continue, // Clipboard might be empty or contain non-text
+                };
+
+                // Check if clipboard changed
+                if current_content != last_content && !current_content.is_empty() {
+                    debug!("Clipboard changed: {} chars", current_content.len());
+
+                    // Update local clipboard plugin state for all connected devices
+                    let dev_manager = device_manager.read().await;
+                    let connected_devices: Vec<String> = dev_manager
+                        .get_all_devices()
+                        .iter()
+                        .filter(|d| d.is_connected())
+                        .map(|d| d.id().to_string())
+                        .collect();
+                    drop(dev_manager);
+
+                    if !connected_devices.is_empty() {
+                        let plug_manager = plugin_manager.read().await;
+
+                        for device_id in &connected_devices {
+                            if let Some(plugin) = plug_manager.get_device_plugin::<kdeconnect_protocol::plugins::clipboard::ClipboardPlugin>(device_id, "clipboard") {
+                                // Create clipboard packet
+                                let packet = plugin.create_clipboard_packet(current_content.clone()).await;
+
+                                // Send packet via connection manager
+                                let conn_manager = connection_manager.read().await;
+                                if let Err(e) = conn_manager.send_packet(device_id, &packet).await {
+                                    warn!("Failed to send clipboard update to {}: {}", device_id, e);
+                                } else {
+                                    debug!("Sent clipboard update to {} ({} chars)", device_id, current_content.len());
+                                }
+                            }
+                        }
+                        drop(plug_manager);
+                    }
+
+                    last_content = current_content;
+                }
+            }
+        });
+
+        info!("Clipboard monitor started successfully");
+
+        Ok(())
+    }
+
     /// Handle a connection event
     async fn handle_connection_event(
         event: ConnectionEvent,
@@ -715,6 +800,27 @@ impl Daemon {
                                                 "Sent file received notification for '{}' ({} bytes) from {}",
                                                 filename, file_size, device_name
                                             );
+                                        }
+                                    }
+                                }
+                            }
+                            "kdeconnect.clipboard" | "kdeconnect.clipboard.connect" => {
+                                // Update system clipboard with received content
+                                if let Some(content) = packet.body.get("content").and_then(|v| v.as_str()) {
+                                    if !content.is_empty() {
+                                        use arboard::Clipboard;
+                                        match Clipboard::new() {
+                                            Ok(mut clipboard) => {
+                                                if let Err(e) = clipboard.set_text(content) {
+                                                    warn!("Failed to update system clipboard: {}", e);
+                                                } else {
+                                                    info!("Updated system clipboard from {} ({} chars)",
+                                                        device_name, content.len());
+                                                }
+                                            }
+                                            Err(e) => {
+                                                warn!("Failed to initialize clipboard: {}", e);
+                                            }
                                         }
                                     }
                                 }
@@ -945,6 +1051,12 @@ async fn main() -> Result<()> {
         .start_connections()
         .await
         .context("Failed to start connection manager")?;
+
+    // Start clipboard monitor
+    daemon
+        .start_clipboard_monitor()
+        .await
+        .context("Failed to start clipboard monitor")?;
 
     // Run daemon
     let result = daemon.run().await;

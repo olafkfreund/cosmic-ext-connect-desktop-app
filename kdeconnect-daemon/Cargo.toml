@@ -19,6 +19,7 @@ dirs = { workspace = true }
 toml = { workspace = true }
 zbus = { workspace = true }
 hostname = "0.4"
+arboard = "3.4"
 
 [[bin]]
 name = "kdeconnect-daemon"
