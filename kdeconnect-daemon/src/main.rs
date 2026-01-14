@@ -553,6 +553,7 @@ impl Daemon {
         // Spawn task to handle connection events
         let device_manager = self.device_manager.clone();
         let plugin_manager = self.plugin_manager.clone();
+        let connection_mgr = self.connection_manager.clone();
         let dbus_server = self.dbus_server.clone();
         let cosmic_notifier = self.cosmic_notifier.clone();
         let mpris_manager = self.mpris_manager.clone();
@@ -562,6 +563,7 @@ impl Daemon {
                     event,
                     &device_manager,
                     &plugin_manager,
+                    &connection_mgr,
                     &dbus_server,
                     &cosmic_notifier,
                     &mpris_manager,
@@ -721,6 +723,7 @@ impl Daemon {
         event: ConnectionEvent,
         device_manager: &Arc<RwLock<DeviceManager>>,
         plugin_manager: &Arc<RwLock<PluginManager>>,
+        connection_mgr: &Arc<RwLock<ConnectionManager>>,
         dbus_server: &Option<Arc<DbusServer>>,
         cosmic_notifier: &Option<Arc<cosmic_notifications::CosmicNotifier>>,
         mpris_manager: &Option<Arc<mpris_manager::MprisManager>>,
@@ -1008,7 +1011,10 @@ impl Daemon {
                                     Self::handle_mpris_request(
                                         &packet.body,
                                         mpris_mgr,
+                                        &device_id,
                                         &device_name,
+                                        connection_mgr,
+                                        plugin_manager,
                                     ).await;
                                 }
                             }
@@ -1034,28 +1040,102 @@ impl Daemon {
         Ok(())
     }
 
+    /// Convert MprisManager PlayerState to protocol types for KDE Connect
+    fn convert_player_state(
+        state: &mpris_manager::PlayerState,
+    ) -> (
+        kdeconnect_protocol::plugins::mpris::PlayerStatus,
+        kdeconnect_protocol::plugins::mpris::PlayerMetadata,
+    ) {
+        use kdeconnect_protocol::plugins::mpris::{
+            LoopStatus, PlayerCapabilities, PlayerMetadata, PlayerStatus,
+        };
+
+        // Convert loop status
+        let loop_status = match state.loop_status {
+            mpris_manager::LoopStatus::None => LoopStatus::None,
+            mpris_manager::LoopStatus::Track => LoopStatus::Track,
+            mpris_manager::LoopStatus::Playlist => LoopStatus::Playlist,
+        };
+
+        // Convert capabilities
+        let capabilities = PlayerCapabilities {
+            can_play: state.can_play,
+            can_pause: state.can_pause,
+            can_go_next: state.can_go_next,
+            can_go_previous: state.can_go_previous,
+            can_seek: state.can_seek,
+        };
+
+        // Create status (convert microseconds to milliseconds, volume to 0-100)
+        let status = PlayerStatus {
+            is_playing: state.playback_status.is_playing(),
+            position: state.position / 1000, // microseconds to milliseconds
+            length: state.metadata.length / 1000, // microseconds to milliseconds
+            volume: (state.volume * 100.0) as i32, // 0.0-1.0 to 0-100
+            loop_status,
+            shuffle: state.shuffle,
+            capabilities,
+        };
+
+        // Create metadata
+        let metadata = PlayerMetadata {
+            artist: state.metadata.artist.clone(),
+            title: state.metadata.title.clone(),
+            album: state.metadata.album.clone(),
+            album_art_url: state.metadata.album_art_url.clone(),
+        };
+
+        (status, metadata)
+    }
+
     /// Handle MPRIS control requests from a remote device
-    ///
-    /// Processes various MPRIS commands including playback control, seek operations,
-    /// volume/loop/shuffle settings, and player list/now playing queries.
     async fn handle_mpris_request(
         body: &serde_json::Value,
         mpris_manager: &Arc<mpris_manager::MprisManager>,
+        device_id: &str,
         device_name: &str,
+        connection_mgr: &Arc<RwLock<ConnectionManager>>,
+        plugin_manager: &Arc<RwLock<PluginManager>>,
     ) {
-        let player = body.get("player")
+        use kdeconnect_protocol::plugins::mpris::MprisPlugin;
+
+        let player = body
+            .get("player")
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
-        // Handle player list request (doesn't require a player name)
+        // Helper to send MPRIS packets via the plugin
+        let send_mpris_packet = |packet: kdeconnect_protocol::Packet| async move {
+            let conn_manager = connection_mgr.read().await;
+            if let Err(e) = conn_manager.send_packet(device_id, &packet).await {
+                warn!("Failed to send MPRIS packet to {}: {}", device_name, e);
+            }
+        };
+
+        // Handle player list request (does not require a player name)
         if body.get("requestPlayerList").is_some() {
             info!("Received player list request from {}", device_name);
-            match mpris_manager.discover_players().await {
-                Ok(players) => {
-                    info!("Sending player list to {}: {:?}", device_name, players);
-                    // TODO: Send player list packet to remote device
+
+            let players = match mpris_manager.discover_players().await {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!("Failed to discover players for {}: {}", device_name, e);
+                    return;
                 }
-                Err(e) => warn!("Failed to discover players for {}: {}", device_name, e),
+            };
+
+            info!("Sending player list to {}: {:?}", device_name, players);
+
+            let plug_manager = plugin_manager.read().await;
+            if let Some(mpris_plugin) = plug_manager
+                .get_device_plugin(device_id, "mpris")
+                .and_then(|p| p.as_any().downcast_ref::<MprisPlugin>())
+            {
+                let packet = mpris_plugin.create_player_list_packet(players);
+                drop(plug_manager);
+                send_mpris_packet(packet).await;
+                info!("Sent player list to {}", device_name);
             }
             return;
         }
@@ -1068,8 +1148,8 @@ impl Daemon {
         // Playback control action (Play, Pause, PlayPause, Stop, Next, Previous)
         if let Some(action) = body.get("action").and_then(|v| v.as_str()) {
             match mpris_manager.call_player_method(player, action).await {
-                Ok(()) => info!("Executed MPRIS action '{}' on player {} from {}", action, player, device_name),
-                Err(e) => warn!("Failed to execute MPRIS action '{}' on player {}: {}", action, player, e),
+                Ok(()) => info!("Executed MPRIS action '{}' on {} from {}", action, player, device_name),
+                Err(e) => warn!("Failed MPRIS action '{}' on {}: {}", action, player, e),
             }
             return;
         }
@@ -1077,30 +1157,30 @@ impl Daemon {
         // Seek operation (offset in microseconds)
         if let Some(offset) = body.get("Seek").and_then(|v| v.as_i64()) {
             match mpris_manager.seek(player, offset).await {
-                Ok(()) => info!("Seeked {} microseconds on player {} from {}", offset, player, device_name),
-                Err(e) => warn!("Failed to seek {} microseconds on player {}: {}", offset, player, e),
+                Ok(()) => info!("Seeked {}us on {} from {}", offset, player, device_name),
+                Err(e) => warn!("Failed to seek {}us on {}: {}", offset, player, e),
             }
             return;
         }
 
         // Set absolute position (milliseconds from protocol, convert to microseconds)
-        if let Some(position) = body.get("SetPosition").and_then(|v| v.as_i64()) {
-            let position_us = position * 1000;
+        if let Some(position_ms) = body.get("SetPosition").and_then(|v| v.as_i64()) {
+            let position_us = position_ms * 1000;
             // TODO: Get track ID from current player state
             let track_id = "/org/mpris/MediaPlayer2/TrackList/NoTrack";
             match mpris_manager.set_position(player, track_id, position_us).await {
-                Ok(()) => info!("Set position to {} ms on player {} from {}", position, player, device_name),
-                Err(e) => warn!("Failed to set position to {} on player {}: {}", position, player, e),
+                Ok(()) => info!("Set position to {}ms on {} from {}", position_ms, player, device_name),
+                Err(e) => warn!("Failed to set position to {}ms on {}: {}", position_ms, player, e),
             }
             return;
         }
 
         // Set volume (0-100 from protocol, convert to 0.0-1.0 for MPRIS)
         if let Some(volume) = body.get("setVolume").and_then(|v| v.as_i64()) {
-            let volume_f = (volume as f64) / 100.0;
-            match mpris_manager.set_volume(player, volume_f).await {
-                Ok(()) => info!("Set volume to {}% on player {} from {}", volume, player, device_name),
-                Err(e) => warn!("Failed to set volume to {} on player {}: {}", volume, player, e),
+            let volume_normalized = (volume as f64) / 100.0;
+            match mpris_manager.set_volume(player, volume_normalized).await {
+                Ok(()) => info!("Set volume to {}% on {} from {}", volume, player, device_name),
+                Err(e) => warn!("Failed to set volume to {}% on {}: {}", volume, player, e),
             }
             return;
         }
@@ -1109,8 +1189,8 @@ impl Daemon {
         if let Some(loop_str) = body.get("setLoopStatus").and_then(|v| v.as_str()) {
             let loop_status = mpris_manager::LoopStatus::from_str(loop_str);
             match mpris_manager.set_loop_status(player, loop_status).await {
-                Ok(()) => info!("Set loop status to {} on player {} from {}", loop_str, player, device_name),
-                Err(e) => warn!("Failed to set loop status to {} on player {}: {}", loop_str, player, e),
+                Ok(()) => info!("Set loop status to {} on {} from {}", loop_str, player, device_name),
+                Err(e) => warn!("Failed to set loop status to {} on {}: {}", loop_str, player, e),
             }
             return;
         }
@@ -1118,21 +1198,35 @@ impl Daemon {
         // Set shuffle
         if let Some(shuffle) = body.get("setShuffle").and_then(|v| v.as_bool()) {
             match mpris_manager.set_shuffle(player, shuffle).await {
-                Ok(()) => info!("Set shuffle to {} on player {} from {}", shuffle, player, device_name),
-                Err(e) => warn!("Failed to set shuffle to {} on player {}: {}", shuffle, player, e),
+                Ok(()) => info!("Set shuffle to {} on {} from {}", shuffle, player, device_name),
+                Err(e) => warn!("Failed to set shuffle to {} on {}: {}", shuffle, player, e),
             }
             return;
         }
 
         // Request for now playing state
         if body.get("requestNowPlaying").is_some() {
-            info!("Received now playing request for player {} from {}", player, device_name);
-            match mpris_manager.query_player_state(player).await {
-                Ok(_state) => {
-                    info!("Sending player state for {} to {}", player, device_name);
-                    // TODO: Send player state packet to remote device
+            info!("Received now playing request for {} from {}", player, device_name);
+
+            let state = match mpris_manager.query_player_state(player).await {
+                Ok(s) => s,
+                Err(e) => {
+                    warn!("Failed to query player {} state: {}", player, e);
+                    return;
                 }
-                Err(e) => warn!("Failed to query player {} state: {}", player, e),
+            };
+
+            let (status, metadata) = Self::convert_player_state(&state);
+
+            let plug_manager = plugin_manager.read().await;
+            if let Some(mpris_plugin) = plug_manager
+                .get_device_plugin(device_id, "mpris")
+                .and_then(|p| p.as_any().downcast_ref::<MprisPlugin>())
+            {
+                let packet = mpris_plugin.create_status_packet(player.to_string(), status, metadata);
+                drop(plug_manager);
+                send_mpris_packet(packet).await;
+                info!("Sent player state for {} to {}", player, device_name);
             }
         }
     }
