@@ -4,9 +4,11 @@
 //! Discovers players, monitors their state, and provides control methods.
 
 use anyhow::{Context, Result};
+use futures::StreamExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 use zbus::zvariant::OwnedValue;
 use zbus::Connection;
@@ -118,6 +120,7 @@ impl Default for PlayerState {
 pub struct MprisManager {
     connection: Connection,
     players: Arc<RwLock<HashMap<String, PlayerState>>>,
+    monitor_tasks: Arc<RwLock<HashMap<String, JoinHandle<()>>>>,
 }
 
 impl MprisManager {
@@ -130,6 +133,7 @@ impl MprisManager {
         Ok(Self {
             connection,
             players: Arc::new(RwLock::new(HashMap::new())),
+            monitor_tasks: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -175,13 +179,15 @@ impl MprisManager {
         self.players.read().await.get(player).cloned()
     }
 
-    /// Query player state from DBus
-    pub async fn query_player_state(&self, player: &str) -> Result<PlayerState> {
-        let bus_name = Self::player_bus_name(player);
-
+    /// Query player state from DBus (static version for signal handlers)
+    async fn query_player_state_static(
+        connection: &Connection,
+        player: &str,
+        bus_name: &str,
+    ) -> Result<PlayerState> {
         let player_proxy = zbus::Proxy::new(
-            &self.connection,
-            bus_name.as_str(),
+            connection,
+            bus_name,
             Self::MPRIS_OBJECT_PATH,
             MPRIS_PLAYER_INTERFACE,
         )
@@ -189,8 +195,8 @@ impl MprisManager {
         .context("Failed to create player proxy")?;
 
         let mpris_proxy = zbus::Proxy::new(
-            &self.connection,
-            bus_name.as_str(),
+            connection,
+            bus_name,
             Self::MPRIS_OBJECT_PATH,
             MPRIS_INTERFACE,
         )
@@ -221,7 +227,8 @@ impl MprisManager {
         let can_go_previous: bool = player_proxy.get_property("CanGoPrevious").await.unwrap_or(true);
         let can_seek: bool = player_proxy.get_property("CanSeek").await.unwrap_or(true);
 
-        let metadata = self.query_metadata(&player_proxy).await?;
+        // Query metadata (static helper)
+        let metadata = Self::query_metadata_static(&player_proxy).await?;
 
         Ok(PlayerState {
             name: player.to_string(),
@@ -240,8 +247,14 @@ impl MprisManager {
         })
     }
 
-    /// Query metadata from player
-    async fn query_metadata(&self, player_proxy: &zbus::Proxy<'_>) -> Result<PlayerMetadata> {
+    /// Query player state from DBus (instance method)
+    pub async fn query_player_state(&self, player: &str) -> Result<PlayerState> {
+        let bus_name = Self::player_bus_name(player);
+        Self::query_player_state_static(&self.connection, player, &bus_name).await
+    }
+
+    /// Query metadata from player (static version)
+    async fn query_metadata_static(player_proxy: &zbus::Proxy<'_>) -> Result<PlayerMetadata> {
         let metadata_dict: HashMap<String, OwnedValue> = player_proxy
             .get_property("Metadata")
             .await
@@ -424,23 +437,7 @@ impl MprisManager {
         Ok(())
     }
 
-    /// Subscribe to PropertiesChanged signals (not yet implemented)
-    pub async fn subscribe_to_changes(&self, _player: &str) -> Result<()> {
-        // TODO: Implement PropertiesChanged signal subscription
-        // Need to use zbus proxy and signal subscription APIs
-        // Match rule for org.freedesktop.DBus.Properties.PropertiesChanged
-        // on org.mpris.MediaPlayer2.Player interface
-        //
-        // Example approach:
-        // 1. Create proxy for player's org.mpris.MediaPlayer2.Player interface
-        // 2. Use proxy.receive_properties_changed() to get signal stream
-        // 3. Spawn background task to monitor stream and update state
-
-        warn!("subscribe_to_changes not yet implemented");
-        Ok(())
-    }
-
-    /// Start monitoring a player (not yet fully implemented)
+    /// Start monitoring a player
     pub async fn start_monitoring(&self, player: String) -> Result<()> {
         info!("Starting MPRIS monitoring for player: {}", player);
 
@@ -450,8 +447,68 @@ impl MprisManager {
         // Store state
         self.players.write().await.insert(player.clone(), state);
 
-        // TODO: Subscribe to PropertiesChanged signals for this player
-        // and update state in background task
+        // Subscribe to PropertiesChanged signals
+        let bus_name = Self::player_bus_name(&player);
+        let properties_proxy = zbus::fdo::PropertiesProxy::builder(&self.connection)
+            .destination(bus_name.as_str())
+            .context("Failed to set destination")?
+            .path(Self::MPRIS_OBJECT_PATH)
+            .context("Failed to set path")?
+            .build()
+            .await
+            .context("Failed to create properties proxy")?;
+
+        let mut signal_stream = properties_proxy
+            .receive_properties_changed()
+            .await
+            .context("Failed to create signal stream")?;
+
+        // Spawn background task to monitor signals
+        let player_name = player.clone();
+        let players = self.players.clone();
+        let connection = self.connection.clone();
+
+        let task = tokio::spawn(async move {
+            info!("Signal monitoring task started for player: {}", player_name);
+
+            while let Some(signal) = signal_stream.next().await {
+                let args = match signal.args() {
+                    Ok(args) => args,
+                    Err(e) => {
+                        warn!("Failed to parse PropertiesChanged signal: {}", e);
+                        continue;
+                    }
+                };
+
+                // Only process signals from the Player interface
+                let interface_name = args.interface_name();
+                if interface_name != MPRIS_PLAYER_INTERFACE {
+                    continue;
+                }
+
+                debug!(
+                    "PropertiesChanged signal received for player: {} (interface: {})",
+                    player_name, interface_name
+                );
+
+                // Re-query player state when properties change
+                let bus_name = Self::player_bus_name(&player_name);
+                match Self::query_player_state_static(&connection, &player_name, &bus_name).await {
+                    Ok(new_state) => {
+                        players.write().await.insert(player_name.clone(), new_state);
+                        debug!("Updated state for player: {}", player_name);
+                    }
+                    Err(e) => {
+                        warn!("Failed to query player state after signal: {}", e);
+                    }
+                }
+            }
+
+            info!("Signal monitoring task ended for player: {}", player_name);
+        });
+
+        // Store task handle
+        self.monitor_tasks.write().await.insert(player, task);
 
         Ok(())
     }
@@ -459,7 +516,15 @@ impl MprisManager {
     /// Stop monitoring a player
     pub async fn stop_monitoring(&self, player: &str) {
         info!("Stopping MPRIS monitoring for player: {}", player);
+
+        // Remove player state
         self.players.write().await.remove(player);
+
+        // Abort monitoring task if it exists
+        if let Some(task) = self.monitor_tasks.write().await.remove(player) {
+            task.abort();
+            debug!("Aborted monitoring task for player: {}", player);
+        }
     }
 }
 
