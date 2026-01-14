@@ -4,9 +4,10 @@
 //! Handles method calls, signal subscription, and error recovery.
 
 use anyhow::{Context, Result};
+use futures::stream::StreamExt;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 use zbus::{proxy, Connection};
 
 /// DBus service name

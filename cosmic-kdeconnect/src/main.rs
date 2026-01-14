@@ -1,8 +1,9 @@
-use cosmic::{app::Core, Application};
+use cosmic::app::{Core, Settings, Task};
+use cosmic::{Application, Element};
 
 fn main() -> cosmic::iced::Result {
     tracing_subscriber::fmt::init();
-    cosmic::app::run::<KdeConnectApp>((), ())
+    cosmic::app::run::<KdeConnectApp>(Settings::default(), ())
 }
 
 struct KdeConnectApp {
@@ -18,8 +19,8 @@ impl Application for KdeConnectApp {
     type Flags = ();
     const APP_ID: &'static str = "com.system76.CosmicKdeConnect";
 
-    fn init(core: Core, _flags: Self::Flags) -> (Self, cosmic::iced::Command<Message>) {
-        (Self { core }, cosmic::iced::Command::none())
+    fn init(core: Core, _flags: Self::Flags) -> (Self, Task<Message>) {
+        (Self { core }, Task::none())
     }
 
     fn core(&self) -> &Core {
@@ -30,11 +31,11 @@ impl Application for KdeConnectApp {
         &mut self.core
     }
 
-    fn update(&mut self, _message: Self::Message) -> cosmic::iced::Command<Self::Message> {
-        cosmic::iced::Command::none()
+    fn update(&mut self, _message: Self::Message) -> Task<Self::Message> {
+        Task::none()
     }
 
-    fn view(&self) -> cosmic::Element<Self::Message> {
+    fn view(&self) -> Element<Self::Message> {
         cosmic::widget::text("KDE Connect").into()
     }
 }

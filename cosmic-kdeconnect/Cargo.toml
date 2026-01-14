@@ -8,7 +8,7 @@ repository.workspace = true
 description = "KDE Connect application for COSMIC Desktop"
 
 [dependencies]
-libcosmic = { workspace = true }
+libcosmic = { workspace = true, features = ["winit"] }
 kdeconnect-protocol = { path = "../kdeconnect-protocol" }
 tokio = { workspace = true }
 serde = { workspace = true }

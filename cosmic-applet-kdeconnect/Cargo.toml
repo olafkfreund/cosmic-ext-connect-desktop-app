@@ -17,6 +17,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 zbus = { workspace = true }
+futures = { workspace = true }
 
 [[bin]]
 name = "cosmic-applet-kdeconnect"
