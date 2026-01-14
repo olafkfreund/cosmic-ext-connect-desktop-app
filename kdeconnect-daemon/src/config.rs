@@ -103,6 +103,10 @@ pub struct PluginConfig {
     /// Enable Telephony/SMS plugin
     #[serde(default = "default_true")]
     pub enable_telephony: bool,
+
+    /// Enable Presenter plugin
+    #[serde(default = "default_true")]
+    pub enable_presenter: bool,
 }
 
 /// Storage paths configuration
@@ -167,6 +171,7 @@ impl Default for PluginConfig {
             enable_remoteinput: true,
             enable_findmyphone: true,
             enable_telephony: true,
+            enable_presenter: true,
         }
     }
 }

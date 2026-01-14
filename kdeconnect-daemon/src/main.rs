@@ -14,8 +14,9 @@ use kdeconnect_protocol::{
         battery::BatteryPluginFactory, clipboard::ClipboardPluginFactory,
         findmyphone::FindMyPhonePluginFactory, mpris::MprisPluginFactory,
         notification::NotificationPluginFactory, ping::PingPluginFactory,
-        remoteinput::RemoteInputPluginFactory, runcommand::RunCommandPluginFactory,
-        share::SharePluginFactory, telephony::TelephonyPluginFactory, PluginManager,
+        presenter::PresenterPluginFactory, remoteinput::RemoteInputPluginFactory,
+        runcommand::RunCommandPluginFactory, share::SharePluginFactory,
+        telephony::TelephonyPluginFactory, PluginManager,
     },
     CertificateInfo, DeviceInfo, DeviceManager, DeviceType,
 };
@@ -287,6 +288,13 @@ impl Daemon {
             manager
                 .register_factory(Arc::new(TelephonyPluginFactory))
                 .context("Failed to register Telephony plugin factory")?;
+        }
+
+        if self.config.plugins.enable_presenter {
+            info!("Registering Presenter plugin factory");
+            manager
+                .register_factory(Arc::new(PresenterPluginFactory))
+                .context("Failed to register Presenter plugin factory")?;
         }
 
         info!(

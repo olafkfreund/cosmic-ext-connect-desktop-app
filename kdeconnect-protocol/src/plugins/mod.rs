@@ -105,6 +105,7 @@ pub mod findmyphone;
 pub mod mpris;
 pub mod notification;
 pub mod ping;
+pub mod presenter;
 pub mod remoteinput;
 pub mod runcommand;
 pub mod share;
