@@ -14,7 +14,7 @@ This project consists of:
 
 ## Features
 
-### Current Status: 🚧 In Development (~96% Complete)
+### Current Status: 🚧 In Development (~98% Complete)
 
 #### Completed ✅
 - [x] Core Protocol Library (v7/8)
@@ -33,7 +33,7 @@ This project consists of:
   - [x] **Clipboard Plugin** (bidirectional sync with **system integration**)
   - [x] **RunCommand Plugin** (remote shell command execution - **full implementation**)
   - [x] **FindMyPhone Plugin** (remote phone finder trigger)
-  - [x] MPRIS Plugin (media control - protocol only)
+  - [x] **MPRIS Plugin** (media control - **full DBus integration**)
 - [x] **Background Daemon Service** (full implementation)
 - [x] **DBus Interface** (complete IPC layer)
 - [x] **COSMIC Notifications Integration** (freedesktop.org)
@@ -57,19 +57,18 @@ This project consists of:
   - [x] Automatic device list refresh
   - [x] Device type icons (phone, tablet, desktop, laptop, TV)
   - [x] File picker integration (XDG Desktop Portal)
+  - [x] MPRIS media controls (player discovery, playback control, volume, seek)
 - [x] Comprehensive Test Suite (114 tests, 12 integration tests)
 - [x] CI/CD Pipeline with GitHub Actions
 - [x] Pre-commit hooks for code quality
 - [x] Error handling and diagnostics infrastructure
 
 #### In Progress 🔨
-- [ ] **Advanced Plugin Features** (MPRIS DBus integration, etc.)
 - [ ] **Transfer progress tracking** (progress bars, cancellation)
 
 #### Planned 📋
 - [ ] Real device testing (requires Android/iOS device)
 - [ ] Advanced file transfer features (multiple files, drag & drop)
-- [ ] MPRIS DBus integration (player discovery and control)
 - [ ] Remote Input
 - [ ] SMS Messaging
 - [ ] Bluetooth Transport
@@ -116,6 +115,13 @@ This project consists of:
   - Non-blocking execution
   - Security: Only pre-configured commands can be run
   - Compatible with Android/iOS KDE Connect apps
+- ✅ **MPRIS Media Control** - Control media players on the local system
+  - Automatic discovery of MPRIS-compatible players
+  - Playback control (Play, Pause, Stop, Next, Previous)
+  - Volume control (0-100%)
+  - Seek position control
+  - Integrated UI in COSMIC panel applet
+  - Works with Spotify, VLC, Firefox, Chrome, and all MPRIS2-compatible players
 - ✅ **Per-device Configuration** - Custom settings per device (nicknames, plugin overrides)
 - ✅ **Plugin Management** - Enable/disable plugins globally and per-device
 - ✅ **Device Pairing** - Full pairing flow with fingerprint verification
@@ -156,6 +162,12 @@ The daemon exposes a comprehensive DBus interface at `com.system76.CosmicKdeConn
 - `SetPluginEnabled(device_id: String, plugin: String, enabled: bool)` - Toggle plugin
 - `ResetDeviceConfig(device_id: String)` - Reset to global defaults
 
+**MPRIS Media Control:**
+- `GetMprisPlayers() -> Vec<String>` - List available MPRIS media players
+- `MprisControl(player: String, action: String)` - Control playback (Play, Pause, PlayPause, Stop, Next, Previous)
+- `MprisSetVolume(player: String, volume: f64)` - Set player volume (0.0-1.0)
+- `MprisSeek(player: String, offset_microseconds: i64)` - Seek position by offset in microseconds
+
 **Signals:**
 - `DeviceDiscovered(device_id: String)` - New device found on network
 - `DeviceStateChanged(device_id: String, state: String)` - Connection state updated
@@ -180,6 +192,18 @@ busctl call com.system76.CosmicKdeConnect /com/system76/CosmicKdeConnect com.sys
 
 # Remove a command
 busctl call com.system76.CosmicKdeConnect /com/system76/CosmicKdeConnect com.system76.CosmicKdeConnect RemoveRunCommand ss "device-id" "backup"
+
+# List available media players
+busctl call com.system76.CosmicKdeConnect /com/system76/CosmicKdeConnect com.system76.CosmicKdeConnect GetMprisPlayers
+
+# Control media playback
+busctl call com.system76.CosmicKdeConnect /com/system76/CosmicKdeConnect com.system76.CosmicKdeConnect MprisControl ss "org.mpris.MediaPlayer2.spotify" "PlayPause"
+
+# Set volume (0.0-1.0)
+busctl call com.system76.CosmicKdeConnect /com/system76/CosmicKdeConnect com.system76.CosmicKdeConnect MprisSetVolume sd "org.mpris.MediaPlayer2.spotify" 0.5
+
+# Seek forward 10 seconds (10000000 microseconds)
+busctl call com.system76.CosmicKdeConnect /com/system76/CosmicKdeConnect com.system76.CosmicKdeConnect MprisSeek sx "org.mpris.MediaPlayer2.spotify" 10000000
 ```
 
 ## Architecture
