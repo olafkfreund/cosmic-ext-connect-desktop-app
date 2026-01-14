@@ -108,6 +108,7 @@ pub mod ping;
 pub mod remoteinput;
 pub mod runcommand;
 pub mod share;
+pub mod telephony;
 
 use crate::{Device, Packet, ProtocolError, Result};
 use async_trait::async_trait;

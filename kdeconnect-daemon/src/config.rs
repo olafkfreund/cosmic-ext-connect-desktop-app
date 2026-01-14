@@ -99,6 +99,10 @@ pub struct PluginConfig {
     /// Enable Find My Phone plugin
     #[serde(default = "default_true")]
     pub enable_findmyphone: bool,
+
+    /// Enable Telephony/SMS plugin
+    #[serde(default = "default_true")]
+    pub enable_telephony: bool,
 }
 
 /// Storage paths configuration
@@ -162,6 +166,7 @@ impl Default for PluginConfig {
             enable_runcommand: true,
             enable_remoteinput: true,
             enable_findmyphone: true,
+            enable_telephony: true,
         }
     }
 }

@@ -15,7 +15,7 @@ use kdeconnect_protocol::{
         findmyphone::FindMyPhonePluginFactory, mpris::MprisPluginFactory,
         notification::NotificationPluginFactory, ping::PingPluginFactory,
         remoteinput::RemoteInputPluginFactory, runcommand::RunCommandPluginFactory,
-        share::SharePluginFactory, PluginManager,
+        share::SharePluginFactory, telephony::TelephonyPluginFactory, PluginManager,
     },
     CertificateInfo, DeviceInfo, DeviceManager, DeviceType,
 };
@@ -280,6 +280,13 @@ impl Daemon {
             manager
                 .register_factory(Arc::new(FindMyPhonePluginFactory))
                 .context("Failed to register Find My Phone plugin factory")?;
+        }
+
+        if self.config.plugins.enable_telephony {
+            info!("Registering Telephony/SMS plugin factory");
+            manager
+                .register_factory(Arc::new(TelephonyPluginFactory))
+                .context("Failed to register Telephony plugin factory")?;
         }
 
         info!(
