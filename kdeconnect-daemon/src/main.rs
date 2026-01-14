@@ -865,6 +865,35 @@ impl Daemon {
                                     }
                                 }
                             }
+                            "kdeconnect.battery" => {
+                                // Handle battery status updates - show notification for low battery
+                                if let Some(charge) = packet.body.get("currentCharge").and_then(|v| v.as_i64()) {
+                                    let is_charging = packet.body.get("isCharging")
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false);
+                                    let threshold_event = packet.body.get("thresholdEvent")
+                                        .and_then(|v| v.as_i64())
+                                        .unwrap_or(0);
+
+                                    // threshold_event == 1 means low battery
+                                    if threshold_event == 1 && !is_charging {
+                                        info!("Low battery detected on {} ({}%)", device_name, charge);
+
+                                        if let Err(e) = notifier.notify_battery_low(
+                                            &device_name,
+                                            charge.max(0).min(100) as u8
+                                        ).await {
+                                            warn!("Failed to send low battery notification: {}", e);
+                                        } else {
+                                            info!("Sent low battery notification for {} ({}%)",
+                                                device_name, charge);
+                                        }
+                                    } else {
+                                        debug!("Battery status from {}: {}% (charging: {})",
+                                            device_name, charge, is_charging);
+                                    }
+                                }
+                            }
                             _ => {
                                 // Other packet types don't trigger notifications
                             }
