@@ -154,6 +154,38 @@ impl PairingService {
         let packet = handler.request_pairing();
         drop(handler);
 
+        // For Protocol v8 unpaired devices: Ensure we have an active connection
+        // Unpaired devices disconnect immediately after identity exchange, so we may need to reconnect
+        if let Some(conn_mgr) = &self.connection_manager {
+            let conn_mgr = conn_mgr.read().await;
+            let has_connection = conn_mgr.has_connection(&device_id).await;
+
+            if !has_connection {
+                info!(
+                    "No active connection to {}, establishing connection for pairing",
+                    device_id
+                );
+
+                // Drop the read lock before calling connect_with_cert (which needs write access)
+                drop(conn_mgr);
+
+                // Reconnect using TOFU (Trust On First Use) with empty certificate
+                // The connection manager accepts any certificate for unpaired devices
+                let conn_mgr = self.connection_manager.as_ref().unwrap().read().await;
+                if let Err(e) = conn_mgr.connect_with_cert(&device_id, remote_addr, Vec::new()).await {
+                    error!("Failed to establish connection for pairing: {}", e);
+                    let _ = self.event_tx.send(PairingEvent::Error {
+                        device_id: Some(device_id.clone()),
+                        message: format!("Failed to connect for pairing: {}", e),
+                    });
+                    return Err(e);
+                }
+
+                // Give the connection a moment to fully establish
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+
         // Send request over TLS connection (Protocol v8)
         match self.send_pairing_packet(&packet, &device_id).await {
             Ok(_) => {

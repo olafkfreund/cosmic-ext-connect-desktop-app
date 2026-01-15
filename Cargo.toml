@@ -2,8 +2,8 @@
 resolver = "2"
 members = [
     "kdeconnect-protocol",
-    "cosmic-applet-kdeconnect",
-    "cosmic-kdeconnect",
+    "cosmic-applet-connect",
+    "cosmic-connect",
     "kdeconnect-daemon",
 ]
 

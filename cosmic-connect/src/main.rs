@@ -111,7 +111,7 @@ impl Application for KdeConnectApp {
     type Message = Message;
     type Executor = cosmic::executor::multi::Executor;
     type Flags = ();
-    const APP_ID: &'static str = "com.system76.CosmicKdeConnect";
+    const APP_ID: &'static str = "com.system76.CosmicConnect";
 
     fn init(core: Core, _flags: Self::Flags) -> (Self, Task<Message>) {
         let mut nav_model = widget::segmented_button::ModelBuilder::default();

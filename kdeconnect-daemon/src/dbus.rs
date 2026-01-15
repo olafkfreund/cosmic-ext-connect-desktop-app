@@ -13,13 +13,13 @@ use zbus::object_server::SignalContext;
 use zbus::{connection, interface, Connection};
 
 /// DBus service name
-pub const SERVICE_NAME: &str = "com.system76.CosmicKdeConnect";
+pub const SERVICE_NAME: &str = "com.system76.CosmicConnect";
 
 /// DBus object path
-pub const OBJECT_PATH: &str = "/com/system76/CosmicKdeConnect";
+pub const OBJECT_PATH: &str = "/com/system76/CosmicConnect";
 
 /// DBus interface name
-pub const INTERFACE_NAME: &str = "com.system76.CosmicKdeConnect";
+pub const INTERFACE_NAME: &str = "com.system76.CosmicConnect";
 
 /// Device state for DBus serialization
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, zbus::zvariant::Type)]
@@ -117,7 +117,7 @@ impl KdeConnectInterface {
     }
 }
 
-#[interface(name = "com.system76.CosmicKdeConnect")]
+#[interface(name = "com.system76.CosmicConnect")]
 impl KdeConnectInterface {
     /// List all known devices
     ///
@@ -1272,9 +1272,8 @@ impl DbusServer {
     ) -> Result<Self> {
         info!("Starting DBus server on {}", SERVICE_NAME);
 
-        // Create connection first
+        // Create connection WITHOUT requesting name first
         let connection = connection::Builder::session()?
-            .name(SERVICE_NAME)?
             .build()
             .await
             .context("Failed to build DBus connection")?;
@@ -1291,12 +1290,18 @@ impl DbusServer {
             connection.clone(),
         );
 
-        // Serve the interface
+        // Serve the interface BEFORE requesting the name
         connection
             .object_server()
             .at(OBJECT_PATH, interface)
             .await
             .context("Failed to serve interface")?;
+
+        // Now request the DBus name after interface is registered
+        connection
+            .request_name(SERVICE_NAME)
+            .await
+            .context("Failed to request DBus name")?;
 
         info!("DBus server started successfully");
 

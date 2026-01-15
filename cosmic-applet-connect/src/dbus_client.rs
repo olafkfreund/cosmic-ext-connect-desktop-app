@@ -11,10 +11,10 @@ use tracing::{debug, info, warn};
 use zbus::{proxy, Connection};
 
 /// DBus service name
-pub const SERVICE_NAME: &str = "com.system76.CosmicKdeConnect";
+pub const SERVICE_NAME: &str = "com.system76.CosmicConnect";
 
 /// DBus object path
-pub const OBJECT_PATH: &str = "/com/system76/CosmicKdeConnect";
+pub const OBJECT_PATH: &str = "/com/system76/CosmicConnect";
 
 /// Device information from DBus
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, zbus::zvariant::Type)]
@@ -76,11 +76,11 @@ pub enum DaemonEvent {
     DaemonReconnected,
 }
 
-/// DBus proxy for KDE Connect daemon interface
+/// DBus proxy for COSMIC Connect daemon interface
 #[proxy(
-    interface = "com.system76.CosmicKdeConnect",
-    default_service = "com.system76.CosmicKdeConnect",
-    default_path = "/com/system76/CosmicKdeConnect"
+    interface = "com.system76.CosmicConnect",
+    default_service = "com.system76.CosmicConnect",
+    default_path = "/com/system76/CosmicConnect"
 )]
 trait KdeConnect {
     /// List all known devices

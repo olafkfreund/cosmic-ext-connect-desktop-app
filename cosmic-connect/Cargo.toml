@@ -1,11 +1,11 @@
 [package]
-name = "cosmic-kdeconnect"
+name = "cosmic-connect"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "KDE Connect application for COSMIC Desktop"
+description = "COSMIC Connect - Device connectivity application for COSMIC Desktop"
 
 [dependencies]
 libcosmic = { workspace = true, features = ["winit", "tokio"] }
@@ -21,5 +21,5 @@ futures = { workspace = true }
 ashpd = { workspace = true }
 
 [[bin]]
-name = "cosmic-kdeconnect"
+name = "cosmic-connect"
 path = "src/main.rs"

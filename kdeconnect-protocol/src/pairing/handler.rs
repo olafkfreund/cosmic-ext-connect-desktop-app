@@ -302,12 +302,28 @@ pub struct PairingPacket {
 impl PairingPacket {
     /// Create a pairing request packet
     pub fn request() -> Packet {
-        Packet::new("kdeconnect.pair", json!({ "pair": true }))
+        // Include timestamp in pairing request (required by Android KDE Connect)
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        Packet::new("kdeconnect.pair", json!({
+            "pair": true,
+            "timestamp": timestamp
+        }))
     }
 
     /// Create a pairing accept response packet
     pub fn accept() -> Packet {
-        Packet::new("kdeconnect.pair", json!({ "pair": true }))
+        // Include timestamp in pairing response (required by Android KDE Connect)
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        Packet::new("kdeconnect.pair", json!({
+            "pair": true,
+            "timestamp": timestamp
+        }))
     }
 
     /// Create a pairing reject response packet
