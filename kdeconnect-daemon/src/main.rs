@@ -1491,6 +1491,13 @@ impl Daemon {
                         }
                     }
                 }
+
+                // NOTE: We do NOT automatically connect to discovered devices here.
+                // The connection will be established when:
+                // 1. The remote device connects to our TLS server, OR
+                // 2. The user explicitly requests pairing/connection via DBus
+                //
+                // This prevents reconnection loops where both sides try to connect simultaneously.
             }
             DiscoveryEvent::DeviceUpdated { info, address } => {
                 debug!("Device updated: {} at {}", info.device_name, address);

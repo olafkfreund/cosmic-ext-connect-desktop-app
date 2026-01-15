@@ -168,7 +168,71 @@ pub async fn listen_for_devices() -> Result<DeviceReceiver, Error> {
 }
 ```
 
+### Connection Management
+
+**Rate Limiting** (Added 2026-01-15):
+
+To prevent connection storms from aggressive reconnections, the Connection Manager implements rate limiting:
+
+```rust
+const MIN_CONNECTION_DELAY: Duration = Duration::from_millis(1000);
+
+// In handle_incoming_connection:
+let now = Instant::now();
+let mut last_times = last_connection_time.write().await;
+
+if let Some(&last_time) = last_times.get(id) {
+    let elapsed = now.duration_since(last_time);
+    if elapsed < MIN_CONNECTION_DELAY {
+        info!("Rate limiting: Device {} tried to connect too soon ({}ms < {}ms)",
+              id, elapsed.as_millis(), MIN_CONNECTION_DELAY.as_millis());
+        drop(last_times);
+        let _ = connection.close().await;
+        return;
+    }
+}
+
+last_times.insert(id.to_string(), now);
+```
+
+**Duplicate Connection Detection**:
+
+The manager uses IP-based comparison (not full SocketAddr) to handle Android's ephemeral port behavior:
+
+```rust
+// Check if device is already connected (IP-based comparison)
+if let Some(old_conn) = conns.get(id) {
+    // Device trying to reconnect while already connected
+    // Keep the existing stable connection and reject the new attempt
+    info!("Device {} already connected at {} - rejecting reconnection from {}",
+          id, old_conn.remote_addr, remote_addr);
+    drop(conns);
+    let _ = connection.close().await;
+    return;
+}
+```
+
+**Keepalive Strategy**:
+
+Keepalive pings are disabled to prevent notification spam on Android:
+
+```rust
+// DISABLED: Keepalive pings trigger notifications on Android
+// The phone sends its own pings to keep the connection alive
+// We don't need to send our own keepalive pings
+let mut keepalive_timer: Option<tokio::time::Interval> = None;
+```
+
 ### TLS Connection
+
+**TLS Timeout Configuration** (Increased 2026-01-15):
+
+```rust
+/// Default timeout for TLS operations (5 minutes for idle connections)
+/// We don't use keepalive pings to avoid notification spam on Android,
+/// so this timeout needs to be long enough for normal idle periods
+const TLS_TIMEOUT: Duration = Duration::from_secs(300);
+```
 
 **Certificate Generation:**
 

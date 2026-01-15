@@ -17,8 +17,10 @@ use tracing::{debug, error, info, warn};
 
 use super::tls_config;
 
-/// Default timeout for TLS operations
-const TLS_TIMEOUT: Duration = Duration::from_secs(30);
+/// Default timeout for TLS operations (5 minutes for idle connections)
+/// We don't use keepalive pings to avoid notification spam on Android,
+/// so this timeout needs to be long enough for normal idle periods
+const TLS_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Maximum packet size (10MB - larger than TCP to support file transfers)
 const MAX_PACKET_SIZE: usize = 10 * 1024 * 1024;

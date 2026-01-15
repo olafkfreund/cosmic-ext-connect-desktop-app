@@ -466,6 +466,28 @@ All contributions must meet the acceptance criteria to ensure consistent quality
 
 **Note**: Git hooks automatically check code quality. See [hooks/README.md](hooks/README.md) for details.
 
+## Connection Stability
+
+This implementation includes advanced connection management features for reliable device communication:
+
+- **Rate Limiting**: 1-second minimum delay between connection attempts to prevent connection storms
+- **TLS Timeout**: 5-minute idle timeout to prevent premature disconnections
+- **IP-Based Duplicate Detection**: Handles Android's ephemeral port behavior correctly
+- **No Keepalive Pings**: Prevents notification spam on mobile devices
+
+**Known Issue**: Some Android clients may reconnect every ~5 seconds due to aggressive reconnection behavior. The rate limiting system mitigates this, and functionality remains stable during cycling. See [Issue #52](https://github.com/olafkfreund/cosmic-applet-kdeconnect/issues/52) for details.
+
+## Documentation
+
+Comprehensive documentation is available in the `/docs` directory:
+
+- **[Architecture Documentation](docs/ARCHITECTURE.md)** - System design, component overview, and implementation details
+- **[Pairing Process](docs/PAIRING_PROCESS.md)** - Complete pairing flow and protocol v8 implementation
+- **[TLS Implementation Guide](docs/TLS_IMPLEMENTATION.md)** - Certificate generation, TLS setup, and Android client examples
+- **[User Guide](docs/USER_GUIDE.md)** - End-user setup and usage instructions
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Contributing Guidelines](docs/CONTRIBUTING.md)** - Development workflow and standards
+
 ## Protocol Compatibility
 
 This implementation follows the KDE Connect protocol specification version 7/8.
@@ -480,6 +502,7 @@ This implementation follows the KDE Connect protocol specification version 7/8.
 **Protocol Documentation:**
 - [KDE Connect Protocol](https://invent.kde.org/network/kdeconnect-kde)
 - [Valent Protocol Reference](https://valent.andyholmes.ca/documentation/protocol.html)
+- [Our Protocol Implementation](kdeconnect-protocol.md)
 
 ## Resources
 

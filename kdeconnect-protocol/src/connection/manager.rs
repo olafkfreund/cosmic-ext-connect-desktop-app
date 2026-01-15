@@ -9,16 +9,19 @@ use crate::{CertificateInfo, DeviceManager, Packet, ProtocolError, Result};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
-/// Keep-alive interval (send ping every 30 seconds)
-const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(30);
+/// Keep-alive interval (send ping every 10 seconds to maintain connection)
+const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Connection timeout (consider disconnected after 60 seconds of no activity)
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Minimum delay between connection attempts from the same device (to prevent connection storms)
+const MIN_CONNECTION_DELAY: Duration = Duration::from_millis(1000);
 
 /// Commands that can be sent to a connection task
 enum ConnectionCommand {
@@ -86,6 +89,9 @@ pub struct ConnectionManager {
 
     /// TLS server task handle
     server_task: Arc<RwLock<Option<JoinHandle<()>>>>,
+
+    /// Last connection time per device (for rate limiting to prevent connection storms)
+    last_connection_time: Arc<RwLock<HashMap<String, Instant>>>,
 }
 
 impl ConnectionManager {
@@ -107,6 +113,7 @@ impl ConnectionManager {
             event_rx: Arc::new(RwLock::new(event_rx)),
             config,
             server_task: Arc::new(RwLock::new(None)),
+            last_connection_time: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -169,6 +176,7 @@ impl ConnectionManager {
         let event_tx = self.event_tx.clone();
         let device_manager = self.device_manager.clone();
         let device_info = self.device_info.clone();
+        let last_connection_time = self.last_connection_time.clone();
 
         let server_task = tokio::spawn(async move {
             loop {
@@ -190,6 +198,7 @@ impl ConnectionManager {
                             connections.clone(),
                             device_manager.clone(),
                             Some(remote_identity), // Pass the already-received identity
+                            last_connection_time.clone(),
                         );
                     }
                     Err(e) => {
@@ -249,6 +258,7 @@ impl ConnectionManager {
             self.connections.clone(),
             self.device_manager.clone(),
             None, // Will perform identity exchange in handler
+            self.last_connection_time.clone(),
         );
 
         info!("Connected to device {} at {}", device_id, addr);
@@ -291,6 +301,7 @@ impl ConnectionManager {
             self.connections.clone(),
             self.device_manager.clone(),
             None, // Will perform identity exchange in handler
+            self.last_connection_time.clone(),
         );
 
         info!("Connected to device {} at {} with provided certificate", device_id, addr);
@@ -388,6 +399,7 @@ impl ConnectionManager {
         connections: Arc<RwLock<HashMap<String, ActiveConnection>>>,
         device_manager: Arc<RwLock<DeviceManager>>,
         remote_identity: Option<crate::Packet>,
+        last_connection_time: Arc<RwLock<HashMap<String, Instant>>>,
     ) {
         let (command_tx, mut command_rx) = mpsc::unbounded_channel();
 
@@ -436,25 +448,48 @@ impl ConnectionManager {
                 }
                 drop(dm);
 
+                // Rate limiting: Check if device is connecting too frequently
+                let now = Instant::now();
+                let mut last_times = last_connection_time.write().await;
+                if let Some(&last_time) = last_times.get(id) {
+                    let elapsed = now.duration_since(last_time);
+                    if elapsed < MIN_CONNECTION_DELAY {
+                        info!("Rate limiting: Device {} tried to connect too soon ({}ms < {}ms) - rejecting",
+                              id, elapsed.as_millis(), MIN_CONNECTION_DELAY.as_millis());
+                        drop(last_times);
+                        let _ = connection.close().await;
+                        return;
+                    }
+                }
+                last_times.insert(id.to_string(), now);
+                drop(last_times);
+
                 // Store connection in active connections FIRST
                 // This must happen before emitting PacketReceived to avoid race condition
                 // where a pairing response is attempted before the connection is registered
                 let mut conns = connections.write().await;
 
-                // Close existing connection if device reconnects (handles race conditions)
-                if let Some(old_conn) = conns.remove(id) {
-                    warn!("Device {} reconnected - closing old connection", id);
-                    let _ = old_conn.command_tx.send(ConnectionCommand::Close);
+                // Debug: Check what's in the connections HashMap
+                debug!("Current connections in HashMap: {:?}", conns.keys().collect::<Vec<_>>());
+                debug!("Looking for device {} in connections HashMap", id);
+
+                // Handle existing connection if device reconnects
+                if let Some(old_conn) = conns.get(id) {
+                    // Device trying to reconnect while already connected
+                    // Keep the existing stable connection and reject the new attempt
+                    info!("Device {} already connected at {} - rejecting reconnection from {}",
+                          id, old_conn.remote_addr, remote_addr);
                     drop(conns);
-                    tokio::time::sleep(Duration::from_millis(50)).await;
-                    conns = connections.write().await;
+                    // Close the new connection gracefully
+                    let _ = connection.close().await;
+                    return;
                 }
 
                 conns.insert(
                     id.to_string(),
                     ActiveConnection {
                         command_tx: command_tx.clone(),
-                        task: tokio::task::spawn(async {}), // Placeholder
+                        task: tokio::task::spawn(async {}), // Placeholder task
                         device_id: id.to_string(),
                         remote_addr,
                     },
@@ -480,23 +515,10 @@ impl ConnectionManager {
 
             let device_id = device_id.unwrap();
 
-            // Check if device is paired to determine keepalive behavior
-            let is_paired = {
-                let dm = device_manager.read().await;
-                dm.get_device(&device_id).map(|d| d.is_paired()).unwrap_or(false)
-            };
-
-            // Only send keepalive pings to PAIRED devices
-            // Unpaired devices should not receive non-pairing packets per KDE Connect protocol
-            let mut keepalive_timer = if is_paired {
-                Some(tokio::time::interval(KEEP_ALIVE_INTERVAL))
-            } else {
-                None
-            };
-
-            if let Some(ref mut timer) = keepalive_timer {
-                timer.tick().await; // First tick completes immediately
-            }
+            // DISABLED: Keepalive pings trigger notifications on Android
+            // The phone sends its own pings to keep the connection alive
+            // We don't need to send our own keepalive pings
+            let mut keepalive_timer: Option<tokio::time::Interval> = None;
 
             // Main connection loop
             loop {
