@@ -78,6 +78,28 @@ pub struct Packet {
 }
 
 impl Packet {
+    /// Convert to cosmic-connect-core::Packet for TLS communication
+    pub fn to_core_packet(&self) -> cosmic_connect_core::Packet {
+        cosmic_connect_core::Packet {
+            id: self.id,
+            packet_type: self.packet_type.clone(),
+            body: self.body.clone(),
+            payload_size: self.payload_size,
+            payload_transfer_info: self.payload_transfer_info.clone(),
+        }
+    }
+
+    /// Convert from cosmic-connect-core::Packet
+    pub fn from_core_packet(packet: cosmic_connect_core::Packet) -> Self {
+        Self {
+            id: packet.id,
+            packet_type: packet.packet_type,
+            body: packet.body,
+            payload_size: packet.payload_size,
+            payload_transfer_info: packet.payload_transfer_info,
+        }
+    }
+
     /// Creates a new packet with the specified type and body
     ///
     /// The packet ID is automatically set to the current timestamp in milliseconds.

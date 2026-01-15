@@ -3,7 +3,7 @@
 //! Manages pairing for multiple devices simultaneously.
 
 use super::events::PairingEvent;
-use super::handler::{CertificateInfo, PairingHandler, PairingStatus};
+use super::handler::{LegacyCertificateInfo, PairingHandler, PairingStatus};
 use crate::{DeviceInfo, Packet, Result};
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -50,7 +50,7 @@ impl Default for PairingConfig {
 /// Pairing service for managing device pairing
 pub struct PairingService {
     /// Our device certificate
-    certificate: Arc<CertificateInfo>,
+    certificate: Arc<LegacyCertificateInfo>,
 
     /// Pairing handler
     handler: Arc<RwLock<PairingHandler>>,
@@ -117,7 +117,7 @@ impl PairingService {
     }
 
     /// Get our device certificate
-    pub fn certificate(&self) -> &CertificateInfo {
+    pub fn certificate(&self) -> &LegacyCertificateInfo {
         &self.certificate
     }
 
@@ -267,7 +267,7 @@ impl PairingService {
                 );
                 drop(requests);
 
-                let fingerprint = CertificateInfo::calculate_fingerprint(device_cert);
+                let fingerprint = LegacyCertificateInfo::calculate_fingerprint(device_cert);
 
                 let _ = self.event_tx.send(PairingEvent::RequestReceived {
                     device_id: device_id.clone(),
@@ -286,7 +286,7 @@ impl PairingService {
                 requests.remove(device_id);
                 drop(requests);
 
-                let fingerprint = CertificateInfo::calculate_fingerprint(device_cert);
+                let fingerprint = LegacyCertificateInfo::calculate_fingerprint(device_cert);
 
                 let _ = self.event_tx.send(PairingEvent::PairingAccepted {
                     device_id: device_id.clone(),
@@ -413,7 +413,7 @@ impl PairingService {
         let _ = self.event_tx.send(PairingEvent::PairingAccepted {
             device_id: device_id.to_string(),
             device_name: device_info.device_name.clone(),
-            certificate_fingerprint: CertificateInfo::calculate_fingerprint(&device_cert),
+            certificate_fingerprint: LegacyCertificateInfo::calculate_fingerprint(&device_cert),
         });
 
         info!("Successfully accepted pairing with device {}", device_id);

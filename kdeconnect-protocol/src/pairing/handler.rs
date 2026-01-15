@@ -74,9 +74,10 @@ pub enum PairingStatus {
     Paired,
 }
 
-/// Device certificate information
+/// Device certificate information (legacy OpenSSL-based)
+/// TODO: Remove this and use cosmic_connect_core::CertificateInfo
 #[derive(Debug, Clone)]
-pub struct CertificateInfo {
+pub(crate) struct LegacyCertificateInfo {
     /// Device ID (UUID)
     pub device_id: String,
 
@@ -90,7 +91,7 @@ pub struct CertificateInfo {
     pub fingerprint: String,
 }
 
-impl CertificateInfo {
+impl LegacyCertificateInfo {
     /// Generate a new self-signed certificate for a device
     ///
     /// # Arguments
@@ -102,7 +103,7 @@ impl CertificateInfo {
     /// ```
     /// use kdeconnect_protocol::pairing::CertificateInfo;
     ///
-    /// let cert_info = CertificateInfo::generate("test_device_id").unwrap();
+    /// let cert_info = LegacyCertificateInfo::generate("test_device_id").unwrap();
     /// println!("Fingerprint: {}", cert_info.fingerprint);
     /// ```
     pub fn generate(device_id: impl Into<String>) -> Result<Self> {
@@ -355,7 +356,7 @@ impl PairingPacket {
 /// Pairing handler for managing device pairing
 pub struct PairingHandler {
     /// This device's certificate
-    certificate: CertificateInfo,
+    certificate: LegacyCertificateInfo,
 
     /// Pairing status
     status: PairingStatus,
@@ -387,10 +388,10 @@ impl PairingHandler {
 
         let certificate = if cert_path.exists() && key_path.exists() {
             info!("Loading existing certificate for device {}", device_id);
-            CertificateInfo::load_from_files(&cert_path, &key_path)?
+            LegacyCertificateInfo::load_from_files(&cert_path, &key_path)?
         } else {
             info!("Generating new certificate for device {}", device_id);
-            let cert = CertificateInfo::generate(&device_id)?;
+            let cert = LegacyCertificateInfo::generate(&device_id)?;
             cert.save_to_files(&cert_path, &key_path)?;
             cert
         };
@@ -409,7 +410,7 @@ impl PairingHandler {
     }
 
     /// Get this device's certificate
-    pub fn certificate(&self) -> &CertificateInfo {
+    pub fn certificate(&self) -> &LegacyCertificateInfo {
         &self.certificate
     }
 
@@ -600,7 +601,7 @@ mod tests {
 
     #[test]
     fn test_certificate_generation() {
-        let cert = CertificateInfo::generate("test_device_123").unwrap();
+        let cert = LegacyCertificateInfo::generate("test_device_123").unwrap();
 
         assert_eq!(cert.device_id, "test_device_123");
         assert!(!cert.certificate.is_empty());
@@ -619,14 +620,14 @@ mod tests {
         let key_path = temp_dir.path().join("key.pem");
 
         // Generate and save
-        let original = CertificateInfo::generate("test_device").unwrap();
+        let original = LegacyCertificateInfo::generate("test_device").unwrap();
         original.save_to_files(&cert_path, &key_path).unwrap();
 
         assert!(cert_path.exists());
         assert!(key_path.exists());
 
         // Load and verify
-        let loaded = CertificateInfo::load_from_files(&cert_path, &key_path).unwrap();
+        let loaded = LegacyCertificateInfo::load_from_files(&cert_path, &key_path).unwrap();
         assert_eq!(original.fingerprint, loaded.fingerprint);
     }
 
@@ -676,21 +677,21 @@ mod tests {
 
     #[test]
     fn test_certificate_fingerprint() {
-        let cert1 = CertificateInfo::generate("device1").unwrap();
-        let cert2 = CertificateInfo::generate("device2").unwrap();
+        let cert1 = LegacyCertificateInfo::generate("device1").unwrap();
+        let cert2 = LegacyCertificateInfo::generate("device2").unwrap();
 
         // Different devices should have different fingerprints
         assert_ne!(cert1.fingerprint, cert2.fingerprint);
 
         // Same certificate should have same fingerprint
-        let fp1 = CertificateInfo::calculate_fingerprint(&cert1.certificate);
-        let fp2 = CertificateInfo::calculate_fingerprint(&cert1.certificate);
+        let fp1 = LegacyCertificateInfo::calculate_fingerprint(&cert1.certificate);
+        let fp2 = LegacyCertificateInfo::calculate_fingerprint(&cert1.certificate);
         assert_eq!(fp1, fp2);
     }
 
     #[test]
     fn test_fingerprint_format() {
-        let cert = CertificateInfo::generate("test").unwrap();
+        let cert = LegacyCertificateInfo::generate("test").unwrap();
         let parts: Vec<&str> = cert.fingerprint.split(':').collect();
 
         // SHA256 produces 32 bytes = 32 parts when split by colons

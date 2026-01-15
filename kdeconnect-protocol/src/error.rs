@@ -252,6 +252,13 @@ pub enum ProtocolError {
     #[error("Certificate error: {0}")]
     Certificate(#[from] openssl::error::ErrorStack),
 
+    /// cosmic-connect-core protocol error
+    ///
+    /// Automatically converted from `cosmic_connect_core::ProtocolError`.
+    /// This enables seamless error propagation from the core TLS layer.
+    #[error("Core protocol error: {0}")]
+    CoreProtocol(#[from] cosmic_connect_core::ProtocolError),
+
     /// Certificate validation error
     ///
     /// This error occurs during TLS certificate validation.
@@ -551,6 +558,9 @@ impl ProtocolError {
             }
             ProtocolError::Certificate(e) => {
                 format!("Certificate error: {}. You may need to re-pair.", e)
+            }
+            ProtocolError::CoreProtocol(e) => {
+                format!("Core protocol error: {}.", e)
             }
         }
     }

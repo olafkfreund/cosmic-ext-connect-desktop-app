@@ -22,6 +22,9 @@ rust-version = "1.70"
 # GUI and Desktop Integration
 libcosmic = { git = "https://github.com/pop-os/libcosmic", default-features = false }
 
+# Shared KDE Connect Core (replaces OpenSSL TLS with rustls)
+cosmic-connect-core = { path = "../cosmic-connect-core" }
+
 # Async Runtime
 tokio = { version = "1.40", features = ["full"] }
 async-trait = "0.1"
@@ -30,10 +33,6 @@ futures = "0.3"
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-
-# Networking - Using OpenSSL directly for TLS 1.0 compatibility with Android KDE Connect app
-openssl = "0.10"
-tokio-openssl = "0.6"
 
 # Service Discovery
 mdns-sd = "0.17"

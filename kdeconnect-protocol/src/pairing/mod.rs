@@ -30,5 +30,8 @@ pub mod service;
 
 // Re-export main types
 pub use events::PairingEvent;
-pub use handler::{CertificateInfo, PairingHandler, PairingPacket, PairingStatus, PAIRING_TIMEOUT};
+pub use handler::{PairingHandler, PairingPacket, PairingStatus, PAIRING_TIMEOUT};
 pub use service::{PairingConfig, PairingService};
+
+// CertificateInfo now comes from cosmic-connect-core (re-exported in lib.rs)
+// This avoids duplicate definitions and uses the rustls-based implementation

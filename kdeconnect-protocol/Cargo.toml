@@ -8,12 +8,13 @@ repository.workspace = true
 description = "KDE Connect protocol implementation in Rust"
 
 [dependencies]
+# Shared KDE Connect Core (provides TLS, certificates, protocol)
+cosmic-connect-core = { workspace = true }
+
 tokio = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-openssl = { workspace = true }
-tokio-openssl = { workspace = true }
 mdns-sd = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
@@ -21,8 +22,12 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
-pem = "3.0"
 mouse-keyboard-input = { workspace = true }
+
+# Legacy pairing module still uses OpenSSL temporarily
+# TODO: Migrate pairing to use cosmic-connect-core CertificateInfo
+openssl = "0.10"
+pem = "3.0"
 
 [dev-dependencies]
 tokio-test = "0.4"

@@ -18,8 +18,10 @@
 //! 5. No rejection is sent to the client, preventing cascade failures
 
 use super::events::ConnectionEvent;
-use crate::transport::{TlsConnection, TlsServer};
-use crate::{CertificateInfo, DeviceManager, Packet, ProtocolError, Result};
+use crate::{
+    CertificateInfo, DeviceManager, Packet, ProtocolError, Result, TlsConfig, TlsConnection,
+    TlsDeviceInfo, TlsServer,
+};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -85,6 +87,9 @@ pub struct ConnectionManager {
     /// Our device certificate
     certificate: Arc<CertificateInfo>,
 
+    /// TLS configuration (rustls-based from cosmic-connect-core)
+    tls_config: Arc<TlsConfig>,
+
     /// Our device information
     device_info: Arc<crate::DeviceInfo>,
 
@@ -110,6 +115,19 @@ pub struct ConnectionManager {
     last_connection_time: Arc<RwLock<HashMap<String, Instant>>>,
 }
 
+/// Helper to convert discovery::DeviceInfo to TlsDeviceInfo
+fn device_info_to_tls(info: &crate::DeviceInfo) -> TlsDeviceInfo {
+    TlsDeviceInfo {
+        device_id: info.device_id.clone(),
+        device_name: info.device_name.clone(),
+        device_type: info.device_type.as_str().to_string(),
+        protocol_version: info.protocol_version as i32,
+        incoming_capabilities: info.incoming_capabilities.clone(),
+        outgoing_capabilities: info.outgoing_capabilities.clone(),
+        tcp_port: info.tcp_port,
+    }
+}
+
 impl ConnectionManager {
     /// Create a new connection manager
     pub fn new(
@@ -117,11 +135,15 @@ impl ConnectionManager {
         device_info: crate::DeviceInfo,
         device_manager: Arc<RwLock<DeviceManager>>,
         config: ConnectionConfig,
-    ) -> Self {
+    ) -> Result<Self> {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
 
-        Self {
+        // Create TLS configuration from certificate (rustls-based)
+        let tls_config = TlsConfig::new(&certificate)?;
+
+        Ok(Self {
             certificate: Arc::new(certificate),
+            tls_config: Arc::new(tls_config),
             device_info: Arc::new(device_info),
             connections: Arc::new(RwLock::new(HashMap::new())),
             device_manager,
@@ -130,7 +152,7 @@ impl ConnectionManager {
             config,
             server_task: Arc::new(RwLock::new(None)),
             last_connection_time: Arc::new(RwLock::new(HashMap::new())),
-        }
+        })
     }
 
     /// Get a receiver for connection events
@@ -155,29 +177,16 @@ impl ConnectionManager {
     pub async fn start(&self) -> Result<u16> {
         info!("Starting connection manager on {}", self.config.listen_addr);
 
-        // Get all paired device certificates
-        let device_manager = self.device_manager.read().await;
-        let paired_devices = device_manager.paired_devices().collect::<Vec<_>>();
+        // Convert device info to TLS device info
+        let tls_device_info = device_info_to_tls(&self.device_info);
 
-        let mut trusted_certs = Vec::new();
-        for device in paired_devices {
-            if let Some(cert_data) = &device.certificate_data {
-                trusted_certs.push(cert_data.clone());
-            }
-        }
-        drop(device_manager);
+        info!("Starting TLS server with rustls (TLS 1.2+, TOFU security model)");
 
-        info!(
-            "Starting TLS server with {} trusted device certificates",
-            trusted_certs.len()
-        );
-
-        // Create TLS server
+        // Create TLS server (uses TOFU - Trust-On-First-Use, no pre-trusted certs needed)
         let server = TlsServer::new(
             self.config.listen_addr,
             &self.certificate,
-            (*self.device_info).clone(),
-            trusted_certs,
+            tls_device_info,
         )
         .await?;
         let local_port = server.local_addr().port();
@@ -197,12 +206,15 @@ impl ConnectionManager {
         let server_task = tokio::spawn(async move {
             loop {
                 match server.accept().await {
-                    Ok((connection, remote_identity)) => {
+                    Ok((connection, core_identity)) => {
                         let remote_addr = connection.remote_addr();
-                        let device_name = remote_identity
+                        let device_name = core_identity
                             .get_body_field::<String>("deviceName")
                             .unwrap_or_else(|| "Unknown".to_string());
                         info!("Accepted connection from {} at {}", device_name, remote_addr);
+
+                        // Convert core Packet to local Packet
+                        let remote_identity = Packet::from_core_packet(core_identity);
 
                         // Spawn connection handler
                         // Note: remote_identity already contains the post-TLS identity packet
@@ -245,22 +257,9 @@ impl ConnectionManager {
         }
         drop(connections);
 
-        // Get device certificate from device manager
-        let device_manager = self.device_manager.read().await;
-        let device = device_manager
-            .get_device(device_id)
-            .ok_or_else(|| ProtocolError::DeviceNotFound(device_id.to_string()))?;
-
-        let peer_cert = device.certificate_data.clone().ok_or_else(|| {
-            ProtocolError::CertificateValidation("Device has no certificate".to_string())
-        })?;
-
-        drop(device_manager);
-
-        // Connect with TLS
-        let mut connection =
-            TlsConnection::connect(addr, &self.certificate, peer_cert, &addr.ip().to_string())
-                .await?;
+        // Connect with TLS (rustls with TOFU)
+        // Note: cosmic-connect-core TLS uses TOFU - no pre-verification needed
+        let mut connection = TlsConnection::connect(addr, &self.tls_config).await?;
 
         connection.set_device_id(device_id.to_string());
 
@@ -288,9 +287,9 @@ impl ConnectionManager {
         &self,
         device_id: &str,
         addr: SocketAddr,
-        peer_cert: Vec<u8>,
+        _peer_cert: Vec<u8>,
     ) -> Result<()> {
-        info!("Connecting to device {} at {} with provided certificate", device_id, addr);
+        info!("Connecting to device {} at {} for pairing", device_id, addr);
 
         // Check if already connected
         let connections = self.connections.read().await;
@@ -300,10 +299,10 @@ impl ConnectionManager {
         }
         drop(connections);
 
-        // Connect with TLS using provided certificate
-        let mut connection =
-            TlsConnection::connect(addr, &self.certificate, peer_cert, &addr.ip().to_string())
-                .await?;
+        // Connect with TLS (rustls with TOFU)
+        // Note: peer_cert is ignored - cosmic-connect-core uses TOFU model
+        // Certificate verification happens at application layer via SHA256 fingerprint
+        let mut connection = TlsConnection::connect(addr, &self.tls_config).await?;
 
         connection.set_device_id(device_id.to_string());
 
@@ -429,7 +428,8 @@ impl ConnectionManager {
             } else {
                 // KDE Connect protocol v8: Send our identity over encrypted connection first
                 let our_identity = device_info.to_identity_packet();
-                if let Err(e) = connection.send_packet(&our_identity).await {
+                let core_identity = our_identity.to_core_packet();
+                if let Err(e) = connection.send_packet(&core_identity).await {
                     error!("Failed to send identity over TLS to {}: {}", remote_addr, e);
                     return;
                 }
@@ -437,7 +437,7 @@ impl ConnectionManager {
 
                 // Now receive the client's encrypted identity packet
                 match connection.receive_packet().await {
-                    Ok(pkt) => pkt,
+                    Ok(core_pkt) => Packet::from_core_packet(core_pkt),
                     Err(e) => {
                         error!(
                             "Failed to receive identity packet from {}: {}",
@@ -503,7 +503,7 @@ impl ConnectionManager {
                     // Emit disconnected event for old connection
                     let _ = event_tx.send(ConnectionEvent::Disconnected {
                         device_id: id.to_string(),
-                        reason: "Socket replaced with new connection".to_string(),
+                        reason: Some("Socket replaced with new connection".to_string()),
                     });
 
                     // Old connection will be replaced below with new one
@@ -552,7 +552,9 @@ impl ConnectionManager {
                     Some(cmd) = command_rx.recv() => {
                         match cmd {
                             ConnectionCommand::SendPacket(packet) => {
-                                if let Err(e) = connection.send_packet(&packet).await {
+                                // Convert applet Packet to core Packet for TLS
+                                let core_packet = packet.to_core_packet();
+                                if let Err(e) = connection.send_packet(&core_packet).await {
                                     error!("Failed to send packet to {}: {}", device_id, e);
                                     break;
                                 }
@@ -567,7 +569,9 @@ impl ConnectionManager {
                     // Receive packets
                     result = connection.receive_packet() => {
                         match result {
-                            Ok(packet) => {
+                            Ok(core_packet) => {
+                                // Convert core Packet to applet Packet
+                                let packet = crate::Packet::from_core_packet(core_packet);
                                 debug!("Received packet '{}' from {}", packet.packet_type, device_id);
                                 let _ = event_tx.send(ConnectionEvent::PacketReceived {
                                     device_id: device_id.clone(),
@@ -593,7 +597,8 @@ impl ConnectionManager {
                     } => {
                         debug!("Sending keepalive ping to paired device {}", device_id);
                         let ping_packet = crate::Packet::new("kdeconnect.ping", serde_json::json!({}));
-                        if let Err(e) = connection.send_packet(&ping_packet).await {
+                        let core_ping = ping_packet.to_core_packet();
+                        if let Err(e) = connection.send_packet(&core_ping).await {
                             error!("Failed to send keepalive ping to {}: {}", device_id, e);
                             break;
                         }
