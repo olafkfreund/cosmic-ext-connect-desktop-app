@@ -13,15 +13,15 @@ This project is part of a **multi-platform ecosystem**:
 
 ### Key Innovations
 
-✅ **70%+ Code Sharing** - Unified Rust core shared between desktop and Android
-✅ **100% Protocol Compatibility** - Full KDE Connect protocol v7/8 implementation
-✅ **No OpenSSL** - Modern rustls-based TLS (better cross-compilation)
-✅ **FFI Bindings** - Kotlin/Swift support via uniffi-rs
-✅ **Modern Async** - Tokio-based concurrent architecture
+- **70%+ Code Sharing** - Unified Rust core shared between desktop and Android
+- **100% Protocol Compatibility** - Full KDE Connect protocol v7/8 implementation
+- **No OpenSSL** - Modern rustls-based TLS (better cross-compilation)
+- **FFI Bindings** - Kotlin/Swift support via uniffi-rs
+- **Modern Async** - Tokio-based concurrent architecture
 
 ## Architecture
 
-See **[ARCHITECTURE.md](ARCHITECTURE.md)** for comprehensive documentation.
+See **[Architecture Documentation](docs/architecture/Architecture.md)** for comprehensive documentation.
 
 ```
 cosmic-connect-core (Shared Library)
@@ -57,76 +57,80 @@ cosmic-connect-desktop-app/
 │   ├── dbus.rs              # DBus IPC interface
 │   └── main.rs              # Daemon entry point
 ├── cosmic-applet-connect/    # COSMIC panel applet (UI)
-└── cosmic-connect/           # CLI tool
+├── cosmic-connect/           # CLI tool
+└── docs/                     # Documentation
+    ├── architecture/         # System design
+    ├── development/          # Development guides
+    └── project/              # Project management
 ```
 
 ## Features
 
-### Status: 🚀 Production Ready (98% Complete)
+### Status: Production Ready (98% Complete)
 
-#### Core Features ✅
+#### Core Features
 
-- ✅ **Device Discovery** - UDP broadcast + mDNS service discovery
-- ✅ **Secure Pairing** - TLS certificate exchange with user verification
-- ✅ **Connection Management** - Automatic reconnection, socket replacement
-- ✅ **Background Daemon** - Systemd service with DBus interface
-- ✅ **COSMIC Panel Applet** - Rich UI with device status and quick actions
+- **Device Discovery** - UDP broadcast + mDNS service discovery
+- **Secure Pairing** - TLS certificate exchange with user verification
+- **Connection Management** - Automatic reconnection, socket replacement
+- **Background Daemon** - Systemd service with DBus interface
+- **COSMIC Panel Applet** - Rich UI with device status and quick actions
 
-#### Plugin System ✅ (12 Plugins)
+#### Plugin System (12 Plugins)
 
-- ✅ **Ping** - Connection testing
-- ✅ **Battery** - Battery status sync with low battery alerts
-- ✅ **Clipboard** - Bidirectional clipboard sync (500ms polling)
-- ✅ **Share** - File/text/URL sharing with TCP payload transfer
-- ✅ **Notification** - Notification forwarding to desktop
-- ✅ **Find My Phone** - Ring device remotely
-- ✅ **MPRIS** - Media player control (DBus integration)
-- ✅ **Run Command** - Pre-configured remote command execution
-- ✅ **Presenter** - Remote presentation control
-- ✅ **Remote Input** - Mouse/keyboard control
-- ✅ **Telephony** - Call/SMS notifications
-- ✅ **Contacts** - Contact synchronization
+- **Ping** - Connection testing
+- **Battery** - Battery status sync with low battery alerts
+- **Clipboard** - Bidirectional clipboard sync (500ms polling)
+- **Share** - File/text/URL sharing with TCP payload transfer
+- **Notification** - Notification forwarding to desktop
+- **Find My Phone** - Ring device remotely
+- **MPRIS** - Media player control (DBus integration)
+- **Run Command** - Pre-configured remote command execution
+- **Presenter** - Remote presentation control
+- **Remote Input** - Mouse/keyboard control
+- **Telephony** - Call/SMS notifications
+- **Contacts** - Contact synchronization
 
-#### File Sharing Features ✅
+#### File Sharing Features
 
-- ✅ Bidirectional file transfers (TCP payload streaming)
-- ✅ Automatic file reception to ~/Downloads
-- ✅ URL sharing (auto-opens in browser)
-- ✅ Text sharing (auto-copies to clipboard)
-- ✅ 64KB streaming buffer for efficiency
-- ✅ Port range: 1739-1764 (KDE Connect standard)
-- ✅ COSMIC Desktop notifications for transfers
+- Bidirectional file transfers (TCP payload streaming)
+- Automatic file reception to ~/Downloads
+- URL sharing (auto-opens in browser)
+- Text sharing (auto-copies to clipboard)
+- 64KB streaming buffer for efficiency
+- Port range: 1739-1764 (KDE Connect standard)
+- COSMIC Desktop notifications for transfers
 
-#### Desktop Integration ✅
+#### Desktop Integration
 
-- ✅ **COSMIC Notifications** - Full freedesktop.org integration
-- ✅ **System Clipboard** - Automatic bidirectional sync
-- ✅ **File Picker** - XDG Desktop Portal integration
-- ✅ **MPRIS Players** - Spotify, VLC, Firefox, Chrome support
-- ✅ **Per-Device Configuration** - Custom settings, nicknames, plugin overrides
+- **COSMIC Notifications** - Full freedesktop.org integration
+- **System Clipboard** - Automatic bidirectional sync
+- **File Picker** - XDG Desktop Portal integration
+- **MPRIS Players** - Spotify, VLC, Firefox, Chrome support
+- **Per-Device Configuration** - Custom settings, nicknames, plugin overrides
 
-#### Quality Assurance ✅
+#### Quality Assurance
 
-- ✅ **114 Unit Tests** + 12 Integration Tests
-- ✅ **CI/CD Pipeline** - GitHub Actions automation
-- ✅ **Pre-commit Hooks** - Code quality enforcement
-- ✅ **Error Diagnostics** - Comprehensive error handling
-- ✅ **NixOS Support** - Full flake.nix with dev shell
+- **114 Unit Tests** + 12 Integration Tests
+- **CI/CD Pipeline** - GitHub Actions automation
+- **Pre-commit Hooks** - Code quality enforcement
+- **Error Diagnostics** - Comprehensive error handling
+- **NixOS Support** - Full flake.nix with dev shell
 
-### In Progress 🔨
+### In Progress
 
-- [ ] Transfer progress tracking (progress bars, cancellation)
-- [ ] iOS support using same cosmic-connect-core
+- Transfer progress tracking (progress bars, cancellation)
+- iOS support using same cosmic-connect-core
 
-### Planned 📋
+### Planned
 
-- [ ] Advanced file transfer features (multiple files, drag & drop)
-- [ ] SMS messaging support
-- [ ] Bluetooth transport layer
+- Advanced file transfer features (multiple files, drag & drop)
+- SMS messaging support
+- Bluetooth transport layer
 
 ## Technology Stack
 
-- **Language**: Rust 🦀 (100%)
+- **Language**: Rust (100%)
 - **Shared Core**: [cosmic-connect-core](https://github.com/olafkfreund/cosmic-connect-core) (TLS, protocol, plugins)
 - **GUI Framework**: [libcosmic](https://github.com/pop-os/libcosmic) (COSMIC native, based on iced)
 - **Async Runtime**: tokio with async/await
@@ -301,10 +305,10 @@ The COSMIC panel applet provides:
 - **Device List** - View all discovered and paired devices
 - **Battery Status** - See battery level and charging status
 - **Quick Actions**:
-  - 📍 Ping - Test connection
-  - 📁 Send File - Share files via file picker
-  - 🔍 Find Phone - Ring your device remotely
-  - 🔗 Pair/Unpair - Manage device pairing
+  - Ping - Test connection
+  - Send File - Share files via file picker
+  - Find Phone - Ring your device remotely
+  - Pair/Unpair - Manage device pairing
 - **MPRIS Controls** - Control media players (when available)
 
 ### DBus API
@@ -487,41 +491,58 @@ plugin_manager.register_factory(Box::new(MyPluginFactory::new()));
 **Implements**: KDE Connect Protocol v7/8
 
 **Compatible with:**
-- ✅ KDE Connect Desktop (Linux, Windows, macOS)
-- ✅ KDE Connect Android
-- ✅ KDE Connect iOS
-- ✅ GSConnect (GNOME)
-- ✅ Valent (GTK)
-- ✅ COSMIC Connect Android (via shared core)
+- KDE Connect Desktop (Linux, Windows, macOS)
+- KDE Connect Android
+- KDE Connect iOS
+- GSConnect (GNOME)
+- Valent (GTK)
+- COSMIC Connect Android (via shared core)
 
 **Protocol References:**
 - [KDE Connect Protocol](https://invent.kde.org/network/kdeconnect-kde)
 - [Valent Protocol Reference](https://valent.andyholmes.ca/documentation/protocol.html)
-- [Our Architecture Documentation](ARCHITECTURE.md)
+- [Our Architecture Documentation](docs/architecture/Architecture.md)
 
 ## Connection Stability
 
 This implementation includes advanced connection management:
 
-- ✅ **Socket Replacement** - Handles Android's aggressive reconnection behavior
-- ✅ **Rate Limiting** - 1-second minimum delay between attempts
-- ✅ **IP-Based Detection** - Handles ephemeral port changes correctly
-- ✅ **5-Minute TLS Timeout** - Prevents premature disconnections
-- ✅ **No Keepalive Pings** - Reduces mobile notification spam
+- **Socket Replacement** - Handles Android's aggressive reconnection behavior
+- **Rate Limiting** - 1-second minimum delay between attempts
+- **IP-Based Detection** - Handles ephemeral port changes correctly
+- **5-Minute TLS Timeout** - Prevents premature disconnections
+- **No Keepalive Pings** - Reduces mobile notification spam
 
 See [Issue #52](https://github.com/olafkfreund/cosmic-connect-desktop-app/issues/52) for implementation details.
 
 ## Documentation
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and multi-platform architecture
-- **[CLAUDE.md](CLAUDE.md)** - Development guidelines and standards
-- **[cosmic-connect-core](https://github.com/olafkfreund/cosmic-connect-core)** - Shared library documentation
+**[Complete Documentation](docs/Home.md)** - Full documentation index
+
+### Quick Links
+
+- **[Architecture](docs/architecture/Architecture.md)** - System design and multi-platform architecture
+- **[Protocol Specification](docs/architecture/Protocol.md)** - KDE Connect protocol details
+- **[Development Guide](docs/development/Development-Guide.md)** - Complete development documentation
+- **[Contributing Guidelines](docs/development/Contributing.md)** - How to contribute
+- **[Project Status](docs/project/Status.md)** - Current implementation status
+- **[User Guide](docs/USER_GUIDE.md)** - End-user setup and usage
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+
+### Development Documentation
+
+- **[Setup Guide](docs/development/Setup.md)** - Environment setup instructions
+- **[Build Fixes](docs/development/Build-Fixes.md)** - Common build issues
+- **[Applet Development](docs/development/Applet-Development.md)** - COSMIC applet guide
+- **[CLAUDE.md](CLAUDE.md)** - AI development guidelines
 
 ## Contributing
 
 Contributions are welcome! Please see:
-- [CLAUDE.md](CLAUDE.md) - Development guidelines and code style
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture
+- **[Contributing Guidelines](docs/development/Contributing.md)** - Code style, workflow, and standards
+- **[Development Guide](docs/development/Development-Guide.md)** - Development setup and workflow
+- **[Architecture](docs/architecture/Architecture.md)** - System architecture understanding
+- [CLAUDE.md](CLAUDE.md) - AI development guidelines
 
 ### Development Workflow
 
@@ -553,12 +574,16 @@ Contributions are welcome! Please see:
 
 ## Build Status
 
-✅ **Builds Successfully** on NixOS with Nix flake
-✅ **114 Tests Passing** + 12 integration tests
-✅ **CI/CD Configured** with GitHub Actions
-✅ **Production Ready** for COSMIC Desktop
+- **Builds Successfully** on NixOS with Nix flake
+- **114 Tests Passing** + 12 integration tests
+- **CI/CD Configured** with GitHub Actions
+- **Production Ready** for COSMIC Desktop
 
-Latest commit: Successfully resolved naming conflicts and architecture refactoring.
+Latest updates:
+- Successfully resolved naming conflicts between cosmic-connect-core crates
+- Reorganized documentation into structured docs/ directory
+- Architecture refactoring completed
+- All builds passing in Nix environment
 
 ## License
 
@@ -588,6 +613,4 @@ Found a security vulnerability? Please email the maintainers instead of opening 
 
 ---
 
-**Built with ❤️ using Rust and COSMIC Desktop**
-
-*Part of the COSMIC Connect multi-platform ecosystem with 70%+ code sharing*
+**Part of the COSMIC Connect multi-platform ecosystem with 70%+ code sharing**
