@@ -31,6 +31,8 @@ pub enum PairingEvent {
         device_id: String,
         /// Name of the paired device
         device_name: String,
+        /// Certificate fingerprint of the paired device
+        certificate_fingerprint: String,
     },
 
     /// Pairing was rejected (by us or by peer)
@@ -118,6 +120,7 @@ mod tests {
         let accepted = PairingEvent::PairingAccepted {
             device_id: "test".to_string(),
             device_name: "Test Device".to_string(),
+            certificate_fingerprint: "AA:BB:CC".to_string(),
         };
         assert!(accepted.is_pairing_accepted());
         assert!(!accepted.is_request_received());

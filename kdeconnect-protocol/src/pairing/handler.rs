@@ -32,16 +32,19 @@
 //! - [KDE Connect TLS Implementation](https://invent.kde.org/network/kdeconnect-kde)
 
 use crate::{Packet, ProtocolError, Result};
-use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
-use rustls_pemfile::{certs, private_key};
+use openssl::asn1::Asn1Time;
+use openssl::bn::{BigNum, MsbOption};
+use openssl::hash::MessageDigest;
+use openssl::pkey::PKey;
+use openssl::rsa::Rsa;
+use openssl::x509::extension::{BasicConstraints, KeyUsage};
+use openssl::x509::{X509, X509Name};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::io::{BufReader, Cursor};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use tracing::{debug, info, warn};
 
 /// Default pairing timeout (30 seconds per protocol specification)
@@ -105,33 +108,61 @@ impl CertificateInfo {
     pub fn generate(device_id: impl Into<String>) -> Result<Self> {
         let device_id = device_id.into();
 
-        // Create certificate parameters
-        let mut params = CertificateParams::default();
+        // Generate RSA 2048-bit key pair
+        let rsa = Rsa::generate(2048)?;
+        let pkey = PKey::from_rsa(rsa)?;
 
-        // Set distinguished name (DN)
-        let mut dn = DistinguishedName::new();
-        dn.push(DnType::OrganizationName, CERT_ORG);
-        dn.push(DnType::OrganizationalUnitName, CERT_ORG_UNIT);
-        dn.push(DnType::CommonName, &device_id);
-        params.distinguished_name = dn;
+        // Create X509 certificate builder
+        let mut builder = X509::builder()?;
 
-        // Set serial number
-        params.serial_number = Some(rcgen::SerialNumber::from(10));
+        // Set version to X509v3
+        builder.set_version(2)?;
+
+        // Generate random serial number
+        let mut serial = BigNum::new()?;
+        serial.rand(159, MsbOption::MAYBE_ZERO, false)?;
+        let serial = serial.to_asn1_integer()?;
+        builder.set_serial_number(&serial)?;
+
+        // Set subject name (DN)
+        let mut name = X509Name::builder()?;
+        name.append_entry_by_text("O", CERT_ORG)?;
+        name.append_entry_by_text("OU", CERT_ORG_UNIT)?;
+        name.append_entry_by_text("CN", &device_id)?;
+        let name = name.build();
+        builder.set_subject_name(&name)?;
+
+        // Set issuer name (same as subject for self-signed)
+        builder.set_issuer_name(&name)?;
 
         // Set validity period (10 years)
-        let not_before = SystemTime::now();
-        let not_after =
-            not_before + Duration::from_secs(CERT_VALIDITY_YEARS as u64 * 365 * 24 * 3600);
-        params.not_before = not_before.into();
-        params.not_after = not_after.into();
+        let not_before = Asn1Time::days_from_now(0)?;
+        let not_after = Asn1Time::days_from_now(CERT_VALIDITY_YEARS as u32 * 365)?;
+        builder.set_not_before(&not_before)?;
+        builder.set_not_after(&not_after)?;
 
-        // Generate RSA 2048-bit key pair and self-signed certificate
-        let key_pair = KeyPair::generate_for(&rcgen::PKCS_RSA_SHA256)?;
-        let cert = params.self_signed(&key_pair)?;
+        // Set public key
+        builder.set_pubkey(&pkey)?;
+
+        // Add X509v3 extensions
+        // Note: NOT a CA certificate - this is an end-entity device certificate
+        builder.append_extension(BasicConstraints::new().build()?)?;
+        builder.append_extension(
+            KeyUsage::new()
+                .digital_signature()
+                .key_encipherment()
+                .key_agreement()
+                .build()?,
+        )?;
+
+        // Sign the certificate with the private key
+        builder.sign(&pkey, MessageDigest::sha256())?;
+
+        let cert = builder.build();
 
         // Get DER-encoded certificate and private key
-        let certificate_der = cert.der().to_vec();
-        let private_key_der = key_pair.serialize_der();
+        let certificate_der = cert.to_der()?;
+        let private_key_der = pkey.private_key_to_der()?;
 
         // Calculate SHA256 fingerprint
         let fingerprint = Self::calculate_fingerprint(&certificate_der);
@@ -186,11 +217,13 @@ impl CertificateInfo {
             fs::create_dir_all(parent)?;
         }
 
-        // Convert DER to PEM and save
-        let cert_pem = pem::encode(&pem::Pem::new("CERTIFICATE", self.certificate.clone()));
+        // Convert DER to PEM using OpenSSL and save
+        let cert = X509::from_der(&self.certificate)?;
+        let cert_pem = cert.to_pem()?;
         fs::write(cert_path, cert_pem)?;
 
-        let key_pem = pem::encode(&pem::Pem::new("PRIVATE KEY", self.private_key.clone()));
+        let pkey = PKey::private_key_from_der(&self.private_key)?;
+        let key_pem = pkey.private_key_to_pem_pkcs8()?;
         fs::write(key_path, key_pem)?;
 
         info!(
@@ -211,40 +244,18 @@ impl CertificateInfo {
 
         debug!("Loading certificate from {:?}", cert_path);
 
-        // Read certificate file
-        let cert_file = fs::File::open(cert_path)?;
-        let mut cert_reader = BufReader::new(cert_file);
-        let cert_ders: Vec<CertificateDer> =
-            certs(&mut cert_reader).collect::<std::result::Result<_, _>>()?;
+        // Read certificate file (PEM format)
+        let cert_pem = fs::read(cert_path)?;
+        let cert = X509::from_pem(&cert_pem)?;
+        let certificate = cert.to_der()?;
 
-        if cert_ders.is_empty() {
-            return Err(ProtocolError::InvalidPacket(
-                "No certificate found in file".to_string(),
-            ));
-        }
-
-        let certificate = cert_ders[0].to_vec();
-
-        // Read private key file
-        let key_file = fs::File::open(key_path)?;
-        let mut key_reader = BufReader::new(key_file);
-        let private_key_der = private_key(&mut key_reader)?.ok_or_else(|| {
-            ProtocolError::InvalidPacket("No private key found in file".to_string())
-        })?;
-
-        let private_key = match private_key_der {
-            PrivateKeyDer::Pkcs1(key) => key.secret_pkcs1_der().to_vec(),
-            PrivateKeyDer::Pkcs8(key) => key.secret_pkcs8_der().to_vec(),
-            PrivateKeyDer::Sec1(key) => key.secret_sec1_der().to_vec(),
-            _ => {
-                return Err(ProtocolError::InvalidPacket(
-                    "Unsupported private key format".to_string(),
-                ))
-            }
-        };
+        // Read private key file (PEM format)
+        let key_pem = fs::read(key_path)?;
+        let pkey = PKey::private_key_from_pem(&key_pem)?;
+        let private_key = pkey.private_key_to_der()?;
 
         // Extract device ID from certificate CN
-        let device_id = Self::extract_device_id_from_cert(&certificate)?;
+        let device_id = Self::extract_device_id_from_cert(&cert)?;
 
         // Calculate fingerprint
         let fingerprint = Self::calculate_fingerprint(&certificate);
@@ -263,23 +274,20 @@ impl CertificateInfo {
     }
 
     /// Extract device ID from certificate Common Name
-    fn extract_device_id_from_cert(_cert_der: &[u8]) -> Result<String> {
-        // Parse DER certificate (simplified - in production use a proper X.509 parser)
-        // For now, we'll return a placeholder
-        // TODO: Use x509-parser or similar crate to properly extract CN
-        Ok("extracted_device_id".to_string())
-    }
+    fn extract_device_id_from_cert(cert: &X509) -> Result<String> {
+        // Get subject name from certificate
+        let subject_name = cert.subject_name();
 
-    /// Get rustls certificate for TLS configuration
-    pub fn to_rustls_cert(&self) -> CertificateDer<'static> {
-        CertificateDer::from(self.certificate.clone())
-    }
+        // Find CN (Common Name) entry
+        for entry in subject_name.entries() {
+            if entry.object().nid() == openssl::nid::Nid::COMMONNAME {
+                let cn = entry.data().as_utf8()?.to_string();
+                return Ok(cn);
+            }
+        }
 
-    /// Get rustls private key for TLS configuration
-    pub fn to_rustls_key(&self) -> Result<PrivateKeyDer<'static>> {
-        // Try to parse as PKCS8 first, then PKCS1
-        Ok(PrivateKeyDer::Pkcs8(
-            rustls::pki_types::PrivatePkcs8KeyDer::from(self.private_key.clone()),
+        Err(ProtocolError::CertificateValidation(
+            "Certificate does not contain Common Name".to_string(),
         ))
     }
 }
@@ -410,7 +418,17 @@ impl PairingHandler {
         device_id: &str,
         device_cert: &[u8],
     ) -> Result<(bool, Option<Packet>)> {
+        debug!(
+            "Received pairing packet from {} - body: {}",
+            device_id, packet.body
+        );
+
         let pairing = PairingPacket::from_packet(packet)?;
+
+        debug!(
+            "Processing pairing packet from {} - pair: {}",
+            device_id, pairing.pair
+        );
 
         if pairing.pair {
             // Pairing request or accept
@@ -534,17 +552,18 @@ impl PairingHandler {
                         continue;
                     }
 
-                    // Load certificate
+                    // Load certificate (PEM format)
                     let cert_data = fs::read(&path)?;
-                    let cursor = Cursor::new(cert_data);
-                    let mut reader = BufReader::new(cursor);
-                    let cert_ders: Vec<CertificateDer> =
-                        certs(&mut reader).collect::<std::result::Result<_, _>>()?;
-
-                    if !cert_ders.is_empty() {
-                        self.paired_devices
-                            .insert(device_id.to_string(), cert_ders[0].to_vec());
-                        debug!("Loaded paired device certificate: {}", device_id);
+                    match X509::from_pem(&cert_data) {
+                        Ok(cert) => {
+                            let cert_der = cert.to_der()?;
+                            self.paired_devices
+                                .insert(device_id.to_string(), cert_der);
+                            debug!("Loaded paired device certificate: {}", device_id);
+                        }
+                        Err(e) => {
+                            warn!("Failed to parse certificate for {}: {}", device_id, e);
+                        }
                     }
                 }
             }

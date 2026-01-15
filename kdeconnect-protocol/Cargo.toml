@@ -12,10 +12,8 @@ tokio = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-rustls = { workspace = true }
-tokio-rustls = { workspace = true }
-rcgen = { workspace = true }
-rustls-pemfile = { workspace = true }
+openssl = { workspace = true }
+tokio-openssl = { workspace = true }
 mdns-sd = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

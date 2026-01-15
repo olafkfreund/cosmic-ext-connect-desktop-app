@@ -66,6 +66,9 @@ pub struct ConnectionManager {
     /// Our device certificate
     certificate: Arc<CertificateInfo>,
 
+    /// Our device information
+    device_info: Arc<crate::DeviceInfo>,
+
     /// Active connections (device_id -> connection)
     connections: Arc<RwLock<HashMap<String, ActiveConnection>>>,
 
@@ -89,6 +92,7 @@ impl ConnectionManager {
     /// Create a new connection manager
     pub fn new(
         certificate: CertificateInfo,
+        device_info: crate::DeviceInfo,
         device_manager: Arc<RwLock<DeviceManager>>,
         config: ConnectionConfig,
     ) -> Self {
@@ -96,6 +100,7 @@ impl ConnectionManager {
 
         Self {
             certificate: Arc::new(certificate),
+            device_info: Arc::new(device_info),
             connections: Arc::new(RwLock::new(HashMap::new())),
             device_manager,
             event_tx,
@@ -145,8 +150,13 @@ impl ConnectionManager {
         );
 
         // Create TLS server
-        let server =
-            TlsServer::new(self.config.listen_addr, &self.certificate, trusted_certs).await?;
+        let server = TlsServer::new(
+            self.config.listen_addr,
+            &self.certificate,
+            (*self.device_info).clone(),
+            trusted_certs,
+        )
+        .await?;
         let local_port = server.local_addr().port();
 
         // Emit started event
@@ -158,25 +168,32 @@ impl ConnectionManager {
         let connections = self.connections.clone();
         let event_tx = self.event_tx.clone();
         let device_manager = self.device_manager.clone();
+        let device_info = self.device_info.clone();
 
         let server_task = tokio::spawn(async move {
             loop {
                 match server.accept().await {
-                    Ok(connection) => {
+                    Ok((connection, remote_identity)) => {
                         let remote_addr = connection.remote_addr();
-                        info!("Accepted TLS connection from {}", remote_addr);
+                        let device_name = remote_identity
+                            .get_body_field::<String>("deviceName")
+                            .unwrap_or_else(|| "Unknown".to_string());
+                        info!("Accepted connection from {} at {}", device_name, remote_addr);
 
                         // Spawn connection handler
+                        // Note: remote_identity already contains the post-TLS identity packet
                         Self::spawn_connection_handler(
                             connection,
                             remote_addr,
+                            device_info.clone(),
                             event_tx.clone(),
                             connections.clone(),
                             device_manager.clone(),
+                            Some(remote_identity), // Pass the already-received identity
                         );
                     }
                     Err(e) => {
-                        error!("Error accepting TLS connection: {}", e);
+                        error!("Error accepting connection: {}", e);
                     }
                 }
             }
@@ -223,15 +240,60 @@ impl ConnectionManager {
         connection.set_device_id(device_id.to_string());
 
         // Spawn connection handler
+        // Note: For outgoing connections, we don't have pre-exchanged identity yet
         Self::spawn_connection_handler(
             connection,
             addr,
+            self.device_info.clone(),
             self.event_tx.clone(),
             self.connections.clone(),
             self.device_manager.clone(),
+            None, // Will perform identity exchange in handler
         );
 
         info!("Connected to device {} at {}", device_id, addr);
+
+        Ok(())
+    }
+
+    /// Connect to a remote device using a provided certificate (for pairing)
+    /// This is used during pairing when the device certificate isn't in DeviceManager yet
+    pub async fn connect_with_cert(
+        &self,
+        device_id: &str,
+        addr: SocketAddr,
+        peer_cert: Vec<u8>,
+    ) -> Result<()> {
+        info!("Connecting to device {} at {} with provided certificate", device_id, addr);
+
+        // Check if already connected
+        let connections = self.connections.read().await;
+        if connections.contains_key(device_id) {
+            info!("Already connected to device {}", device_id);
+            return Ok(());
+        }
+        drop(connections);
+
+        // Connect with TLS using provided certificate
+        let mut connection =
+            TlsConnection::connect(addr, &self.certificate, peer_cert, &addr.ip().to_string())
+                .await?;
+
+        connection.set_device_id(device_id.to_string());
+
+        // Spawn connection handler
+        // Note: For outgoing connections, we don't have pre-exchanged identity yet
+        Self::spawn_connection_handler(
+            connection,
+            addr,
+            self.device_info.clone(),
+            self.event_tx.clone(),
+            self.connections.clone(),
+            self.device_manager.clone(),
+            None, // Will perform identity exchange in handler
+        );
+
+        info!("Connected to device {} at {} with provided certificate", device_id, addr);
 
         Ok(())
     }
@@ -280,6 +342,12 @@ impl ConnectionManager {
         Ok(())
     }
 
+    /// Check if there's an active connection to a device
+    pub async fn has_connection(&self, device_id: &str) -> bool {
+        let connections = self.connections.read().await;
+        connections.contains_key(device_id)
+    }
+
     /// Stop the connection manager
     pub async fn stop(&self) {
         info!("Stopping connection manager");
@@ -308,76 +376,117 @@ impl ConnectionManager {
     }
 
     /// Spawn a task to handle a connection (send/receive)
+    ///
+    /// If `remote_identity` is Some, the identity exchange has already been completed
+    /// (e.g., by TLS server's accept() method for protocol v8). Otherwise, perform
+    /// the identity exchange here.
     fn spawn_connection_handler(
         mut connection: TlsConnection,
         remote_addr: SocketAddr,
+        device_info: Arc<crate::DeviceInfo>,
         event_tx: mpsc::UnboundedSender<ConnectionEvent>,
         connections: Arc<RwLock<HashMap<String, ActiveConnection>>>,
         device_manager: Arc<RwLock<DeviceManager>>,
+        remote_identity: Option<crate::Packet>,
     ) {
         let (command_tx, mut command_rx) = mpsc::unbounded_channel();
 
         let _task = tokio::spawn(async move {
             let device_id: Option<String>;
 
-            // First, try to receive identity packet
-            match connection.receive_packet().await {
-                Ok(packet) => {
-                    // Extract device ID from packet
-                    if let Some(id) = packet.body.get("deviceId").and_then(|v| v.as_str()) {
-                        device_id = Some(id.to_string());
-                        connection.set_device_id(id.to_string());
+            // If remote_identity is already provided, skip the identity exchange
+            let packet = if let Some(identity_packet) = remote_identity {
+                debug!("Using pre-exchanged identity packet from {}", remote_addr);
+                identity_packet
+            } else {
+                // KDE Connect protocol v8: Send our identity over encrypted connection first
+                let our_identity = device_info.to_identity_packet();
+                if let Err(e) = connection.send_packet(&our_identity).await {
+                    error!("Failed to send identity over TLS to {}: {}", remote_addr, e);
+                    return;
+                }
+                debug!("Sent encrypted identity packet to {}", remote_addr);
 
-                        info!("Connection identified as device {}", id);
-
-                        // Update device manager
-                        let mut dm = device_manager.write().await;
-                        if let Err(e) =
-                            dm.mark_connected(id, remote_addr.ip().to_string(), remote_addr.port())
-                        {
-                            warn!("Failed to mark device {} as connected: {}", id, e);
-                        }
-                        drop(dm);
-
-                        // Emit connected event
-                        let _ = event_tx.send(ConnectionEvent::Connected {
-                            device_id: id.to_string(),
-                            remote_addr,
-                        });
-
-                        // Emit packet received event
-                        let _ = event_tx.send(ConnectionEvent::PacketReceived {
-                            device_id: id.to_string(),
-                            packet: packet.clone(),
-                        });
-
-                        // Store connection in active connections
-                        let mut conns = connections.write().await;
-                        conns.insert(
-                            id.to_string(),
-                            ActiveConnection {
-                                command_tx: command_tx.clone(),
-                                task: tokio::task::spawn(async {}), // Placeholder
-                                device_id: id.to_string(),
-                                remote_addr,
-                            },
+                // Now receive the client's encrypted identity packet
+                match connection.receive_packet().await {
+                    Ok(pkt) => pkt,
+                    Err(e) => {
+                        error!(
+                            "Failed to receive identity packet from {}: {}",
+                            remote_addr, e
                         );
-                        drop(conns);
-                    } else {
-                        warn!("First packet from {} did not contain deviceId", remote_addr);
                         return;
                     }
                 }
-                Err(e) => {
-                    error!(
-                        "Failed to receive identity packet from {}: {}",
-                        remote_addr, e
-                    );
-                    return;
+            };
+
+            // Extract device ID from the identity packet
+            if let Some(id) = packet.body.get("deviceId").and_then(|v| v.as_str()) {
+                device_id = Some(id.to_string());
+                connection.set_device_id(id.to_string());
+
+                info!("Connection identified as device {}", id);
+
+                // Update device manager
+                let mut dm = device_manager.write().await;
+                if let Err(e) =
+                    dm.mark_connected(id, remote_addr.ip().to_string(), remote_addr.port())
+                {
+                    warn!("Failed to mark device {} as connected: {}", id, e);
                 }
+                drop(dm);
+
+                // Store connection in active connections FIRST
+                // This must happen before emitting PacketReceived to avoid race condition
+                // where a pairing response is attempted before the connection is registered
+                let mut conns = connections.write().await;
+                conns.insert(
+                    id.to_string(),
+                    ActiveConnection {
+                        command_tx: command_tx.clone(),
+                        task: tokio::task::spawn(async {}), // Placeholder
+                        device_id: id.to_string(),
+                        remote_addr,
+                    },
+                );
+                drop(conns);
+
+                // Emit connected event
+                let _ = event_tx.send(ConnectionEvent::Connected {
+                    device_id: id.to_string(),
+                    remote_addr,
+                });
+
+                // Emit packet received event
+                let _ = event_tx.send(ConnectionEvent::PacketReceived {
+                    device_id: id.to_string(),
+                    packet: packet.clone(),
+                    remote_addr,
+                });
+            } else {
+                warn!("Identity packet from {} did not contain deviceId", remote_addr);
+                return;
             }
 
             let device_id = device_id.unwrap();
+
+            // Check if device is paired to determine keepalive behavior
+            let is_paired = {
+                let dm = device_manager.read().await;
+                dm.get_device(&device_id).map(|d| d.is_paired()).unwrap_or(false)
+            };
+
+            // Only send keepalive pings to PAIRED devices
+            // Unpaired devices should not receive non-pairing packets per KDE Connect protocol
+            let mut keepalive_timer = if is_paired {
+                Some(tokio::time::interval(KEEP_ALIVE_INTERVAL))
+            } else {
+                None
+            };
+
+            if let Some(ref mut timer) = keepalive_timer {
+                timer.tick().await; // First tick completes immediately
+            }
 
             // Main connection loop
             loop {
@@ -406,12 +515,30 @@ impl ConnectionManager {
                                 let _ = event_tx.send(ConnectionEvent::PacketReceived {
                                     device_id: device_id.clone(),
                                     packet,
+                                    remote_addr,
                                 });
                             }
                             Err(e) => {
                                 warn!("Error receiving packet from {}: {}", device_id, e);
                                 break;
                             }
+                        }
+                    }
+
+                    // Keepalive timer - only for paired devices
+                    _ = async {
+                        if let Some(ref mut timer) = keepalive_timer {
+                            timer.tick().await;
+                        } else {
+                            // For unpaired devices, never send keepalive
+                            std::future::pending::<()>().await;
+                        }
+                    } => {
+                        debug!("Sending keepalive ping to paired device {}", device_id);
+                        let ping_packet = crate::Packet::new("kdeconnect.ping", serde_json::json!({}));
+                        if let Err(e) = connection.send_packet(&ping_packet).await {
+                            error!("Failed to send keepalive ping to {}: {}", device_id, e);
+                            break;
                         }
                     }
                 }

@@ -189,20 +189,25 @@ impl Default for Config {
     fn default() -> Self {
         let config_dir = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from(".config"))
+            .join("cosmic")
             .join("kdeconnect");
 
         let data_dir = dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from(".local/share"))
+            .join("cosmic")
             .join("kdeconnect");
 
         let cert_dir = config_dir.join("certs");
 
         Self {
             device: DeviceConfig {
-                name: hostname::get()
-                    .ok()
-                    .and_then(|h| h.into_string().ok())
-                    .unwrap_or_else(|| "Unknown Device".to_string()),
+                name: format!(
+                    "CD-{}",
+                    hostname::get()
+                        .ok()
+                        .and_then(|h| h.into_string().ok())
+                        .unwrap_or_else(|| "Unknown Device".to_string())
+                ),
                 device_type: "desktop".to_string(),
                 device_id: None,
             },
@@ -222,6 +227,7 @@ impl Config {
     pub fn load() -> Result<Self> {
         let config_dir = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from(".config"))
+            .join("cosmic")
             .join("kdeconnect");
 
         let config_path = config_dir.join("daemon.toml");

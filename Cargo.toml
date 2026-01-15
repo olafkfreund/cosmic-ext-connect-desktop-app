@@ -31,11 +31,9 @@ futures = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# Networking
-rustls = "0.23"
-tokio-rustls = "0.26"
-rcgen = { version = "0.14", features = ["aws_lc_rs"] }
-rustls-pemfile = "2.2"
+# Networking - Using OpenSSL directly for TLS 1.0 compatibility with Android KDE Connect app
+openssl = "0.10"
+tokio-openssl = "0.6"
 
 # Service Discovery
 mdns-sd = "0.17"

@@ -4,7 +4,6 @@
 
 use super::events::PairingEvent;
 use super::handler::{CertificateInfo, PairingHandler, PairingStatus};
-use crate::transport::TcpConnection;
 use crate::{DeviceInfo, Packet, Result};
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -26,6 +25,8 @@ struct PairingRequest {
     device_info: DeviceInfo,
     /// Remote address
     remote_addr: SocketAddr,
+    /// Device certificate (PEM encoded)
+    device_cert: Vec<u8>,
 }
 
 /// Pairing service configuration
@@ -65,6 +66,9 @@ pub struct PairingService {
 
     /// Configuration
     config: PairingConfig,
+
+    /// Connection manager for sending packets over TLS (Protocol v8)
+    connection_manager: Option<Arc<RwLock<crate::connection::ConnectionManager>>>,
 }
 
 impl PairingService {
@@ -85,7 +89,13 @@ impl PairingService {
             event_tx,
             event_rx: Arc::new(RwLock::new(event_rx)),
             config,
+            connection_manager: None,
         })
+    }
+
+    /// Set the connection manager (called after initialization to avoid circular dependencies)
+    pub fn set_connection_manager(&mut self, connection_manager: Arc<RwLock<crate::connection::ConnectionManager>>) {
+        self.connection_manager = Some(connection_manager);
     }
 
     /// Get a receiver for pairing events
@@ -144,8 +154,8 @@ impl PairingService {
         let packet = handler.request_pairing();
         drop(handler);
 
-        // Connect and send request
-        match self.send_pairing_packet(&packet, remote_addr).await {
+        // Send request over TLS connection (Protocol v8)
+        match self.send_pairing_packet(&packet, &device_id).await {
             Ok(_) => {
                 // Track active request
                 let mut requests = self.active_requests.write().await;
@@ -155,6 +165,7 @@ impl PairingService {
                         started_at: Instant::now(),
                         device_info: device_info.clone(),
                         remote_addr,
+                        device_cert: Vec::new(), // Will be received in response
                     },
                 );
                 drop(requests);
@@ -188,7 +199,7 @@ impl PairingService {
         device_info: &DeviceInfo,
         device_cert: &[u8],
         remote_addr: SocketAddr,
-    ) -> Result<()> {
+    ) -> Result<Option<Packet>> {
         let device_id = &device_info.device_id;
 
         debug!(
@@ -211,6 +222,19 @@ impl PairingService {
                     device_info.device_name, device_id
                 );
 
+                // Store the pairing request with certificate for later acceptance
+                let mut requests = self.active_requests.write().await;
+                requests.insert(
+                    device_id.clone(),
+                    PairingRequest {
+                        started_at: Instant::now(),
+                        device_info: device_info.clone(),
+                        remote_addr,
+                        device_cert: device_cert.to_vec(),
+                    },
+                );
+                drop(requests);
+
                 let fingerprint = CertificateInfo::calculate_fingerprint(device_cert);
 
                 let _ = self.event_tx.send(PairingEvent::RequestReceived {
@@ -218,6 +242,9 @@ impl PairingService {
                     device_name: device_info.device_name.clone(),
                     their_fingerprint: fingerprint,
                 });
+
+                // Start timeout checker
+                self.spawn_timeout_checker();
             }
             PairingStatus::Paired => {
                 info!("Successfully paired with device {}", device_id);
@@ -227,9 +254,12 @@ impl PairingService {
                 requests.remove(device_id);
                 drop(requests);
 
+                let fingerprint = CertificateInfo::calculate_fingerprint(device_cert);
+
                 let _ = self.event_tx.send(PairingEvent::PairingAccepted {
                     device_id: device_id.clone(),
                     device_name: device_info.device_name.clone(),
+                    certificate_fingerprint: fingerprint,
                 });
             }
             PairingStatus::Unpaired => {
@@ -248,74 +278,142 @@ impl PairingService {
             _ => {}
         }
 
-        // Send response if needed
-        if should_respond {
-            if let Some(response) = response_packet {
-                if let Err(e) = self.send_pairing_packet(&response, remote_addr).await {
-                    error!("Failed to send pairing response: {}", e);
-                }
-            }
-        }
-
-        Ok(())
+        // Return response packet if needed (caller sends it through existing connection)
+        Ok(if should_respond { response_packet } else { None })
     }
 
     /// Accept a pairing request (user confirmed)
-    pub async fn accept_pairing(
-        &self,
-        device_id: &str,
-        device_info: &DeviceInfo,
-        device_cert: &[u8],
-    ) -> Result<()> {
+    pub async fn accept_pairing(&self, device_id: &str) -> Result<()> {
         info!("Accepting pairing with device {}", device_id);
 
-        let mut handler = self.handler.write().await;
-        let response = handler.accept_pairing(device_id, device_cert)?;
-        drop(handler);
+        // Get the stored pairing request with certificate and address
+        debug!("Step 1: Retrieving stored pairing request data for {}", device_id);
+        let request_data = {
+            let requests = self.active_requests.read().await;
+            let data = requests
+                .get(device_id)
+                .map(|r| (r.device_info.clone(), r.device_cert.clone(), r.remote_addr));
+            debug!("Found active request: {}", data.is_some());
+            data
+        };
 
-        // Get remote address from active requests
-        let requests = self.active_requests.read().await;
-        let remote_addr = requests.get(device_id).map(|r| r.remote_addr);
-        drop(requests);
+        debug!("Step 2: Extracting device info, cert, and address");
+        let (device_info, device_cert, remote_addr) = request_data.ok_or_else(|| {
+            error!("No active pairing request found for device {}", device_id);
+            crate::ProtocolError::Configuration(format!(
+                "No active pairing request for device {}",
+                device_id
+            ))
+        })?;
+        debug!("Device info: name={}, addr={}", device_info.device_name, remote_addr);
 
-        if let Some(addr) = remote_addr {
-            // Send accept response
-            if let Err(e) = self.send_pairing_packet(&response, addr).await {
-                error!("Failed to send pairing accept: {}", e);
+        debug!("Step 3: Creating pairing acceptance response packet");
+        let response = {
+            let mut handler = self.handler.write().await;
+            let resp = handler.accept_pairing(device_id, &device_cert)?;
+            debug!("Response packet created: type={}", resp.packet_type);
+            resp
+        };
+
+        debug!("Step 4: Checking for active TLS connection");
+        // Ensure there's an active TLS connection before sending the acceptance packet
+        // Unpaired devices disconnect immediately, so we may need to reconnect
+        if let Some(conn_mgr) = &self.connection_manager {
+            debug!("Connection manager is available");
+            let conn_mgr_ref = conn_mgr.read().await;
+
+            // Check if there's an active connection
+            debug!("Step 5: Checking has_connection for {}", device_id);
+            let has_connection = conn_mgr_ref.has_connection(device_id).await;
+            debug!("Active connection exists: {}", has_connection);
+
+            // If no active connection, establish one before sending the acceptance packet
+            if !has_connection {
+                info!(
+                    "No active connection to {}, establishing connection to send pairing acceptance",
+                    device_id
+                );
+                drop(conn_mgr_ref); // Release the read lock before connecting
+
+                debug!("Step 6: Establishing new TLS connection to {} at {} with pairing certificate", device_id, remote_addr);
+                // Establish a new TLS connection using the certificate from the pairing request
+                // (certificate isn't in DeviceManager yet since we haven't completed pairing)
+                let conn_mgr = conn_mgr.read().await;
+                match conn_mgr.connect_with_cert(device_id, remote_addr, device_cert.clone()).await {
+                    Ok(_) => debug!("Connection established successfully"),
+                    Err(e) => {
+                        error!("Failed to establish connection: {}", e);
+                        return Err(e);
+                    }
+                }
+                drop(conn_mgr);
+
+                debug!("Step 7: Waiting 100ms for connection to stabilize");
+                // Wait a brief moment for the connection to be fully established
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                debug!("Connection should be ready");
+            } else {
+                debug!("Using existing active connection");
+            }
+        } else {
+            error!("Connection manager is not set - cannot send pairing acceptance");
+            return Err(crate::ProtocolError::Configuration(
+                "Connection manager not set".to_string()
+            ));
+        }
+
+        debug!("Step 8: Sending pairing acceptance packet to {}", device_id);
+        // Send accept response over TLS connection (Protocol v8)
+        match self.send_pairing_packet(&response, device_id).await {
+            Ok(_) => debug!("Pairing acceptance packet sent successfully"),
+            Err(e) => {
+                error!("Failed to send pairing acceptance packet: {}", e);
                 return Err(e);
             }
         }
 
-        // Emit event
+        debug!("Step 9: Removing device from active pairing requests");
+        // Remove from active requests now that pairing is accepted
+        self.active_requests.write().await.remove(device_id);
+        debug!("Device removed from active requests");
+
+        debug!("Step 10: Sending PairingAccepted event");
         let _ = self.event_tx.send(PairingEvent::PairingAccepted {
             device_id: device_id.to_string(),
             device_name: device_info.device_name.clone(),
+            certificate_fingerprint: CertificateInfo::calculate_fingerprint(&device_cert),
         });
 
+        info!("Successfully accepted pairing with device {}", device_id);
         Ok(())
+    }
+
+    /// Get remote address for an active pairing request
+    async fn get_request_addr(&self, device_id: &str) -> Option<SocketAddr> {
+        self.active_requests
+            .read()
+            .await
+            .get(device_id)
+            .map(|r| r.remote_addr)
     }
 
     /// Reject a pairing request (user declined)
     pub async fn reject_pairing(&self, device_id: &str) -> Result<()> {
         info!("Rejecting pairing with device {}", device_id);
 
-        let mut handler = self.handler.write().await;
-        let response = handler.reject_pairing();
-        drop(handler);
+        let response = {
+            let mut handler = self.handler.write().await;
+            handler.reject_pairing()
+        };
 
-        // Get remote address from active requests
-        let mut requests = self.active_requests.write().await;
-        let remote_addr = requests.remove(device_id).map(|r| r.remote_addr);
-        drop(requests);
+        // Remove from active requests
+        self.active_requests.write().await.remove(device_id);
 
-        if let Some(addr) = remote_addr {
-            // Send reject response
-            if let Err(e) = self.send_pairing_packet(&response, addr).await {
-                warn!("Failed to send pairing reject: {}", e);
-            }
+        // Send reject response over TLS connection (Protocol v8)
+        if let Err(e) = self.send_pairing_packet(&response, device_id).await {
+            warn!("Failed to send pairing reject: {}", e);
         }
 
-        // Emit event
         let _ = self.event_tx.send(PairingEvent::PairingRejected {
             device_id: device_id.to_string(),
             reason: Some("User declined".to_string()),
@@ -328,14 +426,9 @@ impl PairingService {
     pub async fn unpair(&self, device_id: &str) -> Result<()> {
         info!("Unpairing from device {}", device_id);
 
-        let mut handler = self.handler.write().await;
-        let _packet = handler.unpair(device_id)?;
-        drop(handler);
+        // TODO(#31): Send unpair packet via TLS connection
+        let _packet = self.handler.write().await.unpair(device_id)?;
 
-        // Note: We don't send the unpair packet here because we need
-        // a TLS connection to send it securely. This will be done in Issue #31.
-
-        // Emit event
         let _ = self.event_tx.send(PairingEvent::DeviceUnpaired {
             device_id: device_id.to_string(),
         });
@@ -349,18 +442,20 @@ impl PairingService {
         handler.is_paired(device_id)
     }
 
-    /// Send a pairing packet to a device
-    async fn send_pairing_packet(&self, packet: &Packet, addr: SocketAddr) -> Result<()> {
-        debug!("Sending pairing packet to {}", addr);
+    /// Send a pairing packet to a device over the TLS connection (Protocol v8)
+    async fn send_pairing_packet(&self, packet: &Packet, device_id: &str) -> Result<()> {
+        debug!("Sending pairing packet '{}' to device {}", packet.packet_type, device_id);
 
-        let mut conn = TcpConnection::connect(addr).await?;
-        conn.send_packet(packet).await?;
-
-        // For pairing, we close the connection immediately after sending
-        // Real communication will use TLS (Issue #31)
-        conn.close().await?;
-
-        Ok(())
+        // Protocol v8: Send pairing packets over the established TLS connection
+        if let Some(conn_mgr) = &self.connection_manager {
+            let conn_mgr = conn_mgr.read().await;
+            conn_mgr.send_packet(device_id, packet).await?;
+            Ok(())
+        } else {
+            Err(crate::ProtocolError::Configuration(
+                "Connection manager not set - cannot send pairing packets in Protocol v8".to_string()
+            ))
+        }
     }
 
     /// Spawn timeout checker task
@@ -407,7 +502,6 @@ impl PairingService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DeviceType;
     use tempfile::TempDir;
 
     #[tokio::test]

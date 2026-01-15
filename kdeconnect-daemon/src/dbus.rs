@@ -36,6 +36,8 @@ pub struct DeviceInfo {
     pub is_reachable: bool,
     /// Is device connected (TLS)
     pub is_connected: bool,
+    /// Has pending pairing request
+    pub has_pairing_request: bool,
     /// Last seen timestamp (UNIX timestamp)
     pub last_seen: i64,
     /// Supported incoming plugin capabilities
@@ -53,6 +55,7 @@ impl From<&Device> for DeviceInfo {
             is_paired: device.is_paired(),
             is_reachable: device.is_reachable(),
             is_connected: device.is_connected(),
+            has_pairing_request: false, // Will be updated by caller if needed
             last_seen: device.last_seen as i64,
             incoming_capabilities: device.info.incoming_capabilities.clone(),
             outgoing_capabilities: device.info.outgoing_capabilities.clone(),
@@ -83,6 +86,8 @@ pub struct KdeConnectInterface {
     pairing_service: Option<Arc<RwLock<kdeconnect_protocol::pairing::PairingService>>>,
     /// MPRIS manager for local media player control (optional)
     mpris_manager: Option<Arc<crate::mpris_manager::MprisManager>>,
+    /// Pending pairing requests (device_id -> has_pending_request)
+    pending_pairing_requests: Arc<RwLock<HashMap<String, bool>>>,
     /// DBus connection for emitting signals
     dbus_connection: Connection,
 }
@@ -96,6 +101,7 @@ impl KdeConnectInterface {
         device_config_registry: Arc<RwLock<crate::device_config::DeviceConfigRegistry>>,
         pairing_service: Option<Arc<RwLock<kdeconnect_protocol::pairing::PairingService>>>,
         mpris_manager: Option<Arc<crate::mpris_manager::MprisManager>>,
+        pending_pairing_requests: Arc<RwLock<HashMap<String, bool>>>,
         dbus_connection: Connection,
     ) -> Self {
         Self {
@@ -105,6 +111,7 @@ impl KdeConnectInterface {
             device_config_registry,
             pairing_service,
             mpris_manager,
+            pending_pairing_requests,
             dbus_connection,
         }
     }
@@ -122,9 +129,15 @@ impl KdeConnectInterface {
         let device_manager = self.device_manager.read().await;
         let devices = device_manager.devices();
 
+        let pending_requests = self.pending_pairing_requests.read().await;
+
         let mut result = HashMap::new();
         for device in devices {
-            result.insert(device.id().to_string(), DeviceInfo::from(device));
+            let device_id = device.id().to_string();
+            let mut info = DeviceInfo::from(device);
+
+            info.has_pairing_request = pending_requests.contains_key(&device_id);
+            result.insert(device_id, info);
         }
 
         info!("DBus: Returning {} devices", result.len());
@@ -146,7 +159,10 @@ impl KdeConnectInterface {
             .get_device(&device_id)
             .ok_or_else(|| zbus::fdo::Error::Failed(format!("Device not found: {}", device_id)))?;
 
-        Ok(DeviceInfo::from(device))
+        let mut info = DeviceInfo::from(device);
+        info.has_pairing_request = self.pending_pairing_requests.read().await.contains_key(&device_id);
+
+        Ok(info)
     }
 
     /// Request pairing with a device
@@ -236,6 +252,59 @@ impl KdeConnectInterface {
         })?;
 
         info!("Device {} unpaired successfully", device_id);
+        Ok(())
+    }
+
+    /// Accept a pairing request from a device
+    ///
+    /// # Arguments
+    /// * `device_id` - The device ID to accept pairing from
+    ///
+    /// # Returns
+    /// Success or error message
+    async fn accept_pairing(&self, device_id: String) -> Result<(), zbus::fdo::Error> {
+        info!("DBus: AcceptPairing called for {}", device_id);
+
+        // Check if pairing service is available
+        let pairing_service = self.pairing_service.as_ref().ok_or_else(|| {
+            zbus::fdo::Error::Failed("Pairing service not initialized".to_string())
+        })?;
+
+        // Accept pairing (certificate is retrieved from stored request)
+        let pairing_service = pairing_service.read().await;
+        pairing_service.accept_pairing(&device_id).await.map_err(|e| {
+            zbus::fdo::Error::Failed(format!("Failed to accept pairing: {}", e))
+        })?;
+
+        info!("Pairing accepted for device {}", device_id);
+        Ok(())
+    }
+
+    /// Reject a pairing request from a device
+    ///
+    /// # Arguments
+    /// * `device_id` - The device ID to reject pairing from
+    ///
+    /// # Returns
+    /// Success or error message
+    async fn reject_pairing(&self, device_id: String) -> Result<(), zbus::fdo::Error> {
+        info!("DBus: RejectPairing called for {}", device_id);
+
+        // Check if pairing service is available
+        let pairing_service = self.pairing_service.as_ref().ok_or_else(|| {
+            zbus::fdo::Error::Failed("Pairing service not initialized".to_string())
+        })?;
+
+        // Reject pairing
+        let pairing_service = pairing_service.read().await;
+        pairing_service
+            .reject_pairing(&device_id)
+            .await
+            .map_err(|e| {
+                zbus::fdo::Error::Failed(format!("Failed to reject pairing: {}", e))
+            })?;
+
+        info!("Pairing rejected for device {}", device_id);
         Ok(())
     }
 
@@ -1199,6 +1268,7 @@ impl DbusServer {
         device_config_registry: Arc<RwLock<crate::device_config::DeviceConfigRegistry>>,
         pairing_service: Option<Arc<RwLock<kdeconnect_protocol::pairing::PairingService>>>,
         mpris_manager: Option<Arc<crate::mpris_manager::MprisManager>>,
+        pending_pairing_requests: Arc<RwLock<std::collections::HashMap<String, bool>>>,
     ) -> Result<Self> {
         info!("Starting DBus server on {}", SERVICE_NAME);
 
@@ -1217,6 +1287,7 @@ impl DbusServer {
             device_config_registry,
             pairing_service,
             mpris_manager,
+            pending_pairing_requests,
             connection.clone(),
         );
 

@@ -363,6 +363,62 @@ impl CosmicNotifier {
 
         Ok(())
     }
+
+    /// Subscribe to notification action signals
+    ///
+    /// Returns a stream of (notification_id, action_key) tuples when users click notification actions.
+    pub async fn subscribe_actions(
+        &self,
+    ) -> Result<impl futures::Stream<Item = (u32, String)> + Unpin> {
+        use futures::stream::StreamExt;
+
+        // Create a proxy for the notifications service
+        let proxy = zbus::Proxy::new(
+            &self.connection,
+            "org.freedesktop.Notifications",
+            "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications",
+        )
+        .await
+        .context("Failed to create notifications proxy")?;
+
+        // Get the message stream for the proxy
+        let mut stream = zbus::MessageStream::for_match_rule(
+            zbus::MatchRule::builder()
+                .msg_type(zbus::message::Type::Signal)
+                .sender("org.freedesktop.Notifications")?
+                .interface("org.freedesktop.Notifications")?
+                .member("ActionInvoked")?
+                .build(),
+            &self.connection,
+            Some(64),
+        )
+        .await
+        .context("Failed to create message stream")?;
+
+        let action_stream = async_stream::stream! {
+            while let Some(msg_result) = stream.next().await {
+                // Handle the Result from the stream
+                if let Ok(msg) = msg_result {
+                    // Check if this is an ActionInvoked signal
+                    if let Some(member) = msg.header().member() {
+                        if member.as_str() == "ActionInvoked" {
+                            // Deserialize the message body
+                            if let Ok((notification_id, action_key)) = msg.body().deserialize::<(u32, String)>() {
+                                debug!(
+                                    "Notification action invoked: id={}, action={}",
+                                    notification_id, action_key
+                                );
+                                yield (notification_id, action_key);
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        Ok(Box::pin(action_stream))
+    }
 }
 
 #[cfg(test)]

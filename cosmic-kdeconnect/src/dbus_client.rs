@@ -31,6 +31,8 @@ pub struct DeviceInfo {
     pub is_reachable: bool,
     /// Is device connected (TLS)
     pub is_connected: bool,
+    /// Has pending pairing request
+    pub has_pairing_request: bool,
     /// Last seen timestamp (UNIX timestamp)
     pub last_seen: i64,
     /// Supported incoming plugin capabilities
@@ -111,6 +113,12 @@ trait KdeConnect {
 
     /// Unpair a device
     async fn unpair_device(&self, device_id: &str) -> zbus::Result<()>;
+
+    /// Accept an incoming pairing request
+    async fn accept_pairing(&self, device_id: &str) -> zbus::Result<()>;
+
+    /// Reject an incoming pairing request
+    async fn reject_pairing(&self, device_id: &str) -> zbus::Result<()>;
 
     /// Trigger device discovery
     async fn refresh_discovery(&self) -> zbus::Result<()>;
@@ -388,6 +396,24 @@ impl DbusClient {
             .unpair_device(device_id)
             .await
             .context("Failed to unpair device")
+    }
+
+    /// Accept an incoming pairing request
+    pub async fn accept_pairing(&self, device_id: &str) -> Result<()> {
+        info!("Accepting pairing request from device {}", device_id);
+        self.proxy
+            .accept_pairing(device_id)
+            .await
+            .context("Failed to accept pairing")
+    }
+
+    /// Reject an incoming pairing request
+    pub async fn reject_pairing(&self, device_id: &str) -> Result<()> {
+        info!("Rejecting pairing request from device {}", device_id);
+        self.proxy
+            .reject_pairing(device_id)
+            .await
+            .context("Failed to reject pairing")
     }
 
     /// Trigger device discovery

@@ -83,6 +83,8 @@ enum Message {
     RefreshDevices,
     PairDevice(String),
     UnpairDevice(String),
+    AcceptPairing(String),
+    RejectPairing(String),
     SelectDevice(String),
     BackToDeviceList,
     SendPing(String),
@@ -186,6 +188,18 @@ impl Application for KdeConnectApp {
             Message::UnpairDevice(device_id) => {
                 tracing::info!("Unpairing device: {}", device_id);
                 Task::perform(unpair_device(device_id), |_| {
+                    cosmic::Action::App(Message::RefreshDevices)
+                })
+            }
+            Message::AcceptPairing(device_id) => {
+                tracing::info!("Accepting pairing request from: {}", device_id);
+                Task::perform(accept_pairing(device_id), |_| {
+                    cosmic::Action::App(Message::RefreshDevices)
+                })
+            }
+            Message::RejectPairing(device_id) => {
+                tracing::info!("Rejecting pairing request from: {}", device_id);
+                Task::perform(reject_pairing(device_id), |_| {
                     cosmic::Action::App(Message::RefreshDevices)
                 })
             }
@@ -406,7 +420,9 @@ impl KdeConnectApp {
 
     /// Card for individual device
     fn device_card<'a>(&self, device: &'a dbus_client::DeviceInfo) -> Element<'a, Message> {
-        let status = if device.is_connected {
+        let status = if device.has_pairing_request {
+            "Pairing Request!"
+        } else if device.is_connected {
             "Connected"
         } else if device.is_paired {
             "Paired"
@@ -414,12 +430,24 @@ impl KdeConnectApp {
             "Available"
         };
 
-        let pair_button = if device.is_paired {
+        let pair_button: Element<_> = if device.has_pairing_request {
+            // Show Accept/Reject buttons for pending pairing requests
+            row![
+                widget::button::suggested("Accept")
+                    .on_press(Message::AcceptPairing(device.id.clone())),
+                widget::button::destructive("Reject")
+                    .on_press(Message::RejectPairing(device.id.clone())),
+            ]
+            .spacing(8)
+            .into()
+        } else if device.is_paired {
             widget::button::standard("Unpair")
                 .on_press(Message::UnpairDevice(device.id.clone()))
+                .into()
         } else {
             widget::button::suggested("Pair")
                 .on_press(Message::PairDevice(device.id.clone()))
+                .into()
         };
 
         let device_icon = format!("{}-symbolic", device.device_type);
@@ -848,6 +876,24 @@ async fn unpair_device(device_id: String) {
     if let Ok((client, _)) = DbusClient::connect().await {
         if let Err(e) = client.unpair_device(&device_id).await {
             tracing::error!("Failed to unpair device {}: {}", device_id, e);
+        }
+    }
+}
+
+/// Accept an incoming pairing request
+async fn accept_pairing(device_id: String) {
+    if let Ok((client, _)) = DbusClient::connect().await {
+        if let Err(e) = client.accept_pairing(&device_id).await {
+            tracing::error!("Failed to accept pairing from {}: {}", device_id, e);
+        }
+    }
+}
+
+/// Reject an incoming pairing request
+async fn reject_pairing(device_id: String) {
+    if let Ok((client, _)) = DbusClient::connect().await {
+        if let Err(e) = client.reject_pairing(&device_id).await {
+            tracing::error!("Failed to reject pairing from {}: {}", device_id, e);
         }
     }
 }

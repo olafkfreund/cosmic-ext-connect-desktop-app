@@ -219,26 +219,24 @@ pub enum ProtocolError {
 
     /// TLS/SSL error (secure connections, certificate validation)
     ///
-    /// Automatically converted from `rustls::Error`.
+    /// Automatically converted from `openssl::ssl::Error`.
     ///
     /// # Examples
     ///
     /// ```rust,no_run
     /// use kdeconnect_protocol::Result;
-    /// use rustls::ClientConnection;
     ///
     /// fn establish_secure_connection() -> Result<()> {
     ///     // TLS error automatically converts to ProtocolError::Tls
-    ///     // let connection = ClientConnection::new(...)?;
     ///     Ok(())
     /// }
     /// ```
     #[error("TLS error: {0}")]
-    Tls(#[from] rustls::Error),
+    Tls(#[from] openssl::ssl::Error),
 
     /// Certificate generation or management error
     ///
-    /// Automatically converted from `rcgen::Error`.
+    /// Automatically converted from `openssl::error::ErrorStack`.
     ///
     /// # Examples
     ///
@@ -252,7 +250,7 @@ pub enum ProtocolError {
     /// }
     /// ```
     #[error("Certificate error: {0}")]
-    Certificate(#[from] rcgen::Error),
+    Certificate(#[from] openssl::error::ErrorStack),
 
     /// Certificate validation error
     ///

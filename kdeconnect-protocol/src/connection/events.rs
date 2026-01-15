@@ -30,6 +30,8 @@ pub enum ConnectionEvent {
         device_id: String,
         /// The received packet
         packet: Packet,
+        /// Remote address of the connection
+        remote_addr: SocketAddr,
     },
 
     /// An error occurred with a connection

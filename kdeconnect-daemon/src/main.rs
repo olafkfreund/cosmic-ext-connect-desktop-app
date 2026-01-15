@@ -68,6 +68,12 @@ struct Daemon {
 
     /// MPRIS manager for local media player control
     mpris_manager: Option<Arc<mpris_manager::MprisManager>>,
+
+    /// Map of notification IDs to device IDs for pairing notifications
+    pairing_notifications: Arc<RwLock<std::collections::HashMap<u32, String>>>,
+
+    /// Map of device IDs to pending pairing request status
+    pending_pairing_requests: Arc<RwLock<std::collections::HashMap<String, bool>>>,
 }
 
 impl Daemon {
@@ -137,6 +143,7 @@ impl Daemon {
         // Create connection manager (not started yet)
         let connection_manager = Arc::new(RwLock::new(ConnectionManager::new(
             certificate.clone(),
+            device_info.clone(),
             device_manager.clone(),
             connection_config,
         )));
@@ -184,6 +191,8 @@ impl Daemon {
             cosmic_notifier,
             dbus_server: None,
             mpris_manager,
+            pairing_notifications: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            pending_pairing_requests: Arc::new(RwLock::new(std::collections::HashMap::new())),
         })
     }
 
@@ -397,6 +406,12 @@ impl Daemon {
         // Wrap in Arc<RwLock> for shared access
         let pairing_service = Arc::new(RwLock::new(pairing_service));
 
+        // Set connection manager for Protocol v8 (pairing over TLS)
+        {
+            let mut service = pairing_service.write().await;
+            service.set_connection_manager(self.connection_manager.clone());
+        }
+
         // Subscribe to pairing events
         let mut event_rx = {
             let service = pairing_service.read().await;
@@ -410,10 +425,19 @@ impl Daemon {
         let device_manager = self.device_manager.clone();
         let dbus_server = self.dbus_server.clone();
         let cosmic_notifier = self.cosmic_notifier.clone();
+        let pairing_notifications = self.pairing_notifications.clone();
+        let pending_pairing_requests = self.pending_pairing_requests.clone();
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
                 if let Err(e) =
-                    Self::handle_pairing_event(event, &device_manager, &dbus_server, &cosmic_notifier).await
+                    Self::handle_pairing_event(
+                        event,
+                        &device_manager,
+                        &dbus_server,
+                        &cosmic_notifier,
+                        &pairing_notifications,
+                        &pending_pairing_requests,
+                    ).await
                 {
                     error!("Error handling pairing event: {}", e);
                 }
@@ -432,6 +456,8 @@ impl Daemon {
         device_manager: &Arc<RwLock<DeviceManager>>,
         dbus_server: &Option<Arc<DbusServer>>,
         cosmic_notifier: &Option<Arc<cosmic_notifications::CosmicNotifier>>,
+        pairing_notifications: &Arc<RwLock<std::collections::HashMap<u32, String>>>,
+        pending_pairing_requests: &Arc<RwLock<std::collections::HashMap<String, bool>>>,
     ) -> Result<()> {
         match event {
             PairingEvent::RequestSent {
@@ -454,6 +480,10 @@ impl Daemon {
                 );
                 info!("User should verify fingerprints match on both devices");
 
+                // Track pending pairing request
+                pending_pairing_requests.write().await.insert(device_id.clone(), true);
+                info!("Added {} to pending pairing requests", device_id);
+
                 // Emit DBus signal for pairing request
                 if let Some(dbus) = dbus_server {
                     if let Err(e) = dbus.emit_pairing_request(&device_id).await {
@@ -463,18 +493,46 @@ impl Daemon {
 
                 // Show COSMIC notification for pairing request
                 if let Some(notifier) = cosmic_notifier {
-                    if let Err(e) = notifier.notify_pairing_request(&device_name).await {
-                        warn!("Failed to send pairing request notification: {}", e);
+                    info!("Sending pairing request notification for {}", device_name);
+                    match notifier.notify_pairing_request(&device_name).await {
+                        Ok(notification_id) => {
+                            info!("Pairing request notification sent successfully (ID: {})", notification_id);
+                            // Store notification ID so we can handle clicks
+                            let mut notifications = pairing_notifications.write().await;
+                            notifications.insert(notification_id, device_id.clone());
+                        }
+                        Err(e) => {
+                            warn!("Failed to send pairing request notification: {}", e);
+                        }
                     }
+                } else {
+                    warn!("COSMIC notifier not available for pairing request");
                 }
             }
             PairingEvent::PairingAccepted {
                 device_id,
                 device_name,
+                certificate_fingerprint,
             } => {
                 info!("Pairing accepted with {} ({})", device_name, device_id);
+                Self::clear_pending_pairing_request(pending_pairing_requests, &device_id).await;
 
-                // Emit DBus signal for pairing status changed
+                // Mark device as paired and save to disk
+                {
+                    let mut manager = device_manager.write().await;
+                    if let Err(e) = manager
+                        .mark_paired(&device_id, certificate_fingerprint.clone())
+                        .and_then(|()| manager.save_registry())
+                    {
+                        error!("Failed to persist pairing for device {}: {}", device_id, e);
+                    } else {
+                        info!(
+                            "Device {} paired with fingerprint: {}",
+                            device_id, certificate_fingerprint
+                        );
+                    }
+                }
+
                 if let Some(dbus) = dbus_server {
                     if let Err(e) = dbus.emit_pairing_status_changed(&device_id, "paired").await {
                         warn!("Failed to emit PairingStatusChanged signal: {}", e);
@@ -486,8 +544,8 @@ impl Daemon {
                     "Pairing rejected with device {} (reason: {:?})",
                     device_id, reason
                 );
+                Self::clear_pending_pairing_request(pending_pairing_requests, &device_id).await;
 
-                // Emit DBus signal for pairing status changed
                 if let Some(dbus) = dbus_server {
                     if let Err(e) = dbus
                         .emit_pairing_status_changed(&device_id, "rejected")
@@ -562,6 +620,16 @@ impl Daemon {
         Ok(())
     }
 
+    /// Clear a pending pairing request from the tracking map
+    async fn clear_pending_pairing_request(
+        pending_pairing_requests: &Arc<RwLock<std::collections::HashMap<String, bool>>>,
+        device_id: &str,
+    ) {
+        if pending_pairing_requests.write().await.remove(device_id).is_some() {
+            info!("Removed {} from pending pairing requests", device_id);
+        }
+    }
+
     /// Start connection manager
     async fn start_connections(&mut self) -> Result<()> {
         info!("Starting connection manager...");
@@ -587,6 +655,7 @@ impl Daemon {
         let device_manager = self.device_manager.clone();
         let plugin_manager = self.plugin_manager.clone();
         let connection_mgr = self.connection_manager.clone();
+        let pairing_service = self.pairing_service.clone();
         let dbus_server = self.dbus_server.clone();
         let cosmic_notifier = self.cosmic_notifier.clone();
         let mpris_manager = self.mpris_manager.clone();
@@ -597,6 +666,7 @@ impl Daemon {
                     &device_manager,
                     &plugin_manager,
                     &connection_mgr,
+                    &pairing_service,
                     &dbus_server,
                     &cosmic_notifier,
                     &mpris_manager,
@@ -625,6 +695,7 @@ impl Daemon {
             self.device_config_registry.clone(),
             self.pairing_service.clone(),
             self.mpris_manager.clone(),
+            self.pending_pairing_requests.clone(),
         )
         .await
         .context("Failed to start DBus server")?;
@@ -749,6 +820,69 @@ impl Daemon {
 
         info!("Clipboard monitor started successfully");
 
+        // Start notification action listener if available
+        if let Some(notifier) = &self.cosmic_notifier {
+            info!("Starting notification action listener...");
+
+            let notifier_clone = notifier.clone();
+            let pairing_service = self.pairing_service.clone();
+            let pairing_notifications = self.pairing_notifications.clone();
+            let device_manager = self.device_manager.clone();
+
+            tokio::spawn(async move {
+                use futures::StreamExt;
+
+                match notifier_clone.subscribe_actions().await {
+                    Ok(mut action_stream) => {
+                        info!("Notification action listener started");
+
+                        while let Some((notification_id, action_key)) = action_stream.next().await {
+                            debug!("Received notification action: id={}, action={}", notification_id, action_key);
+
+                            // Check if this is a pairing notification
+                            let device_id = {
+                                let notifications = pairing_notifications.read().await;
+                                notifications.get(&notification_id).cloned()
+                            };
+
+                            if let Some(device_id) = device_id {
+                                info!("Handling pairing action '{}' for device {}", action_key, device_id);
+
+                                if let Some(pairing_svc) = &pairing_service {
+                                    let pairing = pairing_svc.read().await;
+
+                                    match action_key.as_str() {
+                                        "accept" => {
+                                            info!("User accepted pairing for {}", device_id);
+                                            if let Err(e) = pairing.accept_pairing(&device_id).await {
+                                                error!("Failed to accept pairing: {}", e);
+                                            }
+                                        }
+                                        "reject" => {
+                                            info!("User rejected pairing for {}", device_id);
+                                            if let Err(e) = pairing.reject_pairing(&device_id).await {
+                                                error!("Failed to reject pairing: {}", e);
+                                            }
+                                        }
+                                        _ => {
+                                            warn!("Unknown notification action: {}", action_key);
+                                        }
+                                    }
+                                }
+
+                                // Remove notification from tracking
+                                let mut notifications = pairing_notifications.write().await;
+                                notifications.remove(&notification_id);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to subscribe to notification actions: {}", e);
+                    }
+                }
+            });
+        }
+
         Ok(())
     }
 
@@ -758,6 +892,7 @@ impl Daemon {
         device_manager: &Arc<RwLock<DeviceManager>>,
         plugin_manager: &Arc<RwLock<PluginManager>>,
         connection_mgr: &Arc<RwLock<ConnectionManager>>,
+        pairing_service: &Option<Arc<RwLock<PairingService>>>,
         dbus_server: &Option<Arc<DbusServer>>,
         cosmic_notifier: &Option<Arc<cosmic_notifications::CosmicNotifier>>,
         mpris_manager: &Option<Arc<mpris_manager::MprisManager>>,
@@ -775,18 +910,26 @@ impl Daemon {
                     dev_manager.get_device(&device_id).map(|d| d.name().to_string())
                 };
 
-                // Initialize per-device plugins
+                // Initialize per-device plugins (only for paired devices)
                 {
                     let dev_manager = device_manager.read().await;
                     if let Some(device) = dev_manager.get_device(&device_id) {
-                        let mut plug_manager = plugin_manager.write().await;
-                        if let Err(e) = plug_manager.init_device_plugins(&device_id, device).await {
-                            error!(
-                                "Failed to initialize plugins for device {}: {}",
-                                device_id, e
-                            );
+                        // Only initialize plugins for paired/trusted devices
+                        if device.is_paired() {
+                            let mut plug_manager = plugin_manager.write().await;
+                            if let Err(e) = plug_manager.init_device_plugins(&device_id, device).await {
+                                error!(
+                                    "Failed to initialize plugins for device {}: {}",
+                                    device_id, e
+                                );
+                            } else {
+                                info!("Initialized plugins for device {}", device_id);
+                            }
                         } else {
-                            info!("Initialized plugins for device {}", device_id);
+                            info!(
+                                "Device {} connected but not paired - plugins not initialized",
+                                device_id
+                            );
                         }
                     } else {
                         warn!(
@@ -807,13 +950,14 @@ impl Daemon {
                 }
 
                 // Show COSMIC notification for device connection
-                if let Some(notifier) = cosmic_notifier {
-                    if let Some(name) = device_name {
-                        if let Err(e) = notifier.notify_device_connected(&name).await {
-                            warn!("Failed to send device connected notification: {}", e);
-                        }
-                    }
-                }
+                // TEMPORARILY DISABLED TO REDUCE SPAM
+                // if let Some(notifier) = cosmic_notifier {
+                //     if let Some(name) = device_name {
+                //         if let Err(e) = notifier.notify_device_connected(&name).await {
+                //             warn!("Failed to send device connected notification: {}", e);
+                //         }
+                //     }
+                // }
             }
             ConnectionEvent::Disconnected { device_id, reason } => {
                 info!("Device {} disconnected (reason: {:?})", device_id, reason);
@@ -842,19 +986,73 @@ impl Daemon {
                 }
 
                 // Show COSMIC notification for device disconnection
-                if let Some(notifier) = cosmic_notifier {
-                    if let Some(name) = device_name {
-                        if let Err(e) = notifier.notify_device_disconnected(&name).await {
-                            warn!("Failed to send device disconnected notification: {}", e);
+                // TEMPORARILY DISABLED TO REDUCE SPAM
+                // if let Some(notifier) = cosmic_notifier {
+                //     if let Some(name) = device_name {
+                //         if let Err(e) = notifier.notify_device_disconnected(&name).await {
+                //             warn!("Failed to send device disconnected notification: {}", e);
+                //         }
+                //     }
+                // }
+            }
+            ConnectionEvent::PacketReceived { device_id, packet, remote_addr } => {
+                debug!(
+                    "Received packet '{}' from device {} at {}",
+                    packet.packet_type, device_id, remote_addr
+                );
+
+                // Handle special protocol packets BEFORE routing to plugins
+                match packet.packet_type.as_str() {
+                    "kdeconnect.identity" => {
+                        // Protocol v8: Post-TLS identity exchange - ignore for now
+                        // This is the second identity packet sent after TLS encryption
+                        // In protocol v8, devices exchange identity packets again after TLS
+                        debug!("Received post-TLS identity packet from {} (protocol v8)", device_id);
+                        return Ok(());
+                    }
+                    "kdeconnect.pair" => {
+                        info!("Received pairing packet from {} at {}", device_id, remote_addr);
+
+                        let Some(pairing_svc) = pairing_service else {
+                            warn!("Received pairing packet but pairing service is not available");
+                            return Ok(());
+                        };
+
+                        // Get device info and certificate from device manager
+                        let (device_info, device_cert) = {
+                            let dev_manager = device_manager.read().await;
+                            match dev_manager.get_device(&device_id) {
+                                Some(device) => (device.info.clone(), device.certificate_data.clone().unwrap_or_default()),
+                                None => {
+                                    warn!("Cannot handle pairing packet - device {} not found", device_id);
+                                    return Ok(());
+                                }
+                            }
+                        };
+
+                        // Forward to pairing service and send response if needed
+                        let pairing = pairing_svc.read().await;
+                        match pairing.handle_pairing_packet(&packet, &device_info, &device_cert, remote_addr).await {
+                            Ok(Some(response_packet)) => {
+                                info!("Sending pairing response to {} through existing connection", device_id);
+                                let mgr = connection_mgr.read().await;
+                                if let Err(e) = mgr.send_packet(&device_id, &response_packet).await {
+                                    error!("Failed to send pairing response to {}: {}", device_id, e);
+                                }
+                            }
+                            Ok(None) => {
+                                debug!("No pairing response needed for {}", device_id);
+                            }
+                            Err(e) => {
+                                error!("Failed to handle pairing packet from {}: {}", device_id, e);
+                            }
                         }
+                        return Ok(());
+                    }
+                    _ => {
+                        // Regular packet - route to plugin manager
                     }
                 }
-            }
-            ConnectionEvent::PacketReceived { device_id, packet } => {
-                debug!(
-                    "Received packet '{}' from device {}",
-                    packet.packet_type, device_id
-                );
 
                 // Get device from device manager
                 let mut dev_manager = device_manager.write().await;
@@ -1623,7 +1821,13 @@ async fn main() -> Result<()> {
         .await
         .context("Failed to initialize plugins")?;
 
-    // Start DBus server (before other services so they can emit signals)
+    // Start pairing service FIRST (needed by DBus)
+    daemon
+        .start_pairing()
+        .await
+        .context("Failed to start pairing")?;
+
+    // Start DBus server (after pairing so it can access the pairing service)
     daemon
         .start_dbus()
         .await
@@ -1634,12 +1838,6 @@ async fn main() -> Result<()> {
         .start_discovery()
         .await
         .context("Failed to start discovery")?;
-
-    // Start pairing
-    daemon
-        .start_pairing()
-        .await
-        .context("Failed to start pairing")?;
 
     // Start connection manager
     daemon
