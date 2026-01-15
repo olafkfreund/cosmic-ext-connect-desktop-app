@@ -404,7 +404,7 @@ impl cosmic::Application for KdeConnectApplet {
         }
     }
 
-    fn view(&self) -> Element<Self::Message> {
+    fn view(&self) -> Element<'_, Self::Message> {
         let have_popup = self.popup;
 
         let btn = self
@@ -461,7 +461,7 @@ impl cosmic::Application for KdeConnectApplet {
         ))
     }
 
-    fn view_window(&self, _id: window::Id) -> Element<Self::Message> {
+    fn view_window(&self, _id: window::Id) -> Element<'_, Self::Message> {
         text("KDE Connect").into()
     }
 
@@ -498,13 +498,64 @@ impl KdeConnectApplet {
             .padding(16)
             .width(Length::Fill)
         } else {
-            let device_list: Vec<Element<'_, Message>> = self
-                .devices
-                .iter()
-                .map(|device_state| self.device_row(device_state))
-                .collect();
+            // Group devices by category
+            let mut connected = Vec::new();
+            let mut available = Vec::new();
+            let mut offline = Vec::new();
 
-            column(device_list).spacing(0).width(Length::Fill)
+            for device_state in &self.devices {
+                match categorize_device(device_state) {
+                    DeviceCategory::Connected => connected.push(device_state),
+                    DeviceCategory::Available => available.push(device_state),
+                    DeviceCategory::Offline => offline.push(device_state),
+                }
+            }
+
+            let mut device_groups = column![].spacing(0).width(Length::Fill);
+
+            // Connected devices section
+            if !connected.is_empty() {
+                device_groups = device_groups.push(
+                    container(text("Connected").size(12))
+                        .padding(Padding::from([8.0, 12.0, 4.0, 12.0]))
+                        .width(Length::Fill)
+                );
+                for device_state in &connected {
+                    device_groups = device_groups.push(self.device_row(device_state));
+                }
+            }
+
+            // Available devices section
+            if !available.is_empty() {
+                if !connected.is_empty() {
+                    device_groups = device_groups.push(divider::horizontal::default());
+                }
+                device_groups = device_groups.push(
+                    container(text("Available").size(12))
+                        .padding(Padding::from([8.0, 12.0, 4.0, 12.0]))
+                        .width(Length::Fill)
+                );
+                for device_state in &available {
+                    device_groups = device_groups.push(self.device_row(device_state));
+                }
+            }
+
+            // Offline devices section
+            if !offline.is_empty() {
+                if !connected.is_empty() || !available.is_empty() {
+                    device_groups = device_groups.push(divider::horizontal::default());
+                }
+                device_groups = device_groups.push(
+                    container(text("Offline").size(12))
+                        .padding(Padding::from([8.0, 12.0, 4.0, 12.0]))
+                        .width(Length::Fill)
+                );
+                for device_state in &offline {
+                    device_groups = device_groups.push(self.device_row(device_state));
+                }
+            }
+
+            device_groups
         };
 
         let popup_content = column![
@@ -526,17 +577,13 @@ impl KdeConnectApplet {
     }
 
     fn mpris_controls_view(&self) -> Element<'_, Message> {
-        // If no players available, return empty container
+        // If no players available, return empty space
         if self.mpris_players.is_empty() {
-            return container(text("").size(0))
-                .height(Length::Fixed(0.0))
-                .into();
+            return Element::from(cosmic::iced::widget::Space::new(0, 0));
         }
 
         let Some(selected_player) = &self.selected_player else {
-            return container(text("").size(0))
-                .height(Length::Fixed(0.0))
-                .into();
+            return Element::from(cosmic::iced::widget::Space::new(0, 0));
         };
 
         // Player name/label
@@ -585,13 +632,23 @@ impl KdeConnectApplet {
         let device_icon = device_type_icon(device.info.device_type);
         let status_icon = connection_status_icon(device.connection_state, device.pairing_status);
         let status_text = connection_status_text(device.connection_state, device.pairing_status);
+        let quality_icon = connection_quality_icon(device.connection_state);
 
-        // Device name and status column
-        let name_status_col = column![
+        // Device name and status column with last seen for disconnected devices
+        let mut name_status_col = column![
             text(&device.info.device_name).size(14),
             text(status_text).size(11),
         ]
         .spacing(2);
+
+        // Add last seen timestamp for disconnected devices
+        if !device.is_connected() && device.last_seen > 0 {
+            let last_seen_text = format_last_seen(device.last_seen);
+            name_status_col = name_status_col.push(
+                text(format!("Last seen: {}", last_seen_text))
+                    .size(10)
+            );
+        }
 
         // Info row with optional battery indicator
         let info_row = match device_state.battery_level {
@@ -615,15 +672,22 @@ impl KdeConnectApplet {
         // Build actions row
         let actions_row = self.build_device_actions(device, device_id);
 
-        // Main device row layout
+        // Main device row layout with connection quality indicator
         let content = column![
             row![
                 container(icon::from_name(device_icon).size(28))
                     .width(Length::Fixed(44.0))
                     .padding(8),
-                container(icon::from_name(status_icon).size(14))
-                    .width(Length::Fixed(22.0))
-                    .padding(Padding::new(0.0).right(4.0)),
+                container(
+                    column![
+                        icon::from_name(status_icon).size(14),
+                        icon::from_name(quality_icon).size(12),
+                    ]
+                    .spacing(2)
+                    .align_x(Horizontal::Center)
+                )
+                .width(Length::Fixed(22.0))
+                .padding(Padding::new(0.0).right(4.0)),
                 container(info_row)
                     .width(Length::Fill)
                     .align_x(Horizontal::Left)
@@ -740,6 +804,73 @@ fn battery_icon_name(level: u8, is_charging: bool) -> &'static str {
             50..=79 => "battery-good-symbolic",
             20..=49 => "battery-low-symbolic",
             _ => "battery-caution-symbolic",
+        }
+    }
+}
+
+/// Returns connection quality indicator (signal strength bars) based on connection state
+fn connection_quality_icon(connection_state: ConnectionState) -> &'static str {
+    match connection_state {
+        ConnectionState::Connected => "network-wireless-signal-excellent-symbolic",
+        ConnectionState::Connecting => "network-wireless-signal-weak-symbolic",
+        ConnectionState::Failed => "network-wireless-signal-none-symbolic",
+        ConnectionState::Disconnected => "network-wireless-offline-symbolic",
+    }
+}
+
+/// Device category for grouping in popup
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeviceCategory {
+    Connected,
+    Available,
+    Offline,
+}
+
+/// Categorize a device based on its state
+fn categorize_device(device_state: &DeviceState) -> DeviceCategory {
+    let device = &device_state.device;
+    if device.is_connected() && device.is_paired() {
+        DeviceCategory::Connected
+    } else if device.is_reachable() || !device.is_paired() {
+        DeviceCategory::Available
+    } else {
+        DeviceCategory::Offline
+    }
+}
+
+/// Helper function for pluralization
+fn pluralize(count: u64) -> &'static str {
+    if count == 1 { "" } else { "s" }
+}
+
+/// Format last seen timestamp to human-readable string
+fn format_last_seen(last_seen: u64) -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    const MINUTE: u64 = 60;
+    const HOUR: u64 = 60 * MINUTE;
+    const DAY: u64 = 24 * HOUR;
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let elapsed = now.saturating_sub(last_seen);
+
+    match elapsed {
+        0..60 => "Just now".to_string(),
+        60..3600 => {
+            let mins = elapsed / MINUTE;
+            format!("{} min{} ago", mins, pluralize(mins))
+        }
+        3600..86400 => {
+            let hours = elapsed / HOUR;
+            format!("{} hour{} ago", hours, pluralize(hours))
+        }
+        _ => {
+            let days = elapsed / DAY;
+            format!("{} day{} ago", days, pluralize(days))
         }
     }
 }

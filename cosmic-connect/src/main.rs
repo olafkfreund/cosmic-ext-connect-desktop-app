@@ -71,15 +71,19 @@ struct KdeConnectApp {
     nav_model: widget::segmented_button::SingleSelectModel,
     current_page: Page,
     devices: HashMap<String, dbus_client::DeviceInfo>,
+    battery_statuses: HashMap<String, dbus_client::BatteryStatus>,
     dbus_client: Option<DbusClient>,
     selected_device_id: Option<String>,
     transfers: HashMap<String, Transfer>,
+    mpris_players: Vec<String>,
+    selected_mpris_player: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
     PageSelected(widget::segmented_button::Entity),
     DevicesLoaded(HashMap<String, dbus_client::DeviceInfo>),
+    BatteryStatusesUpdated(HashMap<String, dbus_client::BatteryStatus>),
     RefreshDevices,
     PairDevice(String),
     UnpairDevice(String),
@@ -90,7 +94,15 @@ enum Message {
     SendPing(String),
     FindPhone(String),
     SendFile(String),
+    FileSelected(String, String), // device_id, file_path
     ShareText(String),
+    TextInputOpened(String), // device_id for text sharing
+    TextSubmitted(String, String), // device_id, text
+    // MPRIS controls
+    MprisPlayersUpdated(Vec<String>),
+    MprisPlayerSelected(String),
+    MprisControl(String, String), // player, action
+    RefreshMprisPlayers,
     // DBus event
     DaemonEvent(DaemonEvent),
     // Transfer events
@@ -138,17 +150,25 @@ impl Application for KdeConnectApp {
             nav_model,
             current_page,
             devices: HashMap::new(),
+            battery_statuses: HashMap::new(),
             dbus_client: None,
             selected_device_id: None,
             transfers: HashMap::new(),
+            mpris_players: Vec::new(),
+            selected_mpris_player: None,
         };
 
-        // Load devices on startup
+        // Load devices and MPRIS players on startup
         (
             app,
-            Task::perform(fetch_devices(), |devices| {
-                cosmic::Action::App(Message::DevicesLoaded(devices))
-            }),
+            Task::batch(vec![
+                Task::perform(fetch_devices(), |devices| {
+                    cosmic::Action::App(Message::DevicesLoaded(devices))
+                }),
+                Task::perform(fetch_mpris_players(), |players| {
+                    cosmic::Action::App(Message::MprisPlayersUpdated(players))
+                }),
+            ]),
         )
     }
 
@@ -171,6 +191,27 @@ impl Application for KdeConnectApp {
             Message::DevicesLoaded(devices) => {
                 tracing::info!("Loaded {} devices", devices.len());
                 self.devices = devices;
+
+                // Fetch battery statuses for connected devices
+                let connected_device_ids: Vec<String> = self
+                    .devices
+                    .iter()
+                    .filter(|(_, d)| d.is_connected)
+                    .map(|(id, _)| id.clone())
+                    .collect();
+
+                if !connected_device_ids.is_empty() {
+                    Task::perform(
+                        fetch_battery_statuses(connected_device_ids),
+                        |statuses| cosmic::Action::App(Message::BatteryStatusesUpdated(statuses)),
+                    )
+                } else {
+                    Task::none()
+                }
+            }
+            Message::BatteryStatusesUpdated(statuses) => {
+                tracing::debug!("Updated battery statuses for {} devices", statuses.len());
+                self.battery_statuses = statuses;
                 Task::none()
             }
             Message::RefreshDevices => {
@@ -232,14 +273,80 @@ impl Application for KdeConnectApp {
                 })
             }
             Message::SendFile(device_id) => {
-                tracing::info!("Send file requested for device: {}", device_id);
-                // TODO: Open file picker dialog
-                Task::none()
+                tracing::info!("Opening file picker for device: {}", device_id);
+                Task::perform(open_file_picker(device_id), |result| {
+                    match result {
+                        Some((device_id, path)) => {
+                            cosmic::Action::App(Message::FileSelected(device_id, path))
+                        }
+                        None => {
+                            tracing::debug!("File picker cancelled");
+                            cosmic::Action::App(Message::RefreshDevices)
+                        }
+                    }
+                })
+            }
+            Message::FileSelected(device_id, file_path) => {
+                tracing::info!("Sending file {} to device: {}", file_path, device_id);
+                Task::perform(share_file(device_id, file_path), |result| {
+                    if let Err(e) = result {
+                        tracing::error!("Failed to share file: {}", e);
+                    }
+                    cosmic::Action::App(Message::RefreshDevices)
+                })
             }
             Message::ShareText(device_id) => {
                 tracing::info!("Share text requested for device: {}", device_id);
-                // TODO: Open text input dialog
+                // For now, share clipboard content
+                // TODO: Add text input dialog in future enhancement
+                Task::perform(share_clipboard(device_id), |result| {
+                    if let Err(e) = result {
+                        tracing::error!("Failed to share text: {}", e);
+                    }
+                    cosmic::Action::App(Message::RefreshDevices)
+                })
+            }
+            Message::TextInputOpened(_device_id) => {
+                // TODO: Implement text input dialog
                 Task::none()
+            }
+            Message::TextSubmitted(device_id, text) => {
+                tracing::info!("Sharing text to device: {}", device_id);
+                Task::perform(share_text(device_id, text), |result| {
+                    if let Err(e) = result {
+                        tracing::error!("Failed to share text: {}", e);
+                    }
+                    cosmic::Action::App(Message::RefreshDevices)
+                })
+            }
+            Message::MprisPlayersUpdated(players) => {
+                tracing::info!("MPRIS players updated: {} players", players.len());
+                self.mpris_players = players;
+                // Auto-select first player if none selected
+                if self.selected_mpris_player.is_none() && !self.mpris_players.is_empty() {
+                    self.selected_mpris_player = Some(self.mpris_players[0].clone());
+                }
+                Task::none()
+            }
+            Message::MprisPlayerSelected(player) => {
+                tracing::info!("MPRIS player selected: {}", player);
+                self.selected_mpris_player = Some(player);
+                Task::none()
+            }
+            Message::MprisControl(player, action) => {
+                tracing::info!("MPRIS control: {} on {}", action, player);
+                Task::perform(mpris_control(player, action), |result| {
+                    if let Err(e) = result {
+                        tracing::error!("Failed to control MPRIS player: {}", e);
+                    }
+                    cosmic::Action::None
+                })
+            }
+            Message::RefreshMprisPlayers => {
+                tracing::info!("Refreshing MPRIS players");
+                Task::perform(fetch_mpris_players(), |players| {
+                    cosmic::Action::App(Message::MprisPlayersUpdated(players))
+                })
             }
             Message::DaemonEvent(event) => {
                 match event {
@@ -358,7 +465,7 @@ impl Application for KdeConnectApp {
     // TODO: Implement subscription for DBus events to get live transfer progress
     // For now, transfer progress will be displayed when manually triggered
 
-    fn view(&self) -> Element<Self::Message> {
+    fn view(&self) -> Element<'_, Self::Message> {
         let nav = nav_bar(&self.nav_model, Message::PageSelected);
 
         let content = match self.current_page {
@@ -376,7 +483,7 @@ impl Application for KdeConnectApp {
 
 impl KdeConnectApp {
     /// View for the Devices page
-    fn devices_view(&self) -> Element<Message> {
+    fn devices_view(&self) -> Element<'_, Message> {
         // If a device is selected, show details view instead
         if let Some(device_id) = &self.selected_device_id {
             if let Some(device) = self.devices.get(device_id) {
@@ -450,18 +557,36 @@ impl KdeConnectApp {
                 .into()
         };
 
-        let device_icon = format!("{}-symbolic", device.device_type);
+        let icon_style = device_type_style(&device.device_type);
         let device_id_for_click = device.id.clone();
+
+        // Build name and status column with optional battery indicator
+        let mut info_column = column![
+            widget::text(&device.name).size(16),
+            widget::text(status).size(12),
+        ]
+        .spacing(4);
+
+        // Add battery info if available
+        if let Some(battery) = self.battery_statuses.get(&device.id) {
+            let battery_icon = battery_icon_name(battery.level, battery.is_charging);
+            let battery_row = row![
+                widget::icon::from_name(battery_icon).size(14),
+                widget::text(format!("{}%", battery.level)).size(12),
+            ]
+            .spacing(4)
+            .align_y(Alignment::Center);
+            info_column = info_column.push(battery_row);
+        }
+
+        // Create styled device icon
+        let icon = styled_device_icon(icon_style.icon_name, icon_style.color, 24, 8);
 
         widget::button::custom(
             widget::container(
                 column![row![
-                    widget::icon::from_name(device_icon.as_str()).size(32),
-                    column![
-                        widget::text(&device.name).size(16),
-                        widget::text(status).size(12),
-                    ]
-                    .spacing(4),
+                    icon,
+                    info_column,
                     widget::horizontal_space(),
                     pair_button,
                 ]
@@ -469,16 +594,7 @@ impl KdeConnectApp {
                 .align_y(Alignment::Center),]
                 .padding(16)
             )
-            .style(|_theme| cosmic::iced::widget::container::Style {
-                background: Some(cosmic::iced::Background::Color(Color::from_rgb(
-                    0.1, 0.1, 0.1
-                ))),
-                border: cosmic::iced::Border {
-                    radius: 8.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            })
+            .style(card_container_style)
             .width(Length::Fill)
         )
         .on_press(Message::SelectDevice(device_id_for_click))
@@ -496,7 +612,7 @@ impl KdeConnectApp {
             ("Available", Color::from_rgb(0.8, 0.6, 0.2))
         };
 
-        let device_icon = format!("{}-symbolic", device.device_type);
+        let icon_style = device_type_style(&device.device_type);
 
         // Header with back button
         let header = row![
@@ -510,11 +626,14 @@ impl KdeConnectApp {
         .align_y(Alignment::Center)
         .padding(24);
 
+        // Styled device icon (larger for details view)
+        let icon = styled_device_icon(icon_style.icon_name, icon_style.color, 48, 16);
+
         // Device info section
         let device_info = widget::container(
             column![
                 row![
-                    widget::icon::from_name(device_icon.as_str()).size(64),
+                    icon,
                     widget::horizontal_space(),
                 ]
                 .spacing(16)
@@ -525,85 +644,49 @@ impl KdeConnectApp {
             .spacing(12)
             .padding(24)
         )
-        .style(|_theme| cosmic::iced::widget::container::Style {
-            background: Some(cosmic::iced::Background::Color(Color::from_rgb(
-                0.1, 0.1, 0.1
-            ))),
-            border: cosmic::iced::Border {
-                radius: 8.0.into(),
-                ..Default::default()
-            },
-            ..Default::default()
-        });
+        .style(card_container_style);
 
         // Device details section
         let mut details_col = column![
             widget::text("Device Information").size(18),
             widget::divider::horizontal::default(),
+            detail_row("Type:", &device.device_type),
+            detail_row("ID:", &device.id),
+            detail_row("Status:", if device.is_connected { "Online" } else { "Offline" }),
+            detail_row("Paired:", if device.is_paired { "Yes" } else { "No" }),
+            detail_row("Reachable:", if device.is_reachable { "Yes" } else { "No" }),
         ]
         .spacing(8);
 
-        details_col = details_col.push(
-            row![
-                widget::text("Type:").size(14),
-                widget::horizontal_space(),
-                widget::text(&device.device_type).size(14),
-            ]
-            .spacing(8),
-        );
-
-        details_col = details_col.push(
-            row![
-                widget::text("ID:").size(14),
-                widget::horizontal_space(),
-                widget::text(&device.id).size(12),
-            ]
-            .spacing(8),
-        );
-
-        details_col = details_col.push(
-            row![
-                widget::text("Status:").size(14),
-                widget::horizontal_space(),
-                widget::text(if device.is_connected {
-                    "Online"
-                } else {
-                    "Offline"
-                })
-                .size(14),
-            ]
-            .spacing(8),
-        );
-
-        details_col = details_col.push(
-            row![
-                widget::text("Paired:").size(14),
-                widget::horizontal_space(),
-                widget::text(if device.is_paired { "Yes" } else { "No" }).size(14),
-            ]
-            .spacing(8),
-        );
-
-        details_col = details_col.push(
-            row![
-                widget::text("Reachable:").size(14),
-                widget::horizontal_space(),
-                widget::text(if device.is_reachable { "Yes" } else { "No" }).size(14),
-            ]
-            .spacing(8),
-        );
+        // Add battery information if available
+        if let Some(battery) = self.battery_statuses.get(&device.id) {
+            let battery_icon = battery_icon_name(battery.level, battery.is_charging);
+            details_col = details_col.push(
+                row![
+                    widget::text("Battery:").size(14),
+                    widget::horizontal_space(),
+                    row![
+                        widget::icon::from_name(battery_icon).size(14),
+                        widget::text(format!(
+                            "{}%{}",
+                            battery.level,
+                            if battery.is_charging {
+                                " (Charging)"
+                            } else {
+                                ""
+                            }
+                        ))
+                        .size(14),
+                    ]
+                    .spacing(4)
+                    .align_y(Alignment::Center),
+                ]
+                .spacing(8),
+            );
+        }
 
         let details = widget::container(details_col.padding(16))
-            .style(|_theme| cosmic::iced::widget::container::Style {
-                background: Some(cosmic::iced::Background::Color(Color::from_rgb(
-                    0.1, 0.1, 0.1
-                ))),
-                border: cosmic::iced::Border {
-                    radius: 8.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            });
+            .style(card_container_style);
 
         // Actions section (if device is paired and connected)
         let device_id_for_actions = device.id.clone();
@@ -635,16 +718,7 @@ impl KdeConnectApp {
                 .spacing(12)
                 .padding(16)
             )
-            .style(|_theme| cosmic::iced::widget::container::Style {
-                background: Some(cosmic::iced::Background::Color(Color::from_rgb(
-                    0.1, 0.1, 0.1
-                ))),
-                border: cosmic::iced::Border {
-                    radius: 8.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            })
+            .style(card_container_style)
             .into()
         } else {
             widget::container(
@@ -672,7 +746,7 @@ impl KdeConnectApp {
     }
 
     /// View for the Transfers page
-    fn transfers_view(&self) -> Element<Message> {
+    fn transfers_view(&self) -> Element<'_, Message> {
         let header = row![
             widget::text::title3("File Transfers"),
             widget::horizontal_space(),
@@ -827,18 +901,152 @@ impl KdeConnectApp {
     }
 
     /// View for the Settings page
-    fn settings_view(&self) -> Element<Message> {
-        widget::container(
+    fn settings_view(&self) -> Element<'_, Message> {
+        let header = row![
+            widget::text::title3("Settings"),
+            widget::horizontal_space(),
+        ]
+        .spacing(12)
+        .align_y(Alignment::Center)
+        .padding(24);
+
+        // MPRIS Media Controls Section
+        let mpris_section = self.mpris_controls_section();
+
+        // About Section
+        let about_section = widget::container(
             column![
-                widget::text::title3("Settings"),
-                widget::text("Global settings and preferences"),
+                widget::text::title4("About"),
+                widget::divider::horizontal::default(),
+                row![
+                    widget::text("Application:").size(14),
+                    widget::horizontal_space(),
+                    widget::text("COSMIC Connect").size(14),
+                ]
+                .spacing(8),
+                row![
+                    widget::text("Version:").size(14),
+                    widget::horizontal_space(),
+                    widget::text(env!("CARGO_PKG_VERSION")).size(14),
+                ]
+                .spacing(8),
+                row![
+                    widget::text("Protocol:").size(14),
+                    widget::horizontal_space(),
+                    widget::text("KDE Connect v7/8").size(14),
+                ]
+                .spacing(8),
             ]
             .spacing(12)
-            .padding(24)
+            .padding(16)
         )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        .style(card_container_style)
+        .width(Length::Fill);
+
+        let content = widget::scrollable(
+            column![mpris_section, about_section]
+                .spacing(16)
+                .padding(24)
+        );
+
+        column![header, widget::divider::horizontal::default(), content]
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    }
+
+    /// MPRIS media controls section for Settings page
+    fn mpris_controls_section(&self) -> Element<'_, Message> {
+        let mut content_col = column![
+            widget::text::title4("Media Player Controls"),
+            widget::divider::horizontal::default(),
+        ]
+        .spacing(12);
+
+        if self.mpris_players.is_empty() {
+            content_col = content_col.push(
+                column![
+                    widget::text("No media players found").size(14),
+                    widget::text("Make sure a media player is running").size(12),
+                    widget::button::standard("Refresh Players")
+                        .on_press(Message::RefreshMprisPlayers),
+                ]
+                .spacing(8)
+            );
+        } else {
+            // Player selector
+            if let Some(selected) = &self.selected_mpris_player {
+                content_col = content_col.push(
+                    row![
+                        widget::text("Selected Player:").size(14),
+                        widget::horizontal_space(),
+                        widget::text(selected).size(14),
+                    ]
+                    .spacing(8)
+                );
+
+                // Playback controls
+                let controls = row![
+                    widget::button::icon(
+                        widget::icon::from_name("media-skip-backward-symbolic").size(20)
+                    )
+                    .on_press(Message::MprisControl(
+                        selected.clone(),
+                        "Previous".to_string()
+                    ))
+                    .padding(12),
+                    widget::button::icon(
+                        widget::icon::from_name("media-playback-start-symbolic").size(24)
+                    )
+                    .on_press(Message::MprisControl(
+                        selected.clone(),
+                        "PlayPause".to_string()
+                    ))
+                    .padding(12),
+                    widget::button::icon(
+                        widget::icon::from_name("media-playback-stop-symbolic").size(20)
+                    )
+                    .on_press(Message::MprisControl(
+                        selected.clone(),
+                        "Stop".to_string()
+                    ))
+                    .padding(12),
+                    widget::button::icon(
+                        widget::icon::from_name("media-skip-forward-symbolic").size(20)
+                    )
+                    .on_press(Message::MprisControl(
+                        selected.clone(),
+                        "Next".to_string()
+                    ))
+                    .padding(12),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center);
+
+                content_col = content_col.push(controls);
+            }
+
+            // Refresh button
+            content_col = content_col.push(
+                widget::button::standard("Refresh Players")
+                    .on_press(Message::RefreshMprisPlayers)
+            );
+
+            // List all available players
+            content_col = content_col.push(widget::text("Available Players:").size(14));
+            for player in &self.mpris_players {
+                content_col = content_col.push(
+                    widget::button::text(player)
+                        .on_press(Message::MprisPlayerSelected(player.clone()))
+                        .width(Length::Fill)
+                );
+            }
+        }
+
+        widget::container(content_col.padding(16))
+            .style(card_container_style)
+            .width(Length::Fill)
+            .into()
     }
 }
 
@@ -860,6 +1068,37 @@ async fn fetch_devices() -> HashMap<String, dbus_client::DeviceInfo> {
             HashMap::new()
         }
     }
+}
+
+/// Fetch battery statuses for connected devices
+async fn fetch_battery_statuses(
+    device_ids: Vec<String>,
+) -> HashMap<String, dbus_client::BatteryStatus> {
+    let mut battery_statuses = HashMap::new();
+
+    if device_ids.is_empty() {
+        return battery_statuses;
+    }
+
+    match DbusClient::connect().await {
+        Ok((client, _)) => {
+            for device_id in device_ids {
+                match client.get_battery_status(&device_id).await {
+                    Ok(status) => {
+                        battery_statuses.insert(device_id, status);
+                    }
+                    Err(e) => {
+                        tracing::debug!("Failed to get battery status for {}: {}", device_id, e);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Failed to connect to daemon for battery statuses: {}", e);
+        }
+    }
+
+    battery_statuses
 }
 
 /// Pair a device
@@ -914,6 +1153,90 @@ async fn find_phone(device_id: String) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Open file picker dialog
+async fn open_file_picker(device_id: String) -> Option<(String, String)> {
+    use ashpd::desktop::file_chooser::OpenFileRequest;
+
+    let request = OpenFileRequest::default()
+        .title("Select file to send")
+        .modal(true)
+        .multiple(false);
+
+    match request.send().await {
+        Ok(request) => match request.response() {
+            Ok(response) => {
+                if let Some(uri) = response.uris().first() {
+                    let path = uri.path().to_string();
+                    tracing::info!("File selected: {}", path);
+                    Some((device_id, path))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to get file picker response: {}", e);
+                None
+            }
+        },
+        Err(e) => {
+            tracing::error!("Failed to open file picker: {}", e);
+            None
+        }
+    }
+}
+
+/// Share a file with a device
+async fn share_file(device_id: String, file_path: String) -> anyhow::Result<()> {
+    let (client, _) = DbusClient::connect().await?;
+    client.share_file(&device_id, &file_path).await?;
+    tracing::info!("File {} shared with device {}", file_path, device_id);
+    Ok(())
+}
+
+/// Share text with a device
+async fn share_text(device_id: String, text: String) -> anyhow::Result<()> {
+    let (client, _) = DbusClient::connect().await?;
+    client.share_text(&device_id, &text).await?;
+    tracing::info!("Text shared with device {}", device_id);
+    Ok(())
+}
+
+/// Share clipboard content with a device
+async fn share_clipboard(device_id: String) -> anyhow::Result<()> {
+    // TODO: Get actual clipboard content
+    // For now, just share a placeholder message
+    let text = "Shared from COSMIC Connect".to_string();
+    share_text(device_id, text).await
+}
+
+/// Fetch available MPRIS media players
+async fn fetch_mpris_players() -> Vec<String> {
+    match DbusClient::connect().await {
+        Ok((client, _)) => match client.get_mpris_players().await {
+            Ok(players) => {
+                tracing::info!("Fetched {} MPRIS players", players.len());
+                players
+            }
+            Err(e) => {
+                tracing::error!("Failed to get MPRIS players: {}", e);
+                Vec::new()
+            }
+        },
+        Err(e) => {
+            tracing::warn!("Failed to connect to daemon for MPRIS: {}", e);
+            Vec::new()
+        }
+    }
+}
+
+/// Control an MPRIS media player
+async fn mpris_control(player: String, action: String) -> anyhow::Result<()> {
+    let (client, _) = DbusClient::connect().await?;
+    client.mpris_control(&player, &action).await?;
+    tracing::info!("MPRIS control {} executed on {}", action, player);
+    Ok(())
+}
+
 /// Format bytes as human-readable string
 fn format_bytes(bytes: u64) -> String {
     const KB: u64 = 1024;
@@ -929,4 +1252,98 @@ fn format_bytes(bytes: u64) -> String {
     } else {
         format!("{} B", bytes)
     }
+}
+
+/// Get battery icon name based on level and charging status
+fn battery_icon_name(level: i32, is_charging: bool) -> &'static str {
+    if is_charging {
+        "battery-good-charging-symbolic"
+    } else {
+        match level {
+            80..=100 => "battery-full-symbolic",
+            50..=79 => "battery-good-symbolic",
+            20..=49 => "battery-low-symbolic",
+            _ => "battery-caution-symbolic",
+        }
+    }
+}
+
+/// Device icon styling information
+struct DeviceIconStyle {
+    icon_name: &'static str,
+    color: Color,
+}
+
+/// Get device type icon style (name and color)
+fn device_type_style(device_type: &str) -> DeviceIconStyle {
+    match device_type.to_lowercase().as_str() {
+        "phone" => DeviceIconStyle {
+            icon_name: "phone-symbolic",
+            color: Color::from_rgb(0.3, 0.6, 0.9), // Blue
+        },
+        "tablet" => DeviceIconStyle {
+            icon_name: "tablet-symbolic",
+            color: Color::from_rgb(0.6, 0.4, 0.9), // Purple
+        },
+        "desktop" => DeviceIconStyle {
+            icon_name: "computer-symbolic",
+            color: Color::from_rgb(0.5, 0.7, 0.5), // Green
+        },
+        "laptop" => DeviceIconStyle {
+            icon_name: "laptop-symbolic",
+            color: Color::from_rgb(0.9, 0.6, 0.3), // Orange
+        },
+        "tv" => DeviceIconStyle {
+            icon_name: "tv-symbolic",
+            color: Color::from_rgb(0.9, 0.4, 0.5), // Pink
+        },
+        _ => DeviceIconStyle {
+            icon_name: "computer-symbolic",
+            color: Color::from_rgb(0.6, 0.6, 0.6), // Gray (default)
+        },
+    }
+}
+
+/// Creates a styled device icon with circular colored background
+fn styled_device_icon<'a>(
+    icon_name: &'static str,
+    color: Color,
+    icon_size: u16,
+    padding: u16,
+) -> Element<'a, Message> {
+    let radius = (icon_size + padding * 2) as f32 / 2.0;
+    widget::container(widget::icon::from_name(icon_name).size(icon_size))
+        .padding(padding)
+        .style(move |_theme| cosmic::iced::widget::container::Style {
+            background: Some(cosmic::iced::Background::Color(color)),
+            border: cosmic::iced::Border {
+                radius: radius.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .into()
+}
+
+/// Returns the standard card container style
+fn card_container_style(_theme: &cosmic::Theme) -> cosmic::iced::widget::container::Style {
+    cosmic::iced::widget::container::Style {
+        background: Some(cosmic::iced::Background::Color(Color::from_rgb(0.1, 0.1, 0.1))),
+        border: cosmic::iced::Border {
+            radius: 8.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+/// Creates a detail row with label and value
+fn detail_row<'a>(label: &'a str, value: impl ToString) -> Element<'a, Message> {
+    row![
+        widget::text(label).size(14),
+        widget::horizontal_space(),
+        widget::text(value.to_string()).size(14),
+    ]
+    .spacing(8)
+    .into()
 }
