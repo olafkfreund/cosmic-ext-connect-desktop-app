@@ -3,6 +3,7 @@ mod cosmic_notifications;
 mod dbus;
 mod device_config;
 mod diagnostics;
+mod error_handler;
 mod mpris_manager;
 
 use anyhow::{Context, Result};

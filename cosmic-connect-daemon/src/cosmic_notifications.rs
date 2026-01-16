@@ -343,6 +343,182 @@ impl CosmicNotifier {
         .await
     }
 
+    /// Send a network error notification
+    pub async fn notify_network_error(
+        &self,
+        device_name: &str,
+        error_message: &str,
+    ) -> Result<u32> {
+        self.send(
+            NotificationBuilder::new("Connection Error")
+                .body(format!(
+                    "Cannot connect to {}: {}\nCheck network connection.",
+                    device_name, error_message
+                ))
+                .icon("network-error-symbolic")
+                .urgency(Urgency::Normal)
+                .timeout(7000),
+        )
+        .await
+    }
+
+    /// Send a file transfer error notification
+    pub async fn notify_file_transfer_error(
+        &self,
+        device_name: &str,
+        filename: &str,
+        error_message: &str,
+    ) -> Result<u32> {
+        self.send(
+            NotificationBuilder::new("File Transfer Failed")
+                .body(format!(
+                    "Failed to send {} to {}: {}",
+                    filename, device_name, error_message
+                ))
+                .icon("dialog-error-symbolic")
+                .urgency(Urgency::Normal)
+                .timeout(7000),
+        )
+        .await
+    }
+
+    /// Send a plugin error notification
+    pub async fn notify_plugin_error(
+        &self,
+        plugin_name: &str,
+        device_name: &str,
+        error_message: &str,
+    ) -> Result<u32> {
+        self.send(
+            NotificationBuilder::new(format!("{} Plugin Error", plugin_name))
+                .body(format!(
+                    "Plugin error on {}: {}",
+                    device_name, error_message
+                ))
+                .icon("dialog-warning-symbolic")
+                .urgency(Urgency::Low)
+                .timeout(5000),
+        )
+        .await
+    }
+
+    /// Send a permission denied error notification
+    pub async fn notify_permission_error(&self, operation: &str, details: &str) -> Result<u32> {
+        self.send(
+            NotificationBuilder::new("Permission Denied")
+                .body(format!(
+                    "Cannot {}: {}\nCheck file and directory permissions.",
+                    operation, details
+                ))
+                .icon("dialog-error-symbolic")
+                .urgency(Urgency::Normal)
+                .timeout(7000)
+                .action("settings", "Open Settings"),
+        )
+        .await
+    }
+
+    /// Send a disk space error notification
+    pub async fn notify_disk_full_error(&self, path: &str) -> Result<u32> {
+        self.send(
+            NotificationBuilder::new("Disk Full")
+                .body(format!(
+                    "Cannot save file: Insufficient disk space at {}\nFree up space and try again.",
+                    path
+                ))
+                .icon("drive-harddisk-symbolic")
+                .urgency(Urgency::Normal)
+                .timeout(10000),
+        )
+        .await
+    }
+
+    /// Send a configuration error notification
+    pub async fn notify_configuration_error(&self, error_message: &str) -> Result<u32> {
+        self.send(
+            NotificationBuilder::new("Configuration Error")
+                .body(format!(
+                    "Configuration problem: {}\nCheck your settings.",
+                    error_message
+                ))
+                .icon("preferences-system-symbolic")
+                .urgency(Urgency::Normal)
+                .timeout(7000)
+                .action("settings", "Open Settings"),
+        )
+        .await
+    }
+
+    /// Send a certificate validation error notification
+    pub async fn notify_certificate_error(&self, device_name: &str, details: &str) -> Result<u32> {
+        self.send(
+            NotificationBuilder::new("Security Error")
+                .body(format!(
+                    "Certificate validation failed for {}: {}\nYou may need to re-pair the device.",
+                    device_name, details
+                ))
+                .icon("security-low-symbolic")
+                .urgency(Urgency::Normal)
+                .timeout(10000)
+                .action("repair", "Re-pair Device"),
+        )
+        .await
+    }
+
+    /// Send a protocol version mismatch error notification
+    pub async fn notify_protocol_mismatch(
+        &self,
+        device_name: &str,
+        details: &str,
+    ) -> Result<u32> {
+        self.send(
+            NotificationBuilder::new("Incompatible Version")
+                .body(format!(
+                    "{}: {}\nUpdate both applications to the latest version.",
+                    device_name, details
+                ))
+                .icon("system-software-update-symbolic")
+                .urgency(Urgency::Normal)
+                .timeout(10000),
+        )
+        .await
+    }
+
+    /// Send a connection timeout error notification
+    pub async fn notify_connection_timeout(&self, device_name: &str) -> Result<u32> {
+        self.send(
+            NotificationBuilder::new("Connection Timeout")
+                .body(format!(
+                    "Could not reach {}\nCheck if the device is on and connected to the network.",
+                    device_name
+                ))
+                .icon("network-error-symbolic")
+                .urgency(Urgency::Low)
+                .timeout(7000),
+        )
+        .await
+    }
+
+    /// Send a generic error notification with recovery action
+    pub async fn notify_error_with_recovery(
+        &self,
+        title: &str,
+        message: &str,
+        recovery_action: Option<(&str, &str)>,
+    ) -> Result<u32> {
+        let mut builder = NotificationBuilder::new(title)
+            .body(message)
+            .icon("dialog-error-symbolic")
+            .urgency(Urgency::Normal)
+            .timeout(7000);
+
+        if let Some((action_id, action_label)) = recovery_action {
+            builder = builder.action(action_id, action_label);
+        }
+
+        self.send(builder).await
+    }
+
     /// Close a notification by ID
     pub async fn close(&self, notification_id: u32) -> Result<()> {
         let proxy = zbus::Proxy::new(
@@ -466,5 +642,58 @@ mod tests {
         assert_eq!(Urgency::Low as u8, 0);
         assert_eq!(Urgency::Normal as u8, 1);
         assert_eq!(Urgency::Critical as u8, 2);
+    }
+
+    #[test]
+    fn test_error_notification_with_recovery_action() {
+        let builder = NotificationBuilder::new("Error Title")
+            .body("Error message with recovery option")
+            .action("retry", "Retry")
+            .action("cancel", "Cancel");
+
+        let params = builder.build();
+
+        assert_eq!(params.summary, "Error Title");
+        assert_eq!(params.body, "Error message with recovery option");
+        assert_eq!(
+            params.actions,
+            vec![
+                "retry".to_string(),
+                "Retry".to_string(),
+                "cancel".to_string(),
+                "Cancel".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_notification_hints() {
+        use zbus::zvariant::Value;
+
+        let builder = NotificationBuilder::new("Test")
+            .hint("x-custom-hint", Value::Str("test-value".into()));
+
+        let params = builder.build();
+
+        assert!(params.hints.contains_key("x-custom-hint"));
+        assert!(params.hints.contains_key("urgency"));
+        assert!(params.hints.contains_key("category"));
+    }
+
+    #[test]
+    fn test_critical_urgency_notification() {
+        let builder = NotificationBuilder::new("Critical Error")
+            .body("System failure detected")
+            .urgency(Urgency::Critical)
+            .timeout(0); // No auto-dismiss
+
+        let params = builder.build();
+
+        assert_eq!(params.timeout, 0);
+        if let Some(Value::U8(urgency)) = params.hints.get("urgency") {
+            assert_eq!(*urgency, Urgency::Critical as u8);
+        } else {
+            panic!("Urgency hint not found or wrong type");
+        }
     }
 }
