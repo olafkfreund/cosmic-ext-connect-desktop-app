@@ -1,7 +1,7 @@
 //! Diagnostics and Debug Logging
 //!
 //! Provides enhanced logging, diagnostic commands, and performance metrics
-//! for troubleshooting and debugging the KDE Connect daemon.
+//! for troubleshooting and debugging the CConnect daemon.
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -9,10 +9,10 @@ use std::time::Instant;
 use tracing::{info, Level};
 use tracing_subscriber::{fmt, EnvFilter};
 
-/// KDE Connect daemon command-line interface
+/// CConnect daemon command-line interface
 #[derive(Parser, Debug)]
-#[command(name = "kdeconnect-daemon")]
-#[command(about = "KDE Connect daemon for COSMIC Desktop", long_about = None)]
+#[command(name = "cconnect-daemon")]
+#[command(about = "CConnect daemon for COSMIC Desktop", long_about = None)]
 #[command(version)]
 pub struct Cli {
     /// Set log level (error, warn, info, debug, trace)
@@ -83,7 +83,7 @@ pub enum DiagnosticCommand {
     /// Export logs for bug reporting
     ExportLogs {
         /// Output file path
-        #[arg(short, long, default_value = "kdeconnect-logs.txt")]
+        #[arg(short, long, default_value = "cconnect-logs.txt")]
         output: String,
 
         /// Include last N lines
@@ -255,7 +255,7 @@ impl Metrics {
         let minutes = (uptime % 3600) / 60;
         let seconds = uptime % 60;
 
-        println!("\n=== KDE Connect Daemon Metrics ===");
+        println!("\n=== CConnect Daemon Metrics ===");
         println!("Uptime: {}h {}m {}s", hours, minutes, seconds);
         println!("\nNetwork:");
         println!("  Packets: {} sent, {} received", self.packets_sent, self.packets_received);
@@ -355,7 +355,7 @@ impl BuildInfo {
 
     /// Display build information
     pub fn display(&self, verbose: bool) {
-        println!("KDE Connect Daemon v{}", self.version);
+        println!("CConnect Daemon v{}", self.version);
 
         if verbose {
             if let Some(hash) = self.git_hash {

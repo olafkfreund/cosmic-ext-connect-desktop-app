@@ -77,7 +77,7 @@ impl DiscoveryEvent {
             address: "0.0.0.0:0".parse().unwrap(), // Placeholder for backward compatibility
             transport_address: TransportAddress::Bluetooth {
                 address: bt_address,
-                service_uuid: Some(crate::transport::KDECONNECT_SERVICE_UUID),
+                service_uuid: Some(crate::transport::CCONNECT_SERVICE_UUID),
             },
             transport_type: TransportType::Bluetooth,
         }
@@ -102,7 +102,7 @@ impl DiscoveryEvent {
             address: "0.0.0.0:0".parse().unwrap(), // Placeholder for backward compatibility
             transport_address: TransportAddress::Bluetooth {
                 address: bt_address,
-                service_uuid: Some(crate::transport::KDECONNECT_SERVICE_UUID),
+                service_uuid: Some(crate::transport::CCONNECT_SERVICE_UUID),
             },
             transport_type: TransportType::Bluetooth,
         }
@@ -167,8 +167,8 @@ mod tests {
 
     #[test]
     fn test_event_type_checking() {
-        let info = DeviceInfo::new("Test", DeviceType::Desktop, 1716);
-        let addr = "192.168.1.100:1716".parse().unwrap();
+        let info = DeviceInfo::new("Test", DeviceType::Desktop, 1816);
+        let addr = "192.168.1.100:1816".parse().unwrap();
 
         let discovered = DiscoveryEvent::tcp_discovered(info.clone(), addr);
         assert!(discovered.is_device_discovered());
@@ -183,8 +183,8 @@ mod tests {
 
     #[test]
     fn test_device_id_extraction() {
-        let info = DeviceInfo::with_id("test_123", "Test", DeviceType::Desktop, 1716);
-        let addr = "192.168.1.100:1716".parse().unwrap();
+        let info = DeviceInfo::with_id("test_123", "Test", DeviceType::Desktop, 1816);
+        let addr = "192.168.1.100:1816".parse().unwrap();
 
         let discovered = DiscoveryEvent::tcp_discovered(info.clone(), addr);
         assert_eq!(discovered.device_id(), Some("test_123"));
@@ -194,14 +194,14 @@ mod tests {
         };
         assert_eq!(timeout.device_id(), Some("timeout_id"));
 
-        let started = DiscoveryEvent::ServiceStarted { port: 1716 };
+        let started = DiscoveryEvent::ServiceStarted { port: 1816 };
         assert_eq!(started.device_id(), None);
     }
 
     #[test]
     fn test_tcp_discovery_event() {
-        let info = DeviceInfo::new("Test Device", DeviceType::Desktop, 1716);
-        let addr = "192.168.1.100:1716".parse().unwrap();
+        let info = DeviceInfo::new("Test Device", DeviceType::Desktop, 1816);
+        let addr = "192.168.1.100:1816".parse().unwrap();
 
         let event = DiscoveryEvent::tcp_discovered(info.clone(), addr);
 
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn test_bluetooth_discovery_event() {
-        let info = DeviceInfo::new("Test Phone", DeviceType::Phone, 1716);
+        let info = DeviceInfo::new("Test Phone", DeviceType::Phone, 1816);
         let bt_addr = "00:11:22:33:44:55".to_string();
 
         let event = DiscoveryEvent::bluetooth_discovered(info.clone(), bt_addr.clone());
@@ -227,7 +227,7 @@ mod tests {
         match event.transport_address() {
             Some(TransportAddress::Bluetooth { address, service_uuid }) => {
                 assert_eq!(address, &bt_addr);
-                assert_eq!(*service_uuid, Some(crate::transport::KDECONNECT_SERVICE_UUID));
+                assert_eq!(*service_uuid, Some(crate::transport::CCONNECT_SERVICE_UUID));
             }
             _ => panic!("Expected Bluetooth transport address"),
         }

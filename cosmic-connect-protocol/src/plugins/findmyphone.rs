@@ -6,10 +6,10 @@
 //! ## Protocol
 //!
 //! **Packet Types**:
-//! - `kdeconnect.findmyphone.request` - Ring phone request (outgoing)
+//! - `cconnect.findmyphone.request` - Ring phone request (outgoing)
 //!
 //! **Capabilities**:
-//! - Outgoing: `kdeconnect.findmyphone.request` - Send ring requests
+//! - Outgoing: `cconnect.findmyphone.request` - Send ring requests
 //!
 //! ## Behavior
 //!
@@ -18,7 +18,7 @@
 //!
 //! ## References
 //!
-//! - [KDE Connect FindMyPhone Plugin](https://github.com/KDE/kdeconnect-android/blob/master/src/org/kde/kdeconnect/Plugins/FindMyPhonePlugin/)
+//! - [CConnect FindMyPhone Plugin](https://github.com/KDE/cconnect-android/blob/master/src/org/kde/kdeconnect/Plugins/FindMyPhonePlugin/)
 //! - [Valent Protocol Documentation](https://valent.andyholmes.ca/documentation/protocol.html)
 
 use crate::{Device, Packet, Result};
@@ -30,7 +30,7 @@ use tracing::{debug, info};
 use super::{Plugin, PluginFactory};
 
 /// Packet type for find my phone requests
-pub const PACKET_TYPE_FINDMYPHONE_REQUEST: &str = "kdeconnect.findmyphone.request";
+pub const PACKET_TYPE_FINDMYPHONE_REQUEST: &str = "cconnect.findmyphone.request";
 
 /// Find My Phone plugin for locating devices
 pub struct FindMyPhonePlugin {
@@ -54,7 +54,7 @@ impl FindMyPhonePlugin {
     ///
     /// let plugin = FindMyPhonePlugin::new();
     /// let packet = plugin.create_ring_request();
-    /// assert_eq!(packet.packet_type, "kdeconnect.findmyphone.request");
+    /// assert_eq!(packet.packet_type, "cconnect.findmyphone.request");
     /// ```
     pub fn create_ring_request(&self) -> Packet {
         debug!("Creating ring request packet");
@@ -162,7 +162,7 @@ mod tests {
         let plugin = FindMyPhonePlugin::new();
         let packet = plugin.create_ring_request();
 
-        assert_eq!(packet.packet_type, "kdeconnect.findmyphone.request");
+        assert_eq!(packet.packet_type, "cconnect.findmyphone.request");
         assert!(packet.body.as_object().unwrap().is_empty());
     }
 

@@ -7,10 +7,10 @@
 //! ## Protocol
 //!
 //! **Packet Types**:
-//! - `kdeconnect.presenter` - Pointer and click events (incoming)
+//! - `cconnect.presenter` - Pointer and click events (incoming)
 //!
 //! **Capabilities**:
-//! - Incoming: `kdeconnect.presenter` - Receive presentation control events
+//! - Incoming: `cconnect.presenter` - Receive presentation control events
 //!
 //! ## Supported Events
 //!
@@ -28,7 +28,7 @@
 //!
 //! ## References
 //!
-//! - [KDE Connect Presenter Plugin](https://github.com/KDE/kdeconnect-kde/tree/master/plugins/presenter)
+//! - [CConnect Presenter Plugin](https://github.com/KDE/cconnect-kde/tree/master/plugins/presenter)
 //! - [Valent Protocol Documentation](https://valent.andyholmes.ca/documentation/protocol.html)
 
 use crate::{Device, Packet, ProtocolError, Result};
@@ -40,7 +40,7 @@ use tracing::{debug, info, warn};
 use super::{Plugin, PluginFactory};
 
 /// Packet type for presenter events
-pub const PACKET_TYPE_PRESENTER: &str = "kdeconnect.presenter";
+pub const PACKET_TYPE_PRESENTER: &str = "cconnect.presenter";
 
 /// Presenter event
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -218,7 +218,7 @@ mod tests {
         plugin.init(&device).await.unwrap();
 
         let packet = Packet::new(
-            "kdeconnect.presenter",
+            "cconnect.presenter",
             json!({
                 "dx": 10.5,
                 "dy": -5.2
@@ -241,7 +241,7 @@ mod tests {
         plugin.presentation_active = true;
 
         let packet = Packet::new(
-            "kdeconnect.presenter",
+            "cconnect.presenter",
             json!({
                 "stop": true
             }),

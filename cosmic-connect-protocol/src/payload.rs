@@ -1,11 +1,11 @@
 //! Payload Transfer System
 //!
 //! Handles TCP-based file transfers for the Share plugin.
-//! Implements the KDE Connect payload transfer protocol.
+//! Implements the CConnect payload transfer protocol.
 //!
 //! ## Protocol
 //!
-//! File transfers in KDE Connect use TCP:
+//! File transfers in CConnect use TCP:
 //! 1. Sender creates a TCP server on an available port (1739+ range)
 //! 2. Sender sends a share packet with file metadata and port
 //! 3. Receiver connects to sender's IP:port
@@ -68,7 +68,7 @@ const TRANSFER_TIMEOUT: Duration = Duration::from_secs(60);
 /// Buffer size for file streaming (64KB)
 const BUFFER_SIZE: usize = 65536;
 
-/// Port range for payload servers (KDE Connect standard)
+/// Port range for payload servers (CConnect standard)
 const PORT_RANGE_START: u16 = 1739;
 const PORT_RANGE_END: u16 = 1764;
 
@@ -170,13 +170,13 @@ pub struct PayloadServer {
 impl PayloadServer {
     /// Create a new payload server on an available port
     ///
-    /// Binds to 0.0.0.0 in the KDE Connect port range (1739-1764).
+    /// Binds to 0.0.0.0 in the CConnect port range (1739-1764).
     ///
     /// # Errors
     ///
     /// Returns error if no ports are available in the range.
     pub async fn new() -> Result<Self> {
-        // Try to bind to a port in the KDE Connect range
+        // Try to bind to a port in the CConnect range
         for port in PORT_RANGE_START..=PORT_RANGE_END {
             let addr = format!("0.0.0.0:{}", port);
             if let Ok(listener) = TcpListener::bind(&addr).await {

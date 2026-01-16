@@ -1,6 +1,6 @@
-//! DBus Client for KDE Connect Applet
+//! DBus Client for CConnect Applet
 //!
-//! Provides communication with the KDE Connect daemon via DBus.
+//! Provides communication with the CConnect daemon via DBus.
 //! Handles method calls, signal subscription, and error recovery.
 
 use anyhow::{Context, Result};
@@ -82,7 +82,7 @@ pub enum DaemonEvent {
     default_service = "com.system76.CosmicConnect",
     default_path = "/com/system76/CosmicConnect"
 )]
-trait KdeConnect {
+trait CConnect {
     /// List all known devices
     async fn list_devices(&self) -> zbus::Result<HashMap<String, DeviceInfo>>;
 
@@ -168,7 +168,7 @@ pub struct DbusClient {
     /// DBus connection
     connection: Connection,
     /// Proxy to daemon interface
-    proxy: KdeConnectProxy<'static>,
+    proxy: CConnectProxy<'static>,
     /// Event sender
     event_tx: mpsc::UnboundedSender<DaemonEvent>,
 }
@@ -179,13 +179,13 @@ impl DbusClient {
     /// # Returns
     /// DBus client instance and event receiver
     pub async fn connect() -> Result<(Self, mpsc::UnboundedReceiver<DaemonEvent>)> {
-        info!("Connecting to KDE Connect daemon via DBus");
+        info!("Connecting to CConnect daemon via DBus");
 
         let connection = Connection::session()
             .await
             .context("Failed to connect to session bus")?;
 
-        let proxy = KdeConnectProxy::new(&connection)
+        let proxy = CConnectProxy::new(&connection)
             .await
             .context("Failed to create proxy")?;
 

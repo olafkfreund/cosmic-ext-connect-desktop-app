@@ -6,10 +6,10 @@
 //! ## Protocol
 //!
 //! ### Packet Types
-//! - `kdeconnect.contacts.request_all_uids_timestamps` - Request all contact UIDs with timestamps
-//! - `kdeconnect.contacts.request_vcards_by_uid` - Request specific vCards by UID
-//! - `kdeconnect.contacts.response_uids_timestamps` - Response with UID/timestamp pairs
-//! - `kdeconnect.contacts.response_vcards` - Response with vCard data
+//! - `cconnect.contacts.request_all_uids_timestamps` - Request all contact UIDs with timestamps
+//! - `cconnect.contacts.request_vcards_by_uid` - Request specific vCards by UID
+//! - `cconnect.contacts.response_uids_timestamps` - Response with UID/timestamp pairs
+//! - `cconnect.contacts.response_vcards` - Response with vCard data
 //!
 //! ### vCard Format
 //! - Standard: vCard 2.1
@@ -31,17 +31,17 @@ use tracing::{debug, info, warn};
 
 /// Packet type for requesting all contact UIDs with timestamps
 pub const PACKET_TYPE_REQUEST_ALL_UIDS_TIMESTAMPS: &str =
-    "kdeconnect.contacts.request_all_uids_timestamps";
+    "cconnect.contacts.request_all_uids_timestamps";
 
 /// Packet type for requesting specific vCards by UID
-pub const PACKET_TYPE_REQUEST_VCARDS_BY_UID: &str = "kdeconnect.contacts.request_vcards_by_uid";
+pub const PACKET_TYPE_REQUEST_VCARDS_BY_UID: &str = "cconnect.contacts.request_vcards_by_uid";
 
 /// Packet type for response with UIDs and timestamps
 pub const PACKET_TYPE_RESPONSE_UIDS_TIMESTAMPS: &str =
-    "kdeconnect.contacts.response_uids_timestamps";
+    "cconnect.contacts.response_uids_timestamps";
 
 /// Packet type for response with vCard data
-pub const PACKET_TYPE_RESPONSE_VCARDS: &str = "kdeconnect.contacts.response_vcards";
+pub const PACKET_TYPE_RESPONSE_VCARDS: &str = "cconnect.contacts.response_vcards";
 
 /// Contact UID with modification timestamp
 #[derive(Debug, Clone, Serialize, Deserialize)]

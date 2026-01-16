@@ -1,7 +1,7 @@
 //! Transport Trait Abstraction
 //!
 //! Defines a common interface for different transport types (TCP, Bluetooth, etc.)
-//! that can be used to send and receive KDE Connect packets.
+//! that can be used to send and receive CConnect packets.
 
 use crate::{Packet, Result};
 use async_trait::async_trait;
@@ -67,7 +67,7 @@ impl std::fmt::Display for TransportAddress {
     }
 }
 
-/// Common transport interface for KDE Connect
+/// Common transport interface for CConnect
 #[async_trait]
 pub trait Transport: Send + Sync + Debug {
     /// Get transport capabilities

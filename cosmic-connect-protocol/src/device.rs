@@ -1,4 +1,4 @@
-//! KDE Connect Device State Management
+//! CConnect Device State Management
 //!
 //! This module provides device state tracking and management for connected devices.
 //! It handles device lifecycle, connection state, capabilities, and persistence.
@@ -555,14 +555,14 @@ mod tests {
     fn test_device_capabilities() {
         let mut info = create_test_device_info();
         info = info
-            .with_incoming_capability("kdeconnect.battery")
-            .with_outgoing_capability("kdeconnect.ping");
+            .with_incoming_capability("cconnect.battery")
+            .with_outgoing_capability("cconnect.ping");
 
         let device = Device::from_discovery(info);
 
-        assert!(device.has_incoming_capability("kdeconnect.battery"));
-        assert!(device.has_outgoing_capability("kdeconnect.ping"));
-        assert!(!device.has_incoming_capability("kdeconnect.notification"));
+        assert!(device.has_incoming_capability("cconnect.battery"));
+        assert!(device.has_outgoing_capability("cconnect.ping"));
+        assert!(!device.has_incoming_capability("cconnect.notification"));
     }
 
     #[test]

@@ -1,12 +1,12 @@
-//! KDE Connect Plugin Architecture
+//! CConnect Plugin Architecture
 //!
-//! This module provides the plugin trait and architecture for extending KDE Connect
+//! This module provides the plugin trait and architecture for extending CConnect
 //! functionality. Plugins handle specific packet types and provide features like battery
 //! monitoring, notifications, media control, etc.
 //!
 //! ## Plugin Architecture
 //!
-//! KDE Connect uses a **capability-based plugin system** where devices advertise their
+//! CConnect uses a **capability-based plugin system** where devices advertise their
 //! capabilities through identity packets. This enables selective feature negotiation
 //! without requiring all implementations to support every feature.
 //!
@@ -19,11 +19,11 @@
 //!
 //! ### Packet Types
 //!
-//! Plugin packet types follow the pattern `kdeconnect.<plugin>[.<action>]`:
-//! - `kdeconnect.battery` - Battery status broadcast
-//! - `kdeconnect.battery.request` - Request battery status
-//! - `kdeconnect.mpris` - Media player state
-//! - `kdeconnect.mpris.request` - Media player commands
+//! Plugin packet types follow the pattern `cconnect.<plugin>[.<action>]`:
+//! - `cconnect.battery` - Battery status broadcast
+//! - `cconnect.battery.request` - Request battery status
+//! - `cconnect.mpris` - Media player state
+//! - `cconnect.mpris.request` - Media player commands
 //!
 //! ### Plugin Categories
 //!
@@ -62,11 +62,11 @@
 //!     }
 //!
 //!     fn incoming_capabilities(&self) -> Vec<String> {
-//!         vec!["kdeconnect.ping".to_string()]
+//!         vec!["cconnect.ping".to_string()]
 //!     }
 //!
 //!     fn outgoing_capabilities(&self) -> Vec<String> {
-//!         vec!["kdeconnect.ping".to_string()]
+//!         vec!["cconnect.ping".to_string()]
 //!     }
 //!
 //!     async fn init(&mut self, _device: &Device) -> Result<()> {
@@ -84,7 +84,7 @@
 //!     }
 //!
 //!     async fn handle_packet(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
-//!         if packet.packet_type == "kdeconnect.ping" {
+//!         if packet.packet_type == "cconnect.ping" {
 //!             info!("Received ping from {}", device.name());
 //!             // Handle ping...
 //!         }
@@ -96,8 +96,8 @@
 //! ## References
 //!
 //! - [Valent Protocol Reference](https://valent.andyholmes.ca/documentation/protocol.html)
-//! - [KDE Connect Community Wiki](https://community.kde.org/KDEConnect)
-//! - [KDE Connect GitHub](https://github.com/KDE/kdeconnect-kde)
+//! - [CConnect Community Wiki](https://community.kde.org/KDEConnect)
+//! - [CConnect GitHub](https://github.com/KDE/cconnect-kde)
 
 pub mod battery;
 pub mod clipboard;
@@ -153,7 +153,7 @@ pub trait PluginFactory: Send + Sync {
     fn create(&self) -> Box<dyn Plugin>;
 }
 
-/// Plugin trait for extending KDE Connect functionality
+/// Plugin trait for extending CConnect functionality
 ///
 /// Plugins must implement this trait to handle specific packet types and provide
 /// protocol features. All methods are async to support network I/O operations.
@@ -184,17 +184,17 @@ pub trait Plugin: Send + Sync + Any {
     /// Get list of incoming packet types this plugin can handle
     ///
     /// These are packet types the plugin can **receive** and process.
-    /// Format: `kdeconnect.<plugin>[.<action>]`
+    /// Format: `cconnect.<plugin>[.<action>]`
     ///
-    /// Example: `["kdeconnect.ping", "kdeconnect.battery"]`
+    /// Example: `["cconnect.ping", "cconnect.battery"]`
     fn incoming_capabilities(&self) -> Vec<String>;
 
     /// Get list of outgoing packet types this plugin can send
     ///
     /// These are packet types the plugin can **send** to other devices.
-    /// Format: `kdeconnect.<plugin>[.<action>]`
+    /// Format: `cconnect.<plugin>[.<action>]`
     ///
-    /// Example: `["kdeconnect.ping", "kdeconnect.battery.request"]`
+    /// Example: `["cconnect.ping", "cconnect.battery.request"]`
     fn outgoing_capabilities(&self) -> Vec<String>;
 
     /// Initialize the plugin with device context
@@ -861,8 +861,8 @@ mod tests {
         let mut manager = PluginManager::new();
         let factory = Arc::new(MockPluginFactory::new(
             "test_plugin",
-            vec!["kdeconnect.test"],
-            vec!["kdeconnect.test.response"],
+            vec!["cconnect.test"],
+            vec!["cconnect.test.response"],
         ));
 
         assert!(manager.register_factory(factory).is_ok());
@@ -874,12 +874,12 @@ mod tests {
         let mut manager = PluginManager::new();
         let factory1 = Arc::new(MockPluginFactory::new(
             "test_plugin",
-            vec!["kdeconnect.test"],
+            vec!["cconnect.test"],
             vec![],
         ));
         let factory2 = Arc::new(MockPluginFactory::new(
             "test_plugin",
-            vec!["kdeconnect.test2"],
+            vec!["cconnect.test2"],
             vec![],
         ));
 
@@ -897,12 +897,12 @@ mod tests {
         let mut manager = PluginManager::new();
         let factory1 = Arc::new(MockPluginFactory::new(
             "plugin1",
-            vec!["kdeconnect.test"],
+            vec!["cconnect.test"],
             vec![],
         ));
         let factory2 = Arc::new(MockPluginFactory::new(
             "plugin2",
-            vec!["kdeconnect.test"],
+            vec!["cconnect.test"],
             vec![],
         ));
 
@@ -917,7 +917,7 @@ mod tests {
         let mut manager = PluginManager::new();
         let factory = Arc::new(MockPluginFactory::new(
             "test_plugin",
-            vec!["kdeconnect.test"],
+            vec!["cconnect.test"],
             vec![],
         ));
 
@@ -938,7 +938,7 @@ mod tests {
         let mut manager = PluginManager::new();
         let factory = Arc::new(MockPluginFactory::new(
             "test_plugin",
-            vec!["kdeconnect.test"],
+            vec!["cconnect.test"],
             vec![],
         ));
 
@@ -962,7 +962,7 @@ mod tests {
         let mut manager = PluginManager::new();
         let factory = Arc::new(MockPluginFactory::new(
             "test_plugin",
-            vec!["kdeconnect.test"],
+            vec!["cconnect.test"],
             vec![],
         ));
 
@@ -976,7 +976,7 @@ mod tests {
             .await
             .unwrap();
 
-        let packet = Packet::new("kdeconnect.test", serde_json::json!({}));
+        let packet = Packet::new("cconnect.test", serde_json::json!({}));
         assert!(manager
             .handle_packet(&device_id, &packet, &mut device)
             .await
@@ -988,7 +988,7 @@ mod tests {
         let mut manager = PluginManager::new();
         let factory = Arc::new(MockPluginFactory::new(
             "test_plugin",
-            vec!["kdeconnect.test"],
+            vec!["cconnect.test"],
             vec![],
         ));
 
@@ -1021,15 +1021,15 @@ mod tests {
         let mut manager = PluginManager::new();
         let factory = Arc::new(MockPluginFactory::new(
             "test_plugin",
-            vec!["kdeconnect.test", "kdeconnect.test2"],
+            vec!["cconnect.test", "cconnect.test2"],
             vec![],
         ));
 
         manager.register_factory(factory).unwrap();
         let capabilities = manager.get_all_incoming_capabilities();
         assert_eq!(capabilities.len(), 2);
-        assert!(capabilities.contains(&"kdeconnect.test".to_string()));
-        assert!(capabilities.contains(&"kdeconnect.test2".to_string()));
+        assert!(capabilities.contains(&"cconnect.test".to_string()));
+        assert!(capabilities.contains(&"cconnect.test2".to_string()));
     }
 
     #[tokio::test]
@@ -1037,7 +1037,7 @@ mod tests {
         let mut manager = PluginManager::new();
         let factory = Arc::new(MockPluginFactory::new(
             "test_plugin",
-            vec!["kdeconnect.test"],
+            vec!["cconnect.test"],
             vec![],
         ));
 
@@ -1051,7 +1051,7 @@ mod tests {
             .await
             .unwrap();
 
-        let packet = Packet::new("kdeconnect.unsupported", serde_json::json!({}));
+        let packet = Packet::new("cconnect.unsupported", serde_json::json!({}));
         let result = manager
             .handle_packet(&device_id, &packet, &mut device)
             .await;

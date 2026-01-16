@@ -477,9 +477,9 @@ async fn test_packet_retry_queue() {
 
     // Queue packets
     let packet1 =
-        cosmic_connect_protocol::Packet::new("kdeconnect.ping", serde_json::json!({}));
+        cosmic_connect_protocol::Packet::new("cconnect.ping", serde_json::json!({}));
     let packet2 =
-        cosmic_connect_protocol::Packet::new("kdeconnect.share", serde_json::json!({}));
+        cosmic_connect_protocol::Packet::new("cconnect.share", serde_json::json!({}));
 
     recovery_manager
         .queue_packet_retry("device-1".to_string(), packet1.clone())
@@ -492,9 +492,9 @@ async fn test_packet_retry_queue() {
     let to_retry = recovery_manager.process_retry_queue().await;
     assert_eq!(to_retry.len(), 2);
     assert_eq!(to_retry[0].0, "device-1");
-    assert_eq!(to_retry[0].1.packet_type, "kdeconnect.ping");
+    assert_eq!(to_retry[0].1.packet_type, "cconnect.ping");
     assert_eq!(to_retry[1].0, "device-1");
-    assert_eq!(to_retry[1].1.packet_type, "kdeconnect.share");
+    assert_eq!(to_retry[1].1.packet_type, "cconnect.share");
 }
 
 /// Test packet retry exhaustion (max retries)
@@ -505,7 +505,7 @@ async fn test_packet_retry_exhaustion() {
     recovery_manager.init().await.unwrap();
 
     // Queue packet
-    let packet = cosmic_connect_protocol::Packet::new("kdeconnect.test", serde_json::json!({}));
+    let packet = cosmic_connect_protocol::Packet::new("cconnect.test", serde_json::json!({}));
     recovery_manager
         .queue_packet_retry("device-1".to_string(), packet.clone())
         .await;

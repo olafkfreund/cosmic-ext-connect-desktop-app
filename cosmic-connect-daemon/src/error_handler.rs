@@ -116,7 +116,7 @@ impl ErrorHandler {
                 notifier
                     .notify_network_error(
                         device_name,
-                        "Connection refused. Check if KDE Connect is running on the device.",
+                        "Connection refused. Check if CConnect is running on the device.",
                     )
                     .await?;
             }
@@ -151,7 +151,14 @@ impl ErrorHandler {
                 notifier.notify_configuration_error(msg).await?;
             }
 
-            ProtocolError::CertificateValidation(msg) | ProtocolError::Certificate(_) => {
+            ProtocolError::CertificateValidation(msg) => {
+                notifier
+                    .notify_certificate_error(device_name, &msg)
+                    .await?;
+            }
+
+            ProtocolError::Certificate(err) => {
+                let msg = format!("{}", err);
                 notifier
                     .notify_certificate_error(device_name, &msg)
                     .await?;

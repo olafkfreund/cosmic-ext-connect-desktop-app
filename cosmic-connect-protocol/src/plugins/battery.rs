@@ -1,26 +1,26 @@
 //! Battery Plugin
 //!
 //! Reports battery status to connected devices and receives battery status from remote devices.
-//! Enables power monitoring across devices in the KDE Connect network.
+//! Enables power monitoring across devices in the CConnect network.
 //!
 //! ## Protocol
 //!
 //! **Packet Types**:
-//! - `kdeconnect.battery` - Battery status update
-//! - `kdeconnect.battery.request` - Request battery status (deprecated)
+//! - `cconnect.battery` - Battery status update
+//! - `cconnect.battery.request` - Request battery status (deprecated)
 //!
 //! **Capabilities**:
-//! - Incoming: `kdeconnect.battery`, `kdeconnect.battery.request`
-//! - Outgoing: `kdeconnect.battery`, `kdeconnect.battery.request`
+//! - Incoming: `cconnect.battery`, `cconnect.battery.request`
+//! - Outgoing: `cconnect.battery`, `cconnect.battery.request`
 //!
 //! ## Packet Formats
 //!
-//! ### Battery Status (`kdeconnect.battery`)
+//! ### Battery Status (`cconnect.battery`)
 //!
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.battery",
+//!     "type": "cconnect.battery",
 //!     "body": {
 //!         "currentCharge": 75,
 //!         "isCharging": true,
@@ -34,12 +34,12 @@
 //! - `isCharging` (bool): Whether device is charging
 //! - `thresholdEvent` (i32): 0 = above threshold, 1 = below threshold
 //!
-//! ### Battery Request (`kdeconnect.battery.request`) - Deprecated
+//! ### Battery Request (`cconnect.battery.request`) - Deprecated
 //!
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.battery.request",
+//!     "type": "cconnect.battery.request",
 //!     "body": {
 //!         "request": true
 //!     }
@@ -277,7 +277,7 @@ impl BatteryPlugin {
 
     /// Create a battery status packet
     ///
-    /// Creates a `kdeconnect.battery` packet with the given status.
+    /// Creates a `cconnect.battery` packet with the given status.
     ///
     /// # Parameters
     ///
@@ -296,7 +296,7 @@ impl BatteryPlugin {
     /// let status = BatteryStatus::new(75, true, 0);
     /// let packet = plugin.create_battery_packet(&status);
     ///
-    /// assert_eq!(packet.packet_type, "kdeconnect.battery");
+    /// assert_eq!(packet.packet_type, "cconnect.battery");
     /// ```
     pub fn create_battery_packet(&self, status: &BatteryStatus) -> Packet {
         let body = json!({
@@ -305,12 +305,12 @@ impl BatteryPlugin {
             "thresholdEvent": status.threshold_event,
         });
 
-        Packet::new("kdeconnect.battery", body)
+        Packet::new("cconnect.battery", body)
     }
 
     /// Create a battery request packet (deprecated)
     ///
-    /// Creates a `kdeconnect.battery.request` packet.
+    /// Creates a `cconnect.battery.request` packet.
     /// Note: This packet type is deprecated in the protocol.
     ///
     /// # Returns
@@ -325,11 +325,11 @@ impl BatteryPlugin {
     /// let plugin = BatteryPlugin::new();
     /// let packet = plugin.create_battery_request();
     ///
-    /// assert_eq!(packet.packet_type, "kdeconnect.battery.request");
+    /// assert_eq!(packet.packet_type, "cconnect.battery.request");
     /// ```
     pub fn create_battery_request(&self) -> Packet {
         let body = json!({ "request": true });
-        Packet::new("kdeconnect.battery.request", body)
+        Packet::new("cconnect.battery.request", body)
     }
 
     /// Handle incoming battery status packet
@@ -409,15 +409,15 @@ impl Plugin for BatteryPlugin {
 
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.battery".to_string(),
-            "kdeconnect.battery.request".to_string(),
+            "cconnect.battery".to_string(),
+            "cconnect.battery.request".to_string(),
         ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.battery".to_string(),
-            "kdeconnect.battery.request".to_string(),
+            "cconnect.battery".to_string(),
+            "cconnect.battery.request".to_string(),
         ]
     }
 
@@ -439,10 +439,10 @@ impl Plugin for BatteryPlugin {
 
     async fn handle_packet(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
         match packet.packet_type.as_str() {
-            "kdeconnect.battery" => {
+            "cconnect.battery" => {
                 self.handle_battery_status(packet, device);
             }
-            "kdeconnect.battery.request" => {
+            "cconnect.battery.request" => {
                 self.handle_battery_request(packet, device);
             }
             _ => {
@@ -464,15 +464,15 @@ impl PluginFactory for BatteryPluginFactory {
 
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.battery".to_string(),
-            "kdeconnect.battery.request".to_string(),
+            "cconnect.battery".to_string(),
+            "cconnect.battery.request".to_string(),
         ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.battery".to_string(),
-            "kdeconnect.battery.request".to_string(),
+            "cconnect.battery".to_string(),
+            "cconnect.battery.request".to_string(),
         ]
     }
 
@@ -529,13 +529,13 @@ mod tests {
 
         let incoming = plugin.incoming_capabilities();
         assert_eq!(incoming.len(), 2);
-        assert!(incoming.contains(&"kdeconnect.battery".to_string()));
-        assert!(incoming.contains(&"kdeconnect.battery.request".to_string()));
+        assert!(incoming.contains(&"cconnect.battery".to_string()));
+        assert!(incoming.contains(&"cconnect.battery.request".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 2);
-        assert!(outgoing.contains(&"kdeconnect.battery".to_string()));
-        assert!(outgoing.contains(&"kdeconnect.battery.request".to_string()));
+        assert!(outgoing.contains(&"cconnect.battery".to_string()));
+        assert!(outgoing.contains(&"cconnect.battery.request".to_string()));
     }
 
     #[tokio::test]
@@ -556,7 +556,7 @@ mod tests {
         let status = BatteryStatus::new(75, true, 0);
         let packet = plugin.create_battery_packet(&status);
 
-        assert_eq!(packet.packet_type, "kdeconnect.battery");
+        assert_eq!(packet.packet_type, "cconnect.battery");
         assert_eq!(
             packet.body.get("currentCharge").and_then(|v| v.as_i64()),
             Some(75)
@@ -576,7 +576,7 @@ mod tests {
         let plugin = BatteryPlugin::new();
         let packet = plugin.create_battery_request();
 
-        assert_eq!(packet.packet_type, "kdeconnect.battery.request");
+        assert_eq!(packet.packet_type, "cconnect.battery.request");
         assert_eq!(
             packet.body.get("request").and_then(|v| v.as_bool()),
             Some(true)
@@ -653,7 +653,7 @@ mod tests {
         plugin.init(&device).await.unwrap();
 
         let mut device = create_test_device();
-        let packet = Packet::new("kdeconnect.ping", json!({}));
+        let packet = Packet::new("cconnect.ping", json!({}));
 
         plugin.handle_packet(&packet, &mut device).await.unwrap();
 

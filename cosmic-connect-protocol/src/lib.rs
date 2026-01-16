@@ -1,6 +1,6 @@
-//! KDE Connect Protocol Implementation
+//! CConnect Protocol Implementation
 //!
-//! This library provides a pure Rust implementation of the KDE Connect protocol,
+//! This library provides a pure Rust implementation of the CConnect protocol,
 //! enabling device synchronization and communication between computers and mobile devices.
 
 pub mod bluetooth_connection_manager;
@@ -49,13 +49,13 @@ pub use bluetooth_connection_manager::BluetoothConnectionManager;
 pub use transport::{
     BluetoothConnection, BluetoothTransportFactory, LatencyCategory, TcpConnection,
     TcpTransportFactory, Transport, TransportAddress, TransportCapabilities, TransportFactory,
-    TransportPreference, TransportType, KDECONNECT_SERVICE_UUID, RFCOMM_READ_CHAR_UUID,
+    TransportPreference, TransportType, CCONNECT_SERVICE_UUID, RFCOMM_READ_CHAR_UUID,
     RFCOMM_WRITE_CHAR_UUID,
 };
 pub use transport_manager::{TransportManager, TransportManagerConfig, TransportManagerEvent};
 
 /// Protocol version we implement
-/// Updated to version 8 to match latest KDE Connect Android app
+/// Updated to version 8 to match latest CConnect Android app
 pub const PROTOCOL_VERSION: u32 = 8;
 
 #[cfg(test)]

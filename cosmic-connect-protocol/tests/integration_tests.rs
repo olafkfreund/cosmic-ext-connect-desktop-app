@@ -1,4 +1,4 @@
-//! Integration Tests for KDE Connect Protocol
+//! Integration Tests for CConnect Protocol
 //!
 //! These tests verify the complete protocol flow including device discovery,
 //! pairing, and plugin communication.
@@ -90,39 +90,39 @@ async fn test_device_manager_update_device_state() {
 #[tokio::test]
 async fn test_pairing_request_packet() {
     let packet = Packet::new(
-        "kdeconnect.pair",
+        "cconnect.pair",
         json!({
             "pair": true
         }),
     );
 
-    assert_eq!(packet.packet_type, "kdeconnect.pair");
+    assert_eq!(packet.packet_type, "cconnect.pair");
     assert_eq!(packet.body["pair"], json!(true));
 }
 
 #[tokio::test]
 async fn test_pairing_accept_packet() {
     let packet = Packet::new(
-        "kdeconnect.pair",
+        "cconnect.pair",
         json!({
             "pair": true
         }),
     );
 
-    assert_eq!(packet.packet_type, "kdeconnect.pair");
+    assert_eq!(packet.packet_type, "cconnect.pair");
     assert_eq!(packet.body["pair"], json!(true));
 }
 
 #[tokio::test]
 async fn test_pairing_reject_packet() {
     let packet = Packet::new(
-        "kdeconnect.pair",
+        "cconnect.pair",
         json!({
             "pair": false
         }),
     );
 
-    assert_eq!(packet.packet_type, "kdeconnect.pair");
+    assert_eq!(packet.packet_type, "cconnect.pair");
     assert_eq!(packet.body["pair"], json!(false));
 }
 
@@ -168,22 +168,22 @@ async fn test_device_info_with_capabilities() {
 
     // Add some capabilities
     device_info.incoming_capabilities = vec![
-        "kdeconnect.battery".to_string(),
-        "kdeconnect.ping".to_string(),
+        "cconnect.battery".to_string(),
+        "cconnect.ping".to_string(),
     ];
     device_info.outgoing_capabilities = vec![
-        "kdeconnect.notification".to_string(),
-        "kdeconnect.share".to_string(),
+        "cconnect.notification".to_string(),
+        "cconnect.share".to_string(),
     ];
 
     assert_eq!(device_info.incoming_capabilities.len(), 2);
     assert_eq!(device_info.outgoing_capabilities.len(), 2);
     assert!(device_info
         .incoming_capabilities
-        .contains(&"kdeconnect.battery".to_string()));
+        .contains(&"cconnect.battery".to_string()));
     assert!(device_info
         .outgoing_capabilities
-        .contains(&"kdeconnect.notification".to_string()));
+        .contains(&"cconnect.notification".to_string()));
 }
 
 #[tokio::test]
@@ -243,14 +243,14 @@ async fn test_device_connection_lifecycle() {
 #[tokio::test]
 async fn test_packet_serialization_structure() {
     let packet = Packet::new(
-        "kdeconnect.ping",
+        "cconnect.ping",
         json!({
             "message": "Hello",
             "id": 42
         }),
     );
 
-    assert_eq!(packet.packet_type, "kdeconnect.ping");
+    assert_eq!(packet.packet_type, "cconnect.ping");
     assert_eq!(packet.body["message"], json!("Hello"));
     assert_eq!(packet.body["id"], json!(42));
 }
@@ -320,7 +320,7 @@ async fn test_device_manager_find_by_name() {
 #[tokio::test]
 async fn test_packet_to_bytes_and_back() {
     let original = Packet::new(
-        "kdeconnect.ping",
+        "cconnect.ping",
         json!({
             "message": "test"
         }),
@@ -341,7 +341,7 @@ async fn test_identity_packet_creation() {
     let device_info = DeviceInfo::new("Test Device", DeviceType::Desktop, 1716);
 
     let packet = Packet::new(
-        "kdeconnect.identity",
+        "cconnect.identity",
         json!({
             "deviceId": device_info.device_id,
             "deviceName": device_info.device_name,
@@ -353,7 +353,7 @@ async fn test_identity_packet_creation() {
         }),
     );
 
-    assert_eq!(packet.packet_type, "kdeconnect.identity");
+    assert_eq!(packet.packet_type, "cconnect.identity");
     assert_eq!(packet.body["deviceName"], json!("Test Device"));
     assert_eq!(packet.body["protocolVersion"], json!(7));
 }

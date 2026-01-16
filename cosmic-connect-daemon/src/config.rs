@@ -1,6 +1,6 @@
 //! Daemon Configuration
 //!
-//! Configuration management for the KDE Connect daemon.
+//! Configuration management for the CConnect daemon.
 
 use anyhow::{Context, Result};
 use cosmic_connect_protocol::TransportPreference;

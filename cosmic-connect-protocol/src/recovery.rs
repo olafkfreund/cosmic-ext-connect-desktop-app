@@ -592,7 +592,7 @@ mod tests {
         manager.init().await.unwrap();
 
         // Queue packet
-        let packet = Packet::new("kdeconnect.ping", serde_json::json!({}));
+        let packet = Packet::new("cconnect.ping", serde_json::json!({}));
         manager
             .queue_packet_retry("device-1".to_string(), packet.clone())
             .await;
@@ -601,7 +601,7 @@ mod tests {
         let to_retry = manager.process_retry_queue().await;
         assert_eq!(to_retry.len(), 1);
         assert_eq!(to_retry[0].0, "device-1");
-        assert_eq!(to_retry[0].1.packet_type, "kdeconnect.ping");
+        assert_eq!(to_retry[0].1.packet_type, "cconnect.ping");
     }
 
     #[tokio::test]

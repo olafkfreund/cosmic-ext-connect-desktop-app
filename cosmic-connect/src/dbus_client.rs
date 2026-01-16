@@ -1,6 +1,6 @@
-//! DBus Client for KDE Connect Applet
+//! DBus Client for CConnect Applet
 //!
-//! Provides communication with the KDE Connect daemon via DBus.
+//! Provides communication with the CConnect daemon via DBus.
 //! Handles method calls, signal subscription, and error recovery.
 
 use anyhow::{Context, Result};
@@ -101,7 +101,7 @@ pub enum DaemonEvent {
     default_service = "com.system76.CosmicConnect",
     default_path = "/com/system76/CosmicConnect"
 )]
-trait KdeConnect {
+trait CConnect {
     /// List all known devices
     async fn list_devices(&self) -> zbus::Result<HashMap<String, DeviceInfo>>;
 
@@ -157,6 +157,35 @@ trait KdeConnect {
     /// Seek MPRIS player position
     async fn mpris_seek(&self, player: &str, offset_microseconds: i64) -> zbus::Result<()>;
 
+    // ===== Settings Management Methods =====
+
+    /// Get daemon configuration as JSON
+    async fn get_daemon_config(&self) -> zbus::Result<String>;
+
+    /// Set device name
+    async fn set_device_name(&self, name: &str) -> zbus::Result<()>;
+
+    /// Set device type
+    async fn set_device_type(&self, device_type: &str) -> zbus::Result<()>;
+
+    /// Get global plugin status
+    async fn get_global_plugin_status(&self) -> zbus::Result<HashMap<String, bool>>;
+
+    /// Set global plugin enabled state
+    async fn set_global_plugin_enabled(&self, plugin: &str, enabled: bool) -> zbus::Result<()>;
+
+    /// Set TCP transport enabled
+    async fn set_tcp_enabled(&self, enabled: bool) -> zbus::Result<()>;
+
+    /// Set Bluetooth transport enabled
+    async fn set_bluetooth_enabled(&self, enabled: bool) -> zbus::Result<()>;
+
+    /// Set transport preference
+    async fn set_transport_preference(&self, preference: &str) -> zbus::Result<()>;
+
+    /// Set auto fallback enabled
+    async fn set_auto_fallback(&self, enabled: bool) -> zbus::Result<()>;
+
     /// Signal: Device was added
     #[zbus(signal)]
     fn device_added(device_id: &str, device_info: DeviceInfo) -> zbus::Result<()>;
@@ -208,7 +237,7 @@ pub struct DbusClient {
     /// DBus connection
     connection: Connection,
     /// Proxy to daemon interface
-    proxy: KdeConnectProxy<'static>,
+    proxy: CConnectProxy<'static>,
     /// Event sender
     event_tx: mpsc::UnboundedSender<DaemonEvent>,
 }
@@ -219,13 +248,13 @@ impl DbusClient {
     /// # Returns
     /// DBus client instance and event receiver
     pub async fn connect() -> Result<(Self, mpsc::UnboundedReceiver<DaemonEvent>)> {
-        info!("Connecting to KDE Connect daemon via DBus");
+        info!("Connecting to CConnect daemon via DBus");
 
         let connection = Connection::session()
             .await
             .context("Failed to connect to session bus")?;
 
-        let proxy = KdeConnectProxy::new(&connection)
+        let proxy = CConnectProxy::new(&connection)
             .await
             .context("Failed to create proxy")?;
 
@@ -536,6 +565,112 @@ impl DbusClient {
             .context("Failed to seek MPRIS player")
     }
 
+    // ===== Settings Management Methods =====
+
+    /// Get daemon configuration as JSON
+    pub async fn get_daemon_config(&self) -> Result<String> {
+        debug!("Getting daemon configuration");
+        self.proxy
+            .get_daemon_config()
+            .await
+            .context("Failed to get daemon configuration")
+    }
+
+    /// Set device name
+    pub async fn set_device_name(&self, name: &str) -> Result<()> {
+        info!("Setting device name to: {}", name);
+        self.proxy
+            .set_device_name(name)
+            .await
+            .context("Failed to set device name")
+    }
+
+    /// Set device type
+    ///
+    /// # Arguments
+    /// * `device_type` - Device type: "desktop", "laptop", "phone", "tablet", or "tv"
+    pub async fn set_device_type(&self, device_type: &str) -> Result<()> {
+        info!("Setting device type to: {}", device_type);
+        self.proxy
+            .set_device_type(device_type)
+            .await
+            .context("Failed to set device type")
+    }
+
+    /// Get global plugin status
+    ///
+    /// Returns a HashMap of plugin names to their enabled status
+    pub async fn get_global_plugin_status(&self) -> Result<HashMap<String, bool>> {
+        debug!("Getting global plugin status");
+        self.proxy
+            .get_global_plugin_status()
+            .await
+            .context("Failed to get plugin status")
+    }
+
+    /// Set global plugin enabled state
+    ///
+    /// # Arguments
+    /// * `plugin` - Plugin name (e.g., "ping", "battery", "share")
+    /// * `enabled` - Whether to enable the plugin
+    pub async fn set_global_plugin_enabled(&self, plugin: &str, enabled: bool) -> Result<()> {
+        info!("Setting plugin {} to {}", plugin, if enabled { "enabled" } else { "disabled" });
+        self.proxy
+            .set_global_plugin_enabled(plugin, enabled)
+            .await
+            .context("Failed to set plugin enabled state")
+    }
+
+    /// Set TCP transport enabled
+    ///
+    /// Note: Requires daemon restart to take effect
+    pub async fn set_tcp_enabled(&self, enabled: bool) -> Result<()> {
+        info!("Setting TCP transport to {}", if enabled { "enabled" } else { "disabled" });
+        self.proxy
+            .set_tcp_enabled(enabled)
+            .await
+            .context("Failed to set TCP enabled")
+    }
+
+    /// Set Bluetooth transport enabled
+    ///
+    /// Note: Requires daemon restart to take effect
+    pub async fn set_bluetooth_enabled(&self, enabled: bool) -> Result<()> {
+        info!("Setting Bluetooth transport to {}", if enabled { "enabled" } else { "disabled" });
+        self.proxy
+            .set_bluetooth_enabled(enabled)
+            .await
+            .context("Failed to set Bluetooth enabled")
+    }
+
+    /// Set transport preference
+    ///
+    /// # Arguments
+    /// * `preference` - Transport preference: "prefer_tcp", "prefer_bluetooth",
+    ///                  "tcp_first", "bluetooth_first", "only_tcp", or "only_bluetooth"
+    ///
+    /// Note: Requires daemon restart to take effect
+    pub async fn set_transport_preference(&self, preference: &str) -> Result<()> {
+        info!("Setting transport preference to: {}", preference);
+        self.proxy
+            .set_transport_preference(preference)
+            .await
+            .context("Failed to set transport preference")
+    }
+
+    /// Set auto fallback enabled
+    ///
+    /// When enabled, automatically tries alternative transport if primary fails
+    ///
+    /// Note: Requires daemon restart to take effect
+    pub async fn set_auto_fallback(&self, enabled: bool) -> Result<()> {
+        info!("Setting auto fallback to {}", if enabled { "enabled" } else { "disabled" });
+        self.proxy
+            .set_auto_fallback(enabled)
+            .await
+            .context("Failed to set auto fallback")
+    }
+
     /// Check if daemon is available
     pub async fn is_daemon_available(&self) -> bool {
         // Try to list devices as a health check
@@ -607,5 +742,97 @@ impl ReconnectingClient {
     /// Try to receive an event without blocking
     pub fn try_recv_event(&mut self) -> Result<DaemonEvent, mpsc::error::TryRecvError> {
         self.event_rx.try_recv()
+    }
+
+    // Convenience methods that delegate to the underlying client
+
+    /// List all known devices
+    pub async fn list_devices(&self) -> Result<HashMap<String, DeviceInfo>> {
+        self.client
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Not connected to daemon"))?
+            .list_devices()
+            .await
+    }
+
+    /// Get daemon configuration as JSON
+    pub async fn get_daemon_config(&self) -> Result<String> {
+        self.client
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Not connected to daemon"))?
+            .get_daemon_config()
+            .await
+    }
+
+    /// Set device name
+    pub async fn set_device_name(&self, name: &str) -> Result<()> {
+        self.client
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Not connected to daemon"))?
+            .set_device_name(name)
+            .await
+    }
+
+    /// Set device type
+    pub async fn set_device_type(&self, device_type: &str) -> Result<()> {
+        self.client
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Not connected to daemon"))?
+            .set_device_type(device_type)
+            .await
+    }
+
+    /// Get global plugin status
+    pub async fn get_global_plugin_status(&self) -> Result<HashMap<String, bool>> {
+        self.client
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Not connected to daemon"))?
+            .get_global_plugin_status()
+            .await
+    }
+
+    /// Set global plugin enabled state
+    pub async fn set_global_plugin_enabled(&self, plugin: &str, enabled: bool) -> Result<()> {
+        self.client
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Not connected to daemon"))?
+            .set_global_plugin_enabled(plugin, enabled)
+            .await
+    }
+
+    /// Set TCP transport enabled
+    pub async fn set_tcp_enabled(&self, enabled: bool) -> Result<()> {
+        self.client
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Not connected to daemon"))?
+            .set_tcp_enabled(enabled)
+            .await
+    }
+
+    /// Set Bluetooth transport enabled
+    pub async fn set_bluetooth_enabled(&self, enabled: bool) -> Result<()> {
+        self.client
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Not connected to daemon"))?
+            .set_bluetooth_enabled(enabled)
+            .await
+    }
+
+    /// Set transport preference
+    pub async fn set_transport_preference(&self, preference: &str) -> Result<()> {
+        self.client
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Not connected to daemon"))?
+            .set_transport_preference(preference)
+            .await
+    }
+
+    /// Set auto fallback enabled
+    pub async fn set_auto_fallback(&self, enabled: bool) -> Result<()> {
+        self.client
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Not connected to daemon"))?
+            .set_auto_fallback(enabled)
+            .await
     }
 }

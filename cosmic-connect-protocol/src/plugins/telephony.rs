@@ -7,17 +7,17 @@
 //! ## Protocol
 //!
 //! **Packet Types**:
-//! - `kdeconnect.telephony` - Phone call events (incoming)
-//! - `kdeconnect.telephony.request_mute` - Mute ringer request (outgoing)
-//! - `kdeconnect.sms.messages` - SMS message data (incoming)
-//! - `kdeconnect.sms.request_conversations` - Request conversation list (outgoing)
-//! - `kdeconnect.sms.request_conversation` - Request thread messages (outgoing)
-//! - `kdeconnect.sms.request_attachment` - Request message attachment (outgoing)
-//! - `kdeconnect.sms.request` - Send SMS message (outgoing)
+//! - `cconnect.telephony` - Phone call events (incoming)
+//! - `cconnect.telephony.request_mute` - Mute ringer request (outgoing)
+//! - `cconnect.sms.messages` - SMS message data (incoming)
+//! - `cconnect.sms.request_conversations` - Request conversation list (outgoing)
+//! - `cconnect.sms.request_conversation` - Request thread messages (outgoing)
+//! - `cconnect.sms.request_attachment` - Request message attachment (outgoing)
+//! - `cconnect.sms.request` - Send SMS message (outgoing)
 //!
 //! **Capabilities**:
-//! - Incoming: `kdeconnect.telephony`, `kdeconnect.sms.messages`
-//! - Outgoing: `kdeconnect.telephony.request_mute`, `kdeconnect.sms.request*`
+//! - Incoming: `cconnect.telephony`, `cconnect.sms.messages`
+//! - Outgoing: `cconnect.telephony.request_mute`, `cconnect.sms.request*`
 //!
 //! ## Call Events
 //!
@@ -38,8 +38,8 @@
 //!
 //! ## References
 //!
-//! - [KDE Connect Telephony Plugin](https://github.com/KDE/kdeconnect-kde/tree/master/plugins/telephony)
-//! - [KDE Connect SMS Plugin](https://lxr.kde.org/source/network/kdeconnect-kde/plugins/sms/)
+//! - [CConnect Telephony Plugin](https://github.com/KDE/cconnect-kde/tree/master/plugins/telephony)
+//! - [CConnect SMS Plugin](https://lxr.kde.org/source/network/cconnect-kde/plugins/sms/)
 //! - [Valent Protocol Documentation](https://valent.andyholmes.ca/documentation/protocol.html)
 
 use crate::{Device, Packet, ProtocolError, Result};
@@ -52,25 +52,25 @@ use tracing::{debug, info, warn};
 use super::{Plugin, PluginFactory};
 
 /// Packet type for telephony events
-pub const PACKET_TYPE_TELEPHONY: &str = "kdeconnect.telephony";
+pub const PACKET_TYPE_TELEPHONY: &str = "cconnect.telephony";
 
 /// Packet type for mute ringer request
-pub const PACKET_TYPE_TELEPHONY_MUTE: &str = "kdeconnect.telephony.request_mute";
+pub const PACKET_TYPE_TELEPHONY_MUTE: &str = "cconnect.telephony.request_mute";
 
 /// Packet type for SMS messages
-pub const PACKET_TYPE_SMS_MESSAGES: &str = "kdeconnect.sms.messages";
+pub const PACKET_TYPE_SMS_MESSAGES: &str = "cconnect.sms.messages";
 
 /// Packet type for requesting conversation list
-pub const PACKET_TYPE_SMS_REQUEST_CONVERSATIONS: &str = "kdeconnect.sms.request_conversations";
+pub const PACKET_TYPE_SMS_REQUEST_CONVERSATIONS: &str = "cconnect.sms.request_conversations";
 
 /// Packet type for requesting conversation messages
-pub const PACKET_TYPE_SMS_REQUEST_CONVERSATION: &str = "kdeconnect.sms.request_conversation";
+pub const PACKET_TYPE_SMS_REQUEST_CONVERSATION: &str = "cconnect.sms.request_conversation";
 
 /// Packet type for requesting message attachment
-pub const PACKET_TYPE_SMS_REQUEST_ATTACHMENT: &str = "kdeconnect.sms.request_attachment";
+pub const PACKET_TYPE_SMS_REQUEST_ATTACHMENT: &str = "cconnect.sms.request_attachment";
 
 /// Packet type for sending SMS
-pub const PACKET_TYPE_SMS_REQUEST: &str = "kdeconnect.sms.request";
+pub const PACKET_TYPE_SMS_REQUEST: &str = "cconnect.sms.request";
 
 /// Phone call event types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -234,7 +234,7 @@ impl TelephonyPlugin {
     ///
     /// let plugin = TelephonyPlugin::new();
     /// let packet = plugin.create_mute_request();
-    /// assert_eq!(packet.packet_type, "kdeconnect.telephony.request_mute");
+    /// assert_eq!(packet.packet_type, "cconnect.telephony.request_mute");
     /// ```
     pub fn create_mute_request(&self) -> Packet {
         debug!("Creating mute ringer request");
@@ -517,7 +517,7 @@ mod tests {
         let plugin = TelephonyPlugin::new();
         let packet = plugin.create_mute_request();
 
-        assert_eq!(packet.packet_type, "kdeconnect.telephony.request_mute");
+        assert_eq!(packet.packet_type, "cconnect.telephony.request_mute");
         assert!(packet.body.as_object().unwrap().is_empty());
     }
 
@@ -526,7 +526,7 @@ mod tests {
         let plugin = TelephonyPlugin::new();
         let packet = plugin.create_conversations_request();
 
-        assert_eq!(packet.packet_type, "kdeconnect.sms.request_conversations");
+        assert_eq!(packet.packet_type, "cconnect.sms.request_conversations");
         assert!(packet.body.as_object().unwrap().is_empty());
     }
 
@@ -535,7 +535,7 @@ mod tests {
         let plugin = TelephonyPlugin::new();
         let packet = plugin.create_conversation_request(123, Some(1000000), Some(50));
 
-        assert_eq!(packet.packet_type, "kdeconnect.sms.request_conversation");
+        assert_eq!(packet.packet_type, "cconnect.sms.request_conversation");
         assert_eq!(packet.body["threadID"], 123);
         assert_eq!(packet.body["rangeStartTimestamp"], 1000000);
         assert_eq!(packet.body["numberToRequest"], 50);
@@ -546,7 +546,7 @@ mod tests {
         let plugin = TelephonyPlugin::new();
         let packet = plugin.create_send_sms_request("+1234567890".to_string(), "Hello!".to_string());
 
-        assert_eq!(packet.packet_type, "kdeconnect.sms.request");
+        assert_eq!(packet.packet_type, "cconnect.sms.request");
         assert_eq!(packet.body["phoneNumber"], "+1234567890");
         assert_eq!(packet.body["messageBody"], "Hello!");
     }
@@ -563,7 +563,7 @@ mod tests {
         let plugin = TelephonyPlugin::new();
 
         let packet = Packet::new(
-            "kdeconnect.telephony",
+            "cconnect.telephony",
             json!({
                 "event": "ringing",
                 "phoneNumber": "+1234567890",

@@ -1,20 +1,20 @@
-//! KDE Connect Network Packet
+//! CConnect Network Packet
 //!
-//! This module implements the core packet structure for the KDE Connect protocol.
+//! This module implements the core packet structure for the CConnect protocol.
 //! Packets are JSON-formatted messages with a newline terminator.
 //!
 //! ## Packet Structure
 //!
 //! Each packet contains:
 //! - `id`: UNIX epoch timestamp in milliseconds
-//! - `type`: Packet type in format `kdeconnect.<plugin>[.<action>]`
+//! - `type`: Packet type in format `cconnect.<plugin>[.<action>]`
 //! - `body`: JSON dictionary of plugin-specific parameters
 //! - `payloadSize`: (optional) Size of payload data in bytes
 //! - `payloadTransferInfo`: (optional) Transfer negotiation parameters
 //!
 //! ## References
 //! - [Valent Protocol Reference](https://valent.andyholmes.ca/documentation/protocol.html)
-//! - [KDE Connect Repository](https://invent.kde.org/network/kdeconnect-kde)
+//! - [CConnect Repository](https://invent.kde.org/network/cconnect-kde)
 
 use crate::{ProtocolError, Result};
 use chrono::Utc;
@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
-/// Represents a KDE Connect network packet
+/// Represents a CConnect network packet
 ///
 /// # Examples
 ///
@@ -32,7 +32,7 @@ use std::collections::HashMap;
 ///
 /// // Create identity packet
 /// let packet = Packet::new(
-///     "kdeconnect.identity",
+///     "cconnect.identity",
 ///     json!({
 ///         "deviceId": "my-device-id",
 ///         "deviceName": "My Computer",
@@ -46,18 +46,18 @@ use std::collections::HashMap;
 ///
 /// // Deserialize from bytes
 /// let parsed = Packet::from_bytes(&bytes).unwrap();
-/// assert_eq!(parsed.packet_type, "kdeconnect.identity");
+/// assert_eq!(parsed.packet_type, "cconnect.identity");
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Packet {
     /// UNIX timestamp in milliseconds
-    /// Note: Some KDE Connect clients may send this as a string
+    /// Note: Some CConnect clients may send this as a string
     #[serde(deserialize_with = "deserialize_id", serialize_with = "serialize_id")]
     pub id: i64,
 
     /// Packet type in format: kdeconnect.<plugin>[.<action>]
     ///
-    /// Examples: "kdeconnect.battery", "kdeconnect.mpris.request"
+    /// Examples: "cconnect.battery", "cconnect.mpris.request"
     #[serde(rename = "type")]
     pub packet_type: String,
 
@@ -106,7 +106,7 @@ impl Packet {
     ///
     /// # Arguments
     ///
-    /// * `packet_type` - Packet type string (e.g., "kdeconnect.battery")
+    /// * `packet_type` - Packet type string (e.g., "cconnect.battery")
     /// * `body` - JSON value containing packet parameters
     ///
     /// # Examples
@@ -115,7 +115,7 @@ impl Packet {
     /// use cosmic_connect_core::Packet;
     /// use serde_json::json;
     ///
-    /// let packet = Packet::new("kdeconnect.ping", json!({}));
+    /// let packet = Packet::new("cconnect.ping", json!({}));
     /// ```
     pub fn new(packet_type: impl Into<String>, body: Value) -> Self {
         Self {
@@ -142,7 +142,7 @@ impl Packet {
 
     /// Serialize packet to bytes with newline terminator
     ///
-    /// KDE Connect packets are JSON-formatted and terminated with a single
+    /// CConnect packets are JSON-formatted and terminated with a single
     /// newline character (`\n`). This format allows packets to be easily
     /// delimited when sent over TCP streams.
     ///
@@ -156,7 +156,7 @@ impl Packet {
     /// use cosmic_connect_core::Packet;
     /// use serde_json::json;
     ///
-    /// let packet = Packet::new("kdeconnect.ping", json!({}));
+    /// let packet = Packet::new("cconnect.ping", json!({}));
     /// let bytes = packet.to_bytes().unwrap();
     ///
     /// // Packet ends with newline
@@ -165,7 +165,7 @@ impl Packet {
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
         let json = serde_json::to_string(self)?;
         let mut bytes = json.into_bytes();
-        // Add newline terminator as per KDE Connect protocol specification
+        // Add newline terminator as per CConnect protocol specification
         bytes.push(b'\n');
         Ok(bytes)
     }
@@ -185,9 +185,9 @@ impl Packet {
     /// ```
     /// use cosmic_connect_core::Packet;
     ///
-    /// let json_data = r#"{"id":123456789,"type":"kdeconnect.ping","body":{}}"#;
+    /// let json_data = r#"{"id":123456789,"type":"cconnect.ping","body":{}}"#;
     /// let packet = Packet::from_bytes(json_data.as_bytes()).unwrap();
-    /// assert_eq!(packet.packet_type, "kdeconnect.ping");
+    /// assert_eq!(packet.packet_type, "cconnect.ping");
     /// ```
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
         // Strip trailing newline if present (handles both \n and \r\n)
@@ -276,8 +276,8 @@ mod tests {
 
     #[test]
     fn test_new_packet() {
-        let packet = Packet::new("kdeconnect.ping", json!({}));
-        assert_eq!(packet.packet_type, "kdeconnect.ping");
+        let packet = Packet::new("cconnect.ping", json!({}));
+        assert_eq!(packet.packet_type, "cconnect.ping");
         assert!(packet.body.is_object());
         assert!(packet.id > 0);
     }
@@ -285,7 +285,7 @@ mod tests {
     #[test]
     fn test_packet_serialization() {
         let packet = Packet::new(
-            "kdeconnect.identity",
+            "cconnect.identity",
             json!({
                 "deviceId": "test-device",
                 "deviceName": "Test Device",
@@ -306,38 +306,38 @@ mod tests {
 
     #[test]
     fn test_packet_deserialization() {
-        let json_data = r#"{"id":1234567890,"type":"kdeconnect.ping","body":{}}"#;
+        let json_data = r#"{"id":1234567890,"type":"cconnect.ping","body":{}}"#;
         let packet = Packet::from_bytes(json_data.as_bytes()).unwrap();
 
         assert_eq!(packet.id, 1234567890);
-        assert_eq!(packet.packet_type, "kdeconnect.ping");
+        assert_eq!(packet.packet_type, "cconnect.ping");
         assert!(packet.body.is_object());
     }
 
     #[test]
     fn test_packet_deserialization_with_newline() {
         let json_data =
-            r#"{"id":1234567890,"type":"kdeconnect.ping","body":{}}"#.to_string() + "\n";
+            r#"{"id":1234567890,"type":"cconnect.ping","body":{}}"#.to_string() + "\n";
         let packet = Packet::from_bytes(json_data.as_bytes()).unwrap();
 
         assert_eq!(packet.id, 1234567890);
-        assert_eq!(packet.packet_type, "kdeconnect.ping");
+        assert_eq!(packet.packet_type, "cconnect.ping");
     }
 
     #[test]
     fn test_packet_deserialization_with_crlf() {
         let json_data =
-            r#"{"id":1234567890,"type":"kdeconnect.ping","body":{}}"#.to_string() + "\r\n";
+            r#"{"id":1234567890,"type":"cconnect.ping","body":{}}"#.to_string() + "\r\n";
         let packet = Packet::from_bytes(json_data.as_bytes()).unwrap();
 
         assert_eq!(packet.id, 1234567890);
-        assert_eq!(packet.packet_type, "kdeconnect.ping");
+        assert_eq!(packet.packet_type, "cconnect.ping");
     }
 
     #[test]
     fn test_roundtrip() {
         let original = Packet::new(
-            "kdeconnect.battery",
+            "cconnect.battery",
             json!({
                 "isCharging": true,
                 "currentCharge": 85,
@@ -354,8 +354,8 @@ mod tests {
 
     #[test]
     fn test_id_as_string() {
-        // Some KDE Connect clients send id as string
-        let json_data = r#"{"id":"1234567890","type":"kdeconnect.ping","body":{}}"#;
+        // Some CConnect clients send id as string
+        let json_data = r#"{"id":"1234567890","type":"cconnect.ping","body":{}}"#;
         let packet = Packet::from_bytes(json_data.as_bytes()).unwrap();
 
         assert_eq!(packet.id, 1234567890);
@@ -363,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_with_payload_size() {
-        let packet = Packet::new("kdeconnect.share", json!({})).with_payload_size(1024);
+        let packet = Packet::new("cconnect.share", json!({})).with_payload_size(1024);
 
         assert_eq!(packet.payload_size, Some(1024));
     }
@@ -373,7 +373,7 @@ mod tests {
         let mut info = HashMap::new();
         info.insert("port".to_string(), json!(1739));
 
-        let packet = Packet::new("kdeconnect.share", json!({})).with_payload_transfer_info(info);
+        let packet = Packet::new("cconnect.share", json!({})).with_payload_transfer_info(info);
 
         assert!(packet.payload_transfer_info.is_some());
         let port = packet
@@ -386,7 +386,7 @@ mod tests {
 
     #[test]
     fn test_builder_pattern() {
-        let packet = Packet::new("kdeconnect.identity", json!({}))
+        let packet = Packet::new("cconnect.identity", json!({}))
             .with_body_field("deviceId", "test-device")
             .with_body_field("deviceName", "Test Device")
             .with_body_field("protocolVersion", 7);
@@ -400,15 +400,15 @@ mod tests {
 
     #[test]
     fn test_is_type() {
-        let packet = Packet::new("kdeconnect.ping", json!({}));
-        assert!(packet.is_type("kdeconnect.ping"));
-        assert!(!packet.is_type("kdeconnect.battery"));
+        let packet = Packet::new("cconnect.ping", json!({}));
+        assert!(packet.is_type("cconnect.ping"));
+        assert!(!packet.is_type("cconnect.battery"));
     }
 
     #[test]
     fn test_get_body_field() {
         let packet = Packet::new(
-            "kdeconnect.battery",
+            "cconnect.battery",
             json!({
                 "isCharging": true,
                 "currentCharge": 85
@@ -440,7 +440,7 @@ mod tests {
     #[test]
     fn test_complex_body() {
         let packet = Packet::new(
-            "kdeconnect.notification",
+            "cconnect.notification",
             json!({
                 "id": "notification-123",
                 "appName": "Test App",
@@ -453,7 +453,7 @@ mod tests {
         let bytes = packet.to_bytes().unwrap();
         let parsed = Packet::from_bytes(&bytes).unwrap();
 
-        assert_eq!(parsed.packet_type, "kdeconnect.notification");
+        assert_eq!(parsed.packet_type, "cconnect.notification");
         assert_eq!(
             parsed.get_body_field::<String>("appName"),
             Some("Test App".to_string())

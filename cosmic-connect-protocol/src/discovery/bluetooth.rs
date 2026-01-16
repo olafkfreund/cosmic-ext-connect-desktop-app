@@ -1,10 +1,10 @@
 //! Bluetooth Discovery Module
 //!
-//! This module provides Bluetooth Low Energy (BLE) device discovery for KDE Connect.
-//! It scans for devices advertising the KDE Connect service UUID and emits discovery events.
+//! This module provides Bluetooth Low Energy (BLE) device discovery for CConnect.
+//! It scans for devices advertising the CConnect service UUID and emits discovery events.
 
 use super::events::DiscoveryEvent;
-use crate::transport::KDECONNECT_SERVICE_UUID;
+use crate::transport::CCONNECT_SERVICE_UUID;
 use crate::{DeviceInfo, Packet, ProtocolError, Result};
 use btleplug::api::{Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter};
 use btleplug::platform::{Adapter, Manager, Peripheral};
@@ -51,7 +51,7 @@ impl Default for BluetoothDiscoveryConfig {
 
 /// Bluetooth discovery service
 ///
-/// Scans for BLE devices advertising the KDE Connect service UUID
+/// Scans for BLE devices advertising the CConnect service UUID
 pub struct BluetoothDiscoveryService {
     /// Bluetooth adapter
     adapter: Option<Adapter>,
@@ -221,10 +221,10 @@ impl BluetoothDiscoveryService {
     ) -> Result<()> {
         debug!("Starting Bluetooth scan");
 
-        // Start scanning for KDE Connect service
+        // Start scanning for CConnect service
         adapter
             .start_scan(ScanFilter {
-                services: vec![KDECONNECT_SERVICE_UUID],
+                services: vec![CCONNECT_SERVICE_UUID],
             })
             .await
             .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
@@ -292,9 +292,9 @@ impl BluetoothDiscoveryService {
             return Ok(());
         }
 
-        // Check if peripheral advertises KDE Connect service
-        if !properties.service_data.contains_key(&KDECONNECT_SERVICE_UUID) {
-            debug!("Device {} doesn't advertise KDE Connect service", bt_address);
+        // Check if peripheral advertises CConnect service
+        if !properties.service_data.contains_key(&CCONNECT_SERVICE_UUID) {
+            debug!("Device {} doesn't advertise CConnect service", bt_address);
             return Ok(());
         }
 
@@ -305,7 +305,7 @@ impl BluetoothDiscoveryService {
 
         // Try to extract device info from advertising data
         // For now, create a basic DeviceInfo - full identity exchange would happen on connection
-        let device_info = DeviceInfo::new(&device_name, crate::DeviceType::Phone, 1716);
+        let device_info = DeviceInfo::new(&device_name, crate::DeviceType::Phone, 1816);
 
         let current_time = current_timestamp();
         let mut last_seen_map = last_seen.write().await;

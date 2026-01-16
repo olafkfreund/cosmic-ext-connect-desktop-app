@@ -5,18 +5,18 @@
 //!
 //! ## Protocol
 //!
-//! **Packet Type**: `kdeconnect.ping`
+//! **Packet Type**: `cconnect.ping`
 //!
 //! **Capabilities**:
-//! - Incoming: `kdeconnect.ping` - Can receive pings
-//! - Outgoing: `kdeconnect.ping` - Can send pings
+//! - Incoming: `cconnect.ping` - Can receive pings
+//! - Outgoing: `cconnect.ping` - Can send pings
 //!
 //! ## Packet Format
 //!
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.ping",
+//!     "type": "cconnect.ping",
 //!     "body": {
 //!         "message": "Optional message"
 //!     }
@@ -74,7 +74,7 @@ use super::{Plugin, PluginFactory};
 
 /// Ping plugin for connectivity testing
 ///
-/// Handles `kdeconnect.ping` packets for simple device-to-device communication
+/// Handles `cconnect.ping` packets for simple device-to-device communication
 /// and connectivity testing.
 ///
 /// ## Features
@@ -156,7 +156,7 @@ impl PingPlugin {
 
     /// Create a ping packet
     ///
-    /// Creates a `kdeconnect.ping` packet with an optional message.
+    /// Creates a `cconnect.ping` packet with an optional message.
     ///
     /// # Parameters
     ///
@@ -175,11 +175,11 @@ impl PingPlugin {
     ///
     /// // Ping with message
     /// let packet = plugin.create_ping(Some("Hello!".to_string()));
-    /// assert_eq!(packet.packet_type, "kdeconnect.ping");
+    /// assert_eq!(packet.packet_type, "cconnect.ping");
     ///
     /// // Ping without message
     /// let packet = plugin.create_ping(None);
-    /// assert_eq!(packet.packet_type, "kdeconnect.ping");
+    /// assert_eq!(packet.packet_type, "cconnect.ping");
     /// ```
     pub fn create_ping(&self, message: Option<String>) -> Packet {
         let body = if let Some(msg) = message {
@@ -188,7 +188,7 @@ impl PingPlugin {
             json!({})
         };
 
-        Packet::new("kdeconnect.ping", body)
+        Packet::new("cconnect.ping", body)
     }
 
     /// Handle an incoming ping packet
@@ -241,11 +241,11 @@ impl Plugin for PingPlugin {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec!["kdeconnect.ping".to_string()]
+        vec!["cconnect.ping".to_string()]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
-        vec!["kdeconnect.ping".to_string()]
+        vec!["cconnect.ping".to_string()]
     }
 
     async fn init(&mut self, device: &Device) -> Result<()> {
@@ -269,7 +269,7 @@ impl Plugin for PingPlugin {
     }
 
     async fn handle_packet(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
-        if packet.packet_type == "kdeconnect.ping" {
+        if packet.packet_type == "cconnect.ping" {
             self.handle_ping(packet, device);
         }
         Ok(())
@@ -301,11 +301,11 @@ impl PluginFactory for PingPluginFactory {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec!["kdeconnect.ping".to_string()]
+        vec!["cconnect.ping".to_string()]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
-        vec!["kdeconnect.ping".to_string()]
+        vec!["cconnect.ping".to_string()]
     }
 
     fn create(&self) -> Box<dyn Plugin> {
@@ -337,11 +337,11 @@ mod tests {
 
         let incoming = plugin.incoming_capabilities();
         assert_eq!(incoming.len(), 1);
-        assert_eq!(incoming[0], "kdeconnect.ping");
+        assert_eq!(incoming[0], "cconnect.ping");
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 1);
-        assert_eq!(outgoing[0], "kdeconnect.ping");
+        assert_eq!(outgoing[0], "cconnect.ping");
     }
 
     #[tokio::test]
@@ -365,7 +365,7 @@ mod tests {
         let plugin = PingPlugin::new();
         let packet = plugin.create_ping(Some("Hello!".to_string()));
 
-        assert_eq!(packet.packet_type, "kdeconnect.ping");
+        assert_eq!(packet.packet_type, "cconnect.ping");
         assert_eq!(
             packet.body.get("message").and_then(|v| v.as_str()),
             Some("Hello!")
@@ -377,7 +377,7 @@ mod tests {
         let plugin = PingPlugin::new();
         let packet = plugin.create_ping(None);
 
-        assert_eq!(packet.packet_type, "kdeconnect.ping");
+        assert_eq!(packet.packet_type, "cconnect.ping");
         assert!(packet.body.get("message").is_none());
     }
 
@@ -388,7 +388,7 @@ mod tests {
         plugin.init(&device).await.unwrap();
 
         let mut device = create_test_device();
-        let packet = Packet::new("kdeconnect.ping", json!({}));
+        let packet = Packet::new("cconnect.ping", json!({}));
 
         plugin.handle_packet(&packet, &mut device).await.unwrap();
 
@@ -402,7 +402,7 @@ mod tests {
         plugin.init(&device).await.unwrap();
 
         let mut device = create_test_device();
-        let packet = Packet::new("kdeconnect.ping", json!({ "message": "Test message" }));
+        let packet = Packet::new("cconnect.ping", json!({ "message": "Test message" }));
 
         plugin.handle_packet(&packet, &mut device).await.unwrap();
 
@@ -420,7 +420,7 @@ mod tests {
         // Send multiple pings
         for i in 0..5 {
             let packet = Packet::new(
-                "kdeconnect.ping",
+                "cconnect.ping",
                 json!({ "message": format!("Ping {}", i) }),
             );
             plugin.handle_packet(&packet, &mut device).await.unwrap();
@@ -436,7 +436,7 @@ mod tests {
         plugin.init(&device).await.unwrap();
 
         let mut device = create_test_device();
-        let packet = Packet::new("kdeconnect.battery", json!({}));
+        let packet = Packet::new("cconnect.battery", json!({}));
 
         plugin.handle_packet(&packet, &mut device).await.unwrap();
 

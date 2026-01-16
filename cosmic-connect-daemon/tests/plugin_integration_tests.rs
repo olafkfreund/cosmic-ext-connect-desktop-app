@@ -46,12 +46,12 @@ async fn test_battery_plugin_capabilities() {
     let plugin = battery::BatteryPlugin::new();
 
     let incoming = plugin.incoming_capabilities();
-    assert!(incoming.contains(&"kdeconnect.battery".to_string()));
-    assert!(incoming.contains(&"kdeconnect.battery.request".to_string()));
+    assert!(incoming.contains(&"cconnect.battery".to_string()));
+    assert!(incoming.contains(&"cconnect.battery.request".to_string()));
 
     let outgoing = plugin.outgoing_capabilities();
-    assert!(outgoing.contains(&"kdeconnect.battery".to_string()));
-    assert!(outgoing.contains(&"kdeconnect.battery.request".to_string()));
+    assert!(outgoing.contains(&"cconnect.battery".to_string()));
+    assert!(outgoing.contains(&"cconnect.battery.request".to_string()));
 }
 
 #[tokio::test]
@@ -107,7 +107,7 @@ async fn test_notification_packet_creation() {
         notification::Notification::new("test-123", "Test App", "Test Title", "Test Body", true);
 
     let packet = plugin.create_notification_packet(&notification);
-    assert_eq!(packet.packet_type, "kdeconnect.notification");
+    assert_eq!(packet.packet_type, "cconnect.notification");
 
     // Check packet body contains notification data
     let body = packet.body;
@@ -133,11 +133,11 @@ async fn test_ping_packet_creation() {
     let plugin = ping::PingPlugin::new();
 
     let packet = plugin.create_ping(Some("Hello!".to_string()));
-    assert_eq!(packet.packet_type, "kdeconnect.ping");
+    assert_eq!(packet.packet_type, "cconnect.ping");
     assert_eq!(packet.body["message"], "Hello!");
 
     let packet_no_message = plugin.create_ping(None);
-    assert_eq!(packet_no_message.packet_type, "kdeconnect.ping");
+    assert_eq!(packet_no_message.packet_type, "cconnect.ping");
 }
 
 #[tokio::test]
@@ -257,7 +257,7 @@ async fn test_clipboard_sync_between_devices() -> Result<()> {
     // Device 1 sends clipboard content
     let test_content = "Hello from device 1!";
     let packet = plugin1.create_clipboard_packet(test_content.to_string()).await;
-    assert_eq!(packet.packet_type, "kdeconnect.clipboard");
+    assert_eq!(packet.packet_type, "cconnect.clipboard");
     assert_eq!(packet.body["content"], test_content);
 
     // Device 2 receives and processes the clipboard packet
@@ -279,7 +279,7 @@ async fn test_clipboard_connect_packet() -> Result<()> {
 
     // Test clipboard connect packet (sent on device connection)
     let connect_packet = plugin.create_clipboard_connect_packet().await;
-    assert_eq!(connect_packet.packet_type, "kdeconnect.clipboard.connect");
+    assert_eq!(connect_packet.packet_type, "cconnect.clipboard.connect");
 
     // Verify timestamp is present
     assert!(connect_packet.body.get("timestamp").is_some());
@@ -297,7 +297,7 @@ async fn test_share_plugin_text() -> Result<()> {
     // Test sharing text
     let test_text = "Shared text content";
     let packet = plugin.create_share_text_packet(test_text.to_string());
-    assert_eq!(packet.packet_type, "kdeconnect.share.request");
+    assert_eq!(packet.packet_type, "cconnect.share.request");
     assert_eq!(packet.body["text"], test_text);
 
     // Handle incoming text share
@@ -314,7 +314,7 @@ async fn test_share_plugin_url() -> Result<()> {
     // Test sharing URL
     let test_url = "https://example.com";
     let packet = plugin.create_share_url_packet(test_url.to_string());
-    assert_eq!(packet.packet_type, "kdeconnect.share.request");
+    assert_eq!(packet.packet_type, "cconnect.share.request");
     assert_eq!(packet.body["url"], test_url);
 
     Ok(())
@@ -328,7 +328,7 @@ async fn test_share_plugin_file() -> Result<()> {
     let filename = "test_file.txt";
     let filesize = 1024;
     let packet = plugin.create_share_file_packet(filename.to_string(), filesize);
-    assert_eq!(packet.packet_type, "kdeconnect.share.request");
+    assert_eq!(packet.packet_type, "cconnect.share.request");
 
     // Verify packet contains file metadata
     let body = packet.body;
@@ -356,23 +356,23 @@ async fn test_mpris_control_commands() -> Result<()> {
 
     // Test play/pause command
     let play_packet = plugin.create_play_pause_command("test-player".to_string());
-    assert_eq!(play_packet.packet_type, "kdeconnect.mpris.request");
+    assert_eq!(play_packet.packet_type, "cconnect.mpris.request");
     assert_eq!(play_packet.body["action"], "PlayPause");
     assert_eq!(play_packet.body["player"], "test-player");
 
     // Test next command
     let next_packet = plugin.create_next_command("test-player".to_string());
-    assert_eq!(next_packet.packet_type, "kdeconnect.mpris.request");
+    assert_eq!(next_packet.packet_type, "cconnect.mpris.request");
     assert_eq!(next_packet.body["action"], "Next");
 
     // Test previous command
     let prev_packet = plugin.create_previous_command("test-player".to_string());
-    assert_eq!(prev_packet.packet_type, "kdeconnect.mpris.request");
+    assert_eq!(prev_packet.packet_type, "cconnect.mpris.request");
     assert_eq!(prev_packet.body["action"], "Previous");
 
     // Test stop command
     let stop_packet = plugin.create_stop_command("test-player".to_string());
-    assert_eq!(stop_packet.packet_type, "kdeconnect.mpris.request");
+    assert_eq!(stop_packet.packet_type, "cconnect.mpris.request");
     assert_eq!(stop_packet.body["action"], "Stop");
 
     Ok(())
@@ -388,7 +388,7 @@ async fn test_mpris_player_list() -> Result<()> {
     // Create a player list packet
     let players = vec!["spotify".to_string(), "vlc".to_string()];
     let packet = plugin.create_player_list_packet(players.clone());
-    assert_eq!(packet.packet_type, "kdeconnect.mpris");
+    assert_eq!(packet.packet_type, "cconnect.mpris");
     assert_eq!(packet.body["playerList"], serde_json::to_value(players)?);
 
     Ok(())
@@ -415,7 +415,7 @@ async fn test_complete_ping_exchange() -> Result<()> {
     plugin2.handle_packet(&ping_packet, &mut device2).await?;
 
     // Verify packet structure
-    assert_eq!(ping_packet.packet_type, "kdeconnect.ping");
+    assert_eq!(ping_packet.packet_type, "cconnect.ping");
     assert_eq!(ping_packet.body["message"], "Test ping");
 
     Ok(())
@@ -431,7 +431,7 @@ async fn test_battery_request_response_cycle() -> Result<()> {
 
     // Create battery request packet
     let request_packet = plugin.create_battery_request();
-    assert_eq!(request_packet.packet_type, "kdeconnect.battery.request");
+    assert_eq!(request_packet.packet_type, "cconnect.battery.request");
     assert_eq!(request_packet.body["request"], true);
 
     // Simulate receiving battery status response
@@ -482,7 +482,7 @@ async fn test_notification_send_and_dismiss() -> Result<()> {
 
     // Create dismiss packet
     let dismiss_packet = plugin.create_dismiss_packet("test-notif-123".to_string());
-    assert_eq!(dismiss_packet.packet_type, "kdeconnect.notification.request");
+    assert_eq!(dismiss_packet.packet_type, "cconnect.notification.request");
     assert_eq!(dismiss_packet.body["cancel"], "test-notif-123");
 
     Ok(())
@@ -552,8 +552,8 @@ async fn test_packet_routing_to_correct_plugin() -> Result<()> {
     let battery_packet = battery_plugin.create_battery_request();
 
     // Verify packets have correct types
-    assert_eq!(ping_packet.packet_type, "kdeconnect.ping");
-    assert_eq!(battery_packet.packet_type, "kdeconnect.battery.request");
+    assert_eq!(ping_packet.packet_type, "cconnect.ping");
+    assert_eq!(battery_packet.packet_type, "cconnect.battery.request");
 
     // Route packets through manager
     manager.route_packet(&device_id, &ping_packet).await;
@@ -572,17 +572,17 @@ async fn test_plugin_capabilities_matching() -> Result<()> {
 
     // Battery plugin capabilities
     let battery_incoming = battery_plugin.incoming_capabilities();
-    assert!(battery_incoming.contains(&"kdeconnect.battery".to_string()));
-    assert!(battery_incoming.contains(&"kdeconnect.battery.request".to_string()));
+    assert!(battery_incoming.contains(&"cconnect.battery".to_string()));
+    assert!(battery_incoming.contains(&"cconnect.battery.request".to_string()));
 
     // Ping plugin capabilities
     let ping_incoming = ping_plugin.incoming_capabilities();
-    assert!(ping_incoming.contains(&"kdeconnect.ping".to_string()));
+    assert!(ping_incoming.contains(&"cconnect.ping".to_string()));
 
     // Clipboard plugin capabilities
     let clipboard_incoming = clipboard_plugin.incoming_capabilities();
-    assert!(clipboard_incoming.contains(&"kdeconnect.clipboard".to_string()));
-    assert!(clipboard_incoming.contains(&"kdeconnect.clipboard.connect".to_string()));
+    assert!(clipboard_incoming.contains(&"cconnect.clipboard".to_string()));
+    assert!(clipboard_incoming.contains(&"cconnect.clipboard.connect".to_string()));
 
     Ok(())
 }
@@ -592,11 +592,11 @@ async fn test_share_plugin_capabilities() {
     let plugin = share::SharePlugin::new();
 
     let incoming = plugin.incoming_capabilities();
-    assert!(incoming.contains(&"kdeconnect.share.request".to_string()));
-    assert!(incoming.contains(&"kdeconnect.share.request.update".to_string()));
+    assert!(incoming.contains(&"cconnect.share.request".to_string()));
+    assert!(incoming.contains(&"cconnect.share.request.update".to_string()));
 
     let outgoing = plugin.outgoing_capabilities();
-    assert!(outgoing.contains(&"kdeconnect.share.request".to_string()));
+    assert!(outgoing.contains(&"cconnect.share.request".to_string()));
 }
 
 #[tokio::test]

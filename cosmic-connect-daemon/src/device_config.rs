@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn test_device_registry() {
-        let temp_dir = std::env::temp_dir().join("kdeconnect-test");
+        let temp_dir = std::env::temp_dir().join("cconnect-test");
         fs::create_dir_all(&temp_dir).unwrap();
 
         let mut registry = DeviceConfigRegistry::new(&temp_dir);

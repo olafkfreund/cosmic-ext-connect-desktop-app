@@ -37,7 +37,7 @@ fn main() -> cosmic::iced::Result {
 
     tracing::info!("COSMIC Connect applet starting");
 
-    cosmic::applet::run::<KdeConnectApplet>(())
+    cosmic::applet::run::<CConnectApplet>(())
 }
 
 #[derive(Debug, Clone)]
@@ -47,7 +47,7 @@ struct DeviceState {
     is_charging: bool,
 }
 
-struct KdeConnectApplet {
+struct CConnectApplet {
     core: Core,
     popup: Option<window::Id>,
     devices: Vec<DeviceState>,
@@ -248,7 +248,7 @@ fn convert_device_info(info: &dbus_client::DeviceInfo) -> DeviceState {
     }
 }
 
-impl cosmic::Application for KdeConnectApplet {
+impl cosmic::Application for CConnectApplet {
     type Message = Message;
     type Executor = cosmic::executor::multi::Executor;
     type Flags = ();
@@ -482,8 +482,8 @@ impl cosmic::Application for KdeConnectApplet {
                 if let Some(id) = have_popup {
                     Message::Surface(destroy_popup(id))
                 } else {
-                    Message::Surface(app_popup::<KdeConnectApplet>(
-                        move |state: &mut KdeConnectApplet| {
+                    Message::Surface(app_popup::<CConnectApplet>(
+                        move |state: &mut CConnectApplet| {
                             let new_id = window::Id::unique();
                             state.popup = Some(new_id);
 
@@ -510,7 +510,7 @@ impl cosmic::Application for KdeConnectApplet {
 
                             popup_settings
                         },
-                        Some(Box::new(|state: &KdeConnectApplet| {
+                        Some(Box::new(|state: &CConnectApplet| {
                             let content = state.popup_view();
                             Element::from(state.core.applet.popup_container(content))
                                 .map(cosmic::Action::App)
@@ -521,7 +521,7 @@ impl cosmic::Application for KdeConnectApplet {
 
         Element::from(self.core.applet.applet_tooltip::<Message>(
             btn,
-            "KDE Connect",
+            "CConnect",
             self.popup.is_some(),
             |a| Message::Surface(a),
             None,
@@ -529,7 +529,7 @@ impl cosmic::Application for KdeConnectApplet {
     }
 
     fn view_window(&self, _id: window::Id) -> Element<'_, Self::Message> {
-        text("KDE Connect").into()
+        text("CConnect").into()
     }
 
     fn on_close_requested(&self, id: window::Id) -> Option<Message> {
@@ -541,10 +541,10 @@ impl cosmic::Application for KdeConnectApplet {
     }
 }
 
-impl KdeConnectApplet {
+impl CConnectApplet {
     fn popup_view(&self) -> Element<'_, Message> {
         let header = row![
-            text("KDE Connect").size(18),
+            text("CConnect").size(18),
             button::icon(icon::from_name("view-refresh-symbolic"))
                 .on_press(Message::RefreshDevices)
                 .padding(4)
@@ -559,7 +559,7 @@ impl KdeConnectApplet {
         let content = if self.devices.is_empty() {
             column![
                 text("No devices found").size(14),
-                text("Make sure KDE Connect is installed on your devices").size(12),
+                text("Make sure CConnect is installed on your devices").size(12),
             ]
             .spacing(4)
             .padding(16)

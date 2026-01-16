@@ -1,4 +1,4 @@
-//! KDE Connect Device Pairing
+//! CConnect Device Pairing
 //!
 //! This module implements TLS-based secure pairing between devices.
 //! Devices must be paired before exchanging any functional packets.
@@ -6,7 +6,7 @@
 //! ## Pairing Protocol
 //!
 //! 1. **Certificate Generation**: Each device generates a self-signed certificate
-//! 2. **Pairing Request**: Device A sends `kdeconnect.pair` with `pair: true`
+//! 2. **Pairing Request**: Device A sends `cconnect.pair` with `pair: true`
 //! 3. **User Verification**: Users verify SHA256 fingerprints on both devices
 //! 4. **Pairing Response**: Device B responds with `pair: true` (accept) or `pair: false` (reject)
 //! 5. **Certificate Storage**: Accepted certificates are stored for future connections
@@ -29,7 +29,7 @@
 //!
 //! ## References
 //! - [Valent Protocol Reference](https://valent.andyholmes.ca/documentation/protocol.html)
-//! - [KDE Connect TLS Implementation](https://invent.kde.org/network/kdeconnect-kde)
+//! - [CConnect TLS Implementation](https://invent.kde.org/network/cconnect-kde)
 
 use crate::{Packet, ProtocolError, Result};
 use openssl::asn1::Asn1Time;
@@ -303,12 +303,12 @@ pub struct PairingPacket {
 impl PairingPacket {
     /// Create a pairing request packet
     pub fn request() -> Packet {
-        // Include timestamp in pairing request (required by Android KDE Connect)
+        // Include timestamp in pairing request (required by Android CConnect)
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        Packet::new("kdeconnect.pair", json!({
+        Packet::new("cconnect.pair", json!({
             "pair": true,
             "timestamp": timestamp
         }))
@@ -316,12 +316,12 @@ impl PairingPacket {
 
     /// Create a pairing accept response packet
     pub fn accept() -> Packet {
-        // Include timestamp in pairing response (required by Android KDE Connect)
+        // Include timestamp in pairing response (required by Android CConnect)
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        Packet::new("kdeconnect.pair", json!({
+        Packet::new("cconnect.pair", json!({
             "pair": true,
             "timestamp": timestamp
         }))
@@ -329,17 +329,17 @@ impl PairingPacket {
 
     /// Create a pairing reject response packet
     pub fn reject() -> Packet {
-        Packet::new("kdeconnect.pair", json!({ "pair": false }))
+        Packet::new("cconnect.pair", json!({ "pair": false }))
     }
 
     /// Create an unpair packet
     pub fn unpair() -> Packet {
-        Packet::new("kdeconnect.pair", json!({ "pair": false }))
+        Packet::new("cconnect.pair", json!({ "pair": false }))
     }
 
     /// Parse a pairing packet
     pub fn from_packet(packet: &Packet) -> Result<Self> {
-        if !packet.is_type("kdeconnect.pair") {
+        if !packet.is_type("cconnect.pair") {
             return Err(ProtocolError::InvalidPacket(
                 "Not a pairing packet".to_string(),
             ));
@@ -634,7 +634,7 @@ mod tests {
     #[test]
     fn test_pairing_packet_creation() {
         let request = PairingPacket::request();
-        assert!(request.is_type("kdeconnect.pair"));
+        assert!(request.is_type("cconnect.pair"));
         assert_eq!(request.get_body_field::<bool>("pair"), Some(true));
 
         let accept = PairingPacket::accept();
@@ -672,7 +672,7 @@ mod tests {
         // Send pairing request
         let request = handler.request_pairing();
         assert_eq!(handler.status(), PairingStatus::Requested);
-        assert!(request.is_type("kdeconnect.pair"));
+        assert!(request.is_type("cconnect.pair"));
     }
 
     #[test]

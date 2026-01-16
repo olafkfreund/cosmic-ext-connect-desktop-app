@@ -7,7 +7,7 @@
 //!
 //! This implementation uses socket replacement rather than connection rejection
 //! when a device attempts to reconnect while already connected. This matches
-//! the official KDE Connect behavior and prevents cascade connection failures
+//! the official CConnect behavior and prevents cascade connection failures
 //! that can occur with aggressive Android clients.
 //!
 //! When a duplicate connection is detected:
@@ -426,7 +426,7 @@ impl ConnectionManager {
                 debug!("Using pre-exchanged identity packet from {}", remote_addr);
                 identity_packet
             } else {
-                // KDE Connect protocol v8: Send our identity over encrypted connection first
+                // CConnect protocol v8: Send our identity over encrypted connection first
                 let our_identity = device_info.to_identity_packet();
                 let core_identity = our_identity.to_core_packet();
                 if let Err(e) = connection.send_packet(&core_identity).await {
@@ -490,7 +490,7 @@ impl ConnectionManager {
                 debug!("Looking for device {} in connections HashMap", id);
 
                 // Handle existing connection if device reconnects
-                // Issue #52: Instead of rejecting, replace the socket (like official KDE Connect)
+                // Issue #52: Instead of rejecting, replace the socket (like official CConnect)
                 if let Some(old_conn) = conns.remove(id) {
                     // Device trying to reconnect while already connected
                     // Replace the old connection with the new one
@@ -596,7 +596,7 @@ impl ConnectionManager {
                         }
                     } => {
                         debug!("Sending keepalive ping to paired device {}", device_id);
-                        let ping_packet = crate::Packet::new("kdeconnect.ping", serde_json::json!({}));
+                        let ping_packet = crate::Packet::new("cconnect.ping", serde_json::json!({}));
                         let core_ping = ping_packet.to_core_packet();
                         if let Err(e) = connection.send_packet(&core_ping).await {
                             error!("Failed to send keepalive ping to {}: {}", device_id, e);

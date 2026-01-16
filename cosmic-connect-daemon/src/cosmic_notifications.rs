@@ -1,6 +1,6 @@
 //! COSMIC Desktop Notifications Integration
 //!
-//! Integrates KDE Connect events with COSMIC Desktop's notification system
+//! Integrates CConnect events with COSMIC Desktop's notification system
 //! using the freedesktop.org DBus notification specification.
 
 use anyhow::{Context, Result};
@@ -45,7 +45,7 @@ impl NotificationBuilder {
     /// Create a new notification builder
     pub fn new(summary: impl Into<String>) -> Self {
         Self {
-            app_name: "KDE Connect".to_string(),
+            app_name: "CConnect".to_string(),
             summary: summary.into(),
             body: String::new(),
             icon: "phone-symbolic".to_string(),
@@ -104,7 +104,7 @@ impl NotificationBuilder {
             zbus::zvariant::Value::U8(self.urgency as u8),
         );
 
-        // Add category hint for KDE Connect notifications
+        // Add category hint for CConnect notifications
         self.hints.insert(
             "category".to_string(),
             zbus::zvariant::Value::Str("kde-connect".into()),

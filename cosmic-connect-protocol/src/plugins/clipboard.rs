@@ -1,16 +1,16 @@
 //! Clipboard Plugin
 //!
-//! Enables bidirectional text clipboard synchronization between KDE Connect devices.
+//! Enables bidirectional text clipboard synchronization between CConnect devices.
 //! Monitors local clipboard changes and broadcasts updates to connected devices while
 //! preventing infinite sync loops through timestamp-based validation.
 //!
 //! ## Protocol
 //!
 //! **Packet Types**:
-//! - Incoming: `kdeconnect.clipboard`, `kdeconnect.clipboard.connect`
-//! - Outgoing: `kdeconnect.clipboard`, `kdeconnect.clipboard.connect`
+//! - Incoming: `cconnect.clipboard`, `cconnect.clipboard.connect`
+//! - Outgoing: `cconnect.clipboard`, `cconnect.clipboard.connect`
 //!
-//! **Capabilities**: `kdeconnect.clipboard`
+//! **Capabilities**: `cconnect.clipboard`
 //!
 //! ## Clipboard Update
 //!
@@ -19,7 +19,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.clipboard",
+//!     "type": "cconnect.clipboard",
 //!     "body": {
 //!         "content": "some text"
 //!     }
@@ -33,7 +33,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.clipboard.connect",
+//!     "type": "cconnect.clipboard.connect",
 //!     "body": {
 //!         "content": "some text",
 //!         "timestamp": 1640000000000
@@ -56,7 +56,7 @@
 //! ### Sending Updates
 //! 1. Local clipboard changes detected
 //! 2. Record timestamp of the change
-//! 3. Send `kdeconnect.clipboard` packet with new content
+//! 3. Send `cconnect.clipboard` packet with new content
 //!
 //! ### Receiving Updates
 //! 1. Receive clipboard packet
@@ -67,7 +67,7 @@
 //!
 //! ### Device Connection
 //! 1. Device connects
-//! 2. Send `kdeconnect.clipboard.connect` with current content and timestamp
+//! 2. Send `cconnect.clipboard.connect` with current content and timestamp
 //! 3. Peer follows standard receiving workflow
 //!
 //! ## Example
@@ -97,7 +97,7 @@
 //! ## References
 //!
 //! - [Valent Protocol Documentation](https://valent.andyholmes.ca/documentation/protocol.html)
-//! - [KDE Connect Clipboard Plugin](https://invent.kde.org/network/kdeconnect-kde/tree/master/plugins/clipboard)
+//! - [CConnect Clipboard Plugin](https://invent.kde.org/network/cconnect-kde/tree/master/plugins/clipboard)
 
 use crate::{Device, Packet, Result};
 use async_trait::async_trait;
@@ -230,7 +230,7 @@ impl Default for ClipboardState {
 
 /// Clipboard sync plugin for text content synchronization
 ///
-/// Handles `kdeconnect.clipboard` packets for syncing clipboard content
+/// Handles `cconnect.clipboard` packets for syncing clipboard content
 /// between devices. Uses timestamp-based validation to prevent sync loops.
 ///
 /// ## Features
@@ -280,7 +280,7 @@ impl ClipboardPlugin {
 
     /// Create a standard clipboard update packet
     ///
-    /// Creates `kdeconnect.clipboard` packet for syncing clipboard changes.
+    /// Creates `cconnect.clipboard` packet for syncing clipboard changes.
     /// Does not include timestamp (standard update).
     ///
     /// # Parameters
@@ -299,7 +299,7 @@ impl ClipboardPlugin {
     ///
     /// let plugin = ClipboardPlugin::new();
     /// let packet = plugin.create_clipboard_packet("Hello!".to_string()).await;
-    /// assert_eq!(packet.packet_type, "kdeconnect.clipboard");
+    /// assert_eq!(packet.packet_type, "cconnect.clipboard");
     /// # }
     /// ```
     pub async fn create_clipboard_packet(&self, content: String) -> Packet {
@@ -307,12 +307,12 @@ impl ClipboardPlugin {
         let new_state = ClipboardState::new(content.clone());
         *self.state.write().await = new_state;
 
-        Packet::new("kdeconnect.clipboard", json!({ "content": content }))
+        Packet::new("cconnect.clipboard", json!({ "content": content }))
     }
 
     /// Create a clipboard connect packet
     ///
-    /// Creates `kdeconnect.clipboard.connect` packet with current content
+    /// Creates `cconnect.clipboard.connect` packet with current content
     /// and timestamp. Sent when devices connect to sync initial state.
     ///
     /// # Returns
@@ -327,13 +327,13 @@ impl ClipboardPlugin {
     ///
     /// let plugin = ClipboardPlugin::new();
     /// let packet = plugin.create_connect_packet().await;
-    /// assert_eq!(packet.packet_type, "kdeconnect.clipboard.connect");
+    /// assert_eq!(packet.packet_type, "cconnect.clipboard.connect");
     /// # }
     /// ```
     pub async fn create_connect_packet(&self) -> Packet {
         let state = self.state.read().await;
         Packet::new(
-            "kdeconnect.clipboard.connect",
+            "cconnect.clipboard.connect",
             json!({
                 "content": state.content,
                 "timestamp": state.timestamp
@@ -540,15 +540,15 @@ impl Plugin for ClipboardPlugin {
 
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.clipboard".to_string(),
-            "kdeconnect.clipboard.connect".to_string(),
+            "cconnect.clipboard".to_string(),
+            "cconnect.clipboard.connect".to_string(),
         ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.clipboard".to_string(),
-            "kdeconnect.clipboard.connect".to_string(),
+            "cconnect.clipboard".to_string(),
+            "cconnect.clipboard.connect".to_string(),
         ]
     }
 
@@ -574,10 +574,10 @@ impl Plugin for ClipboardPlugin {
 
     async fn handle_packet(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
         match packet.packet_type.as_str() {
-            "kdeconnect.clipboard" => {
+            "cconnect.clipboard" => {
                 self.handle_clipboard_update(packet, device).await;
             }
-            "kdeconnect.clipboard.connect" => {
+            "cconnect.clipboard.connect" => {
                 self.handle_clipboard_connect(packet, device).await;
             }
             _ => {}
@@ -597,15 +597,15 @@ impl PluginFactory for ClipboardPluginFactory {
 
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.clipboard".to_string(),
-            "kdeconnect.clipboard.connect".to_string(),
+            "cconnect.clipboard".to_string(),
+            "cconnect.clipboard.connect".to_string(),
         ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.clipboard".to_string(),
-            "kdeconnect.clipboard.connect".to_string(),
+            "cconnect.clipboard".to_string(),
+            "cconnect.clipboard.connect".to_string(),
         ]
     }
 
@@ -669,13 +669,13 @@ mod tests {
 
         let incoming = plugin.incoming_capabilities();
         assert_eq!(incoming.len(), 2);
-        assert!(incoming.contains(&"kdeconnect.clipboard".to_string()));
-        assert!(incoming.contains(&"kdeconnect.clipboard.connect".to_string()));
+        assert!(incoming.contains(&"cconnect.clipboard".to_string()));
+        assert!(incoming.contains(&"cconnect.clipboard.connect".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 2);
-        assert!(outgoing.contains(&"kdeconnect.clipboard".to_string()));
-        assert!(outgoing.contains(&"kdeconnect.clipboard.connect".to_string()));
+        assert!(outgoing.contains(&"cconnect.clipboard".to_string()));
+        assert!(outgoing.contains(&"cconnect.clipboard.connect".to_string()));
     }
 
     #[tokio::test]
@@ -701,7 +701,7 @@ mod tests {
             .create_clipboard_packet("Test content".to_string())
             .await;
 
-        assert_eq!(packet.packet_type, "kdeconnect.clipboard");
+        assert_eq!(packet.packet_type, "cconnect.clipboard");
         assert_eq!(
             packet.body.get("content").and_then(|v| v.as_str()),
             Some("Test content")
@@ -721,7 +721,7 @@ mod tests {
 
         let packet = plugin.create_connect_packet().await;
 
-        assert_eq!(packet.packet_type, "kdeconnect.clipboard.connect");
+        assert_eq!(packet.packet_type, "cconnect.clipboard.connect");
         assert_eq!(
             packet.body.get("content").and_then(|v| v.as_str()),
             Some("Initial content")
@@ -774,7 +774,7 @@ mod tests {
 
         let mut device = create_test_device();
         let packet = Packet::new(
-            "kdeconnect.clipboard",
+            "cconnect.clipboard",
             json!({ "content": "Updated clipboard" }),
         );
 
@@ -798,7 +798,7 @@ mod tests {
         // Receive newer content
         let mut device = create_test_device();
         let packet = Packet::new(
-            "kdeconnect.clipboard.connect",
+            "cconnect.clipboard.connect",
             json!({
                 "content": "Newer content",
                 "timestamp": 2000i64
@@ -827,7 +827,7 @@ mod tests {
         // Receive older content
         let mut device = create_test_device();
         let packet = Packet::new(
-            "kdeconnect.clipboard.connect",
+            "cconnect.clipboard.connect",
             json!({
                 "content": "Older content",
                 "timestamp": 1000i64
@@ -856,7 +856,7 @@ mod tests {
         // Receive content with timestamp 0
         let mut device = create_test_device();
         let packet = Packet::new(
-            "kdeconnect.clipboard.connect",
+            "cconnect.clipboard.connect",
             json!({
                 "content": "Zero timestamp content",
                 "timestamp": 0i64
@@ -882,7 +882,7 @@ mod tests {
 
         // Receive empty content
         let mut device = create_test_device();
-        let packet = Packet::new("kdeconnect.clipboard", json!({ "content": "" }));
+        let packet = Packet::new("cconnect.clipboard", json!({ "content": "" }));
 
         plugin.handle_packet(&packet, &mut device).await.unwrap();
 
@@ -900,7 +900,7 @@ mod tests {
         let mut device = create_test_device();
 
         // First update
-        let packet1 = Packet::new("kdeconnect.clipboard", json!({ "content": "First update" }));
+        let packet1 = Packet::new("cconnect.clipboard", json!({ "content": "First update" }));
         plugin.handle_packet(&packet1, &mut device).await.unwrap();
 
         let content = plugin.get_content().await;
@@ -908,7 +908,7 @@ mod tests {
 
         // Second update
         let packet2 = Packet::new(
-            "kdeconnect.clipboard",
+            "cconnect.clipboard",
             json!({ "content": "Second update" }),
         );
         plugin.handle_packet(&packet2, &mut device).await.unwrap();
@@ -932,7 +932,7 @@ mod tests {
 
         // Try to apply same timestamp (should be ignored)
         let packet = Packet::new(
-            "kdeconnect.clipboard.connect",
+            "cconnect.clipboard.connect",
             json!({
                 "content": "Same timestamp",
                 "timestamp": 2000i64

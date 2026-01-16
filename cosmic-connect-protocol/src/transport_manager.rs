@@ -439,7 +439,7 @@ impl TransportManager {
                         service_uuid,
                     } => (
                         address.clone(),
-                        service_uuid.unwrap_or(crate::transport::KDECONNECT_SERVICE_UUID),
+                        service_uuid.unwrap_or(crate::transport::CCONNECT_SERVICE_UUID),
                     ),
                     _ => {
                         return Err(crate::ProtocolError::Transport(

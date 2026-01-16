@@ -1,4 +1,4 @@
-//! DBus Interface for KDE Connect Daemon
+//! DBus Interface for CConnect Daemon
 //!
 //! Provides IPC between the background daemon and COSMIC panel applet.
 //! Exposes device management, pairing, and plugin actions via DBus.
@@ -99,8 +99,8 @@ pub struct DaemonMetrics {
     pub bandwidth_bps: f64,
 }
 
-/// DBus interface for KDE Connect daemon
-pub struct KdeConnectInterface {
+/// DBus interface for CConnect daemon
+pub struct CConnectInterface {
     /// Device manager
     device_manager: Arc<RwLock<DeviceManager>>,
     /// Plugin manager
@@ -119,9 +119,11 @@ pub struct KdeConnectInterface {
     dbus_connection: Connection,
     /// Performance metrics (if enabled)
     metrics: Option<Arc<RwLock<crate::diagnostics::Metrics>>>,
+    /// Daemon configuration (for settings management)
+    config: Arc<RwLock<crate::config::Config>>,
 }
 
-impl KdeConnectInterface {
+impl CConnectInterface {
     /// Create a new DBus interface
     pub fn new(
         device_manager: Arc<RwLock<DeviceManager>>,
@@ -133,6 +135,7 @@ impl KdeConnectInterface {
         pending_pairing_requests: Arc<RwLock<HashMap<String, bool>>>,
         dbus_connection: Connection,
         metrics: Option<Arc<RwLock<crate::diagnostics::Metrics>>>,
+        config: Arc<RwLock<crate::config::Config>>,
     ) -> Self {
         Self {
             device_manager,
@@ -144,12 +147,13 @@ impl KdeConnectInterface {
             pending_pairing_requests,
             dbus_connection,
             metrics,
+            config,
         }
     }
 }
 
 #[interface(name = "com.system76.CosmicConnect")]
-impl KdeConnectInterface {
+impl CConnectInterface {
     /// List all known devices
     ///
     /// Returns a map of device ID to device information for all devices
@@ -410,7 +414,7 @@ impl KdeConnectInterface {
             json!({})
         };
 
-        let packet = Packet::new("kdeconnect.ping", body);
+        let packet = Packet::new("cconnect.ping", body);
 
         // Send packet via ConnectionManager
         let conn_manager = self.connection_manager.read().await;
@@ -445,7 +449,7 @@ impl KdeConnectInterface {
         use cosmic_connect_protocol::Packet;
         use serde_json::json;
 
-        let packet = Packet::new("kdeconnect.findmyphone.request", json!({}));
+        let packet = Packet::new("cconnect.findmyphone.request", json!({}));
 
         // Send packet via ConnectionManager
         let conn_manager = self.connection_manager.read().await;
@@ -543,8 +547,8 @@ impl KdeConnectInterface {
 
                 // Emit progress signal (non-blocking)
                 tokio::spawn(async move {
-                    if let Ok(object_server) = conn_clone.object_server().interface::<_, KdeConnectInterface>(OBJECT_PATH).await {
-                        let _ = KdeConnectInterface::transfer_progress(
+                    if let Ok(object_server) = conn_clone.object_server().interface::<_, CConnectInterface>(OBJECT_PATH).await {
+                        let _ = CConnectInterface::transfer_progress(
                             object_server.signal_context(),
                             &tid_clone,
                             &did_clone,
@@ -567,8 +571,8 @@ impl KdeConnectInterface {
             let success = result.is_ok();
             let error_msg = result.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
 
-            if let Ok(object_server) = dbus_conn.object_server().interface::<_, KdeConnectInterface>(OBJECT_PATH).await {
-                let _ = KdeConnectInterface::transfer_complete(
+            if let Ok(object_server) = dbus_conn.object_server().interface::<_, CConnectInterface>(OBJECT_PATH).await {
+                let _ = CConnectInterface::transfer_complete(
                     object_server.signal_context(),
                     &transfer_id_clone,
                     &device_id_clone,
@@ -615,7 +619,7 @@ impl KdeConnectInterface {
         use cosmic_connect_protocol::Packet;
         use serde_json::json;
 
-        let packet = Packet::new("kdeconnect.share.request", json!({ "text": text }));
+        let packet = Packet::new("cconnect.share.request", json!({ "text": text }));
 
         // Send packet via ConnectionManager
         let conn_manager = self.connection_manager.read().await;
@@ -654,7 +658,7 @@ impl KdeConnectInterface {
         use cosmic_connect_protocol::Packet;
         use serde_json::json;
 
-        let packet = Packet::new("kdeconnect.share.request", json!({ "url": url }));
+        let packet = Packet::new("cconnect.share.request", json!({ "url": url }));
 
         // Send packet via ConnectionManager
         let conn_manager = self.connection_manager.read().await;
@@ -720,7 +724,7 @@ impl KdeConnectInterface {
         let packet_body = serde_json::to_value(&notification).map_err(|e| {
             zbus::fdo::Error::Failed(format!("Failed to serialize notification: {}", e))
         })?;
-        let packet = Packet::new("kdeconnect.notification", packet_body);
+        let packet = Packet::new("cconnect.notification", packet_body);
 
         // Send packet via ConnectionManager
         let conn_manager = self.connection_manager.read().await;
@@ -1264,6 +1268,239 @@ impl KdeConnectInterface {
         Ok(())
     }
 
+    // ===== Settings Management Methods =====
+
+    /// Get daemon configuration as JSON
+    ///
+    /// Returns the complete daemon configuration including device, network,
+    /// transport, and plugin settings.
+    ///
+    /// # Returns
+    /// JSON-serialized configuration
+    async fn get_daemon_config(&self) -> Result<String, zbus::fdo::Error> {
+        debug!("DBus: GetDaemonConfig called");
+
+        let config = self.config.read().await;
+        let json = serde_json::to_string_pretty(&*config)
+            .map_err(|e| zbus::fdo::Error::Failed(format!("Failed to serialize config: {}", e)))?;
+
+        Ok(json)
+    }
+
+    /// Set device name
+    ///
+    /// # Arguments
+    /// * `name` - New device name
+    async fn set_device_name(&self, name: String) -> Result<(), zbus::fdo::Error> {
+        info!("DBus: SetDeviceName called: {}", name);
+
+        let mut config = self.config.write().await;
+        config.device.name = name;
+
+        config.save().map_err(|e| {
+            zbus::fdo::Error::Failed(format!("Failed to save config: {}", e))
+        })?;
+
+        info!("DBus: Device name updated successfully");
+        Ok(())
+    }
+
+    /// Set device type
+    ///
+    /// # Arguments
+    /// * `device_type` - Device type ("desktop", "laptop", "phone", "tablet", "tv")
+    async fn set_device_type(&self, device_type: String) -> Result<(), zbus::fdo::Error> {
+        info!("DBus: SetDeviceType called: {}", device_type);
+
+        // Validate device type
+        if !["desktop", "laptop", "phone", "tablet", "tv"].contains(&device_type.as_str()) {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Invalid device type: {}. Must be desktop, laptop, phone, tablet, or tv",
+                device_type
+            )));
+        }
+
+        let mut config = self.config.write().await;
+        config.device.device_type = device_type;
+
+        config.save().map_err(|e| {
+            zbus::fdo::Error::Failed(format!("Failed to save config: {}", e))
+        })?;
+
+        info!("DBus: Device type updated successfully");
+        Ok(())
+    }
+
+    /// Get global plugin status
+    ///
+    /// Returns a map of plugin names to their enabled status.
+    ///
+    /// # Returns
+    /// HashMap<plugin_name, enabled>
+    async fn get_global_plugin_status(&self) -> HashMap<String, bool> {
+        debug!("DBus: GetGlobalPluginStatus called");
+
+        let config = self.config.read().await;
+        let mut status = HashMap::new();
+
+        status.insert("ping".to_string(), config.plugins.enable_ping);
+        status.insert("battery".to_string(), config.plugins.enable_battery);
+        status.insert("notification".to_string(), config.plugins.enable_notification);
+        status.insert("share".to_string(), config.plugins.enable_share);
+        status.insert("clipboard".to_string(), config.plugins.enable_clipboard);
+        status.insert("mpris".to_string(), config.plugins.enable_mpris);
+        status.insert("runcommand".to_string(), config.plugins.enable_runcommand);
+        status.insert("remoteinput".to_string(), config.plugins.enable_remoteinput);
+        status.insert("findmyphone".to_string(), config.plugins.enable_findmyphone);
+        status.insert("telephony".to_string(), config.plugins.enable_telephony);
+        status.insert("presenter".to_string(), config.plugins.enable_presenter);
+        status.insert("contacts".to_string(), config.plugins.enable_contacts);
+
+        status
+    }
+
+    /// Set global plugin enabled state
+    ///
+    /// Enable or disable a plugin globally. This affects all devices unless
+    /// overridden per-device.
+    ///
+    /// # Arguments
+    /// * `plugin` - Plugin name
+    /// * `enabled` - Whether to enable the plugin
+    async fn set_global_plugin_enabled(
+        &self,
+        plugin: String,
+        enabled: bool,
+    ) -> Result<(), zbus::fdo::Error> {
+        info!(
+            "DBus: SetGlobalPluginEnabled called: {} = {}",
+            plugin, enabled
+        );
+
+        let mut config = self.config.write().await;
+
+        // Update the specific plugin flag
+        match plugin.as_str() {
+            "ping" => config.plugins.enable_ping = enabled,
+            "battery" => config.plugins.enable_battery = enabled,
+            "notification" => config.plugins.enable_notification = enabled,
+            "share" => config.plugins.enable_share = enabled,
+            "clipboard" => config.plugins.enable_clipboard = enabled,
+            "mpris" => config.plugins.enable_mpris = enabled,
+            "runcommand" => config.plugins.enable_runcommand = enabled,
+            "remoteinput" => config.plugins.enable_remoteinput = enabled,
+            "findmyphone" => config.plugins.enable_findmyphone = enabled,
+            "telephony" => config.plugins.enable_telephony = enabled,
+            "presenter" => config.plugins.enable_presenter = enabled,
+            "contacts" => config.plugins.enable_contacts = enabled,
+            _ => {
+                return Err(zbus::fdo::Error::Failed(format!(
+                    "Unknown plugin: {}",
+                    plugin
+                )))
+            }
+        }
+
+        config.save().map_err(|e| {
+            zbus::fdo::Error::Failed(format!("Failed to save config: {}", e))
+        })?;
+
+        info!("DBus: Plugin {} {} globally", plugin, if enabled { "enabled" } else { "disabled" });
+        Ok(())
+    }
+
+    /// Set TCP transport enabled
+    ///
+    /// # Arguments
+    /// * `enabled` - Whether TCP transport should be enabled
+    async fn set_tcp_enabled(&self, enabled: bool) -> Result<(), zbus::fdo::Error> {
+        info!("DBus: SetTcpEnabled called: {}", enabled);
+
+        let mut config = self.config.write().await;
+        config.transport.enable_tcp = enabled;
+
+        config.save().map_err(|e| {
+            zbus::fdo::Error::Failed(format!("Failed to save config: {}", e))
+        })?;
+
+        info!("DBus: TCP transport {} (restart required)", if enabled { "enabled" } else { "disabled" });
+        Ok(())
+    }
+
+    /// Set Bluetooth transport enabled
+    ///
+    /// # Arguments
+    /// * `enabled` - Whether Bluetooth transport should be enabled
+    async fn set_bluetooth_enabled(&self, enabled: bool) -> Result<(), zbus::fdo::Error> {
+        info!("DBus: SetBluetoothEnabled called: {}", enabled);
+
+        let mut config = self.config.write().await;
+        config.transport.enable_bluetooth = enabled;
+
+        config.save().map_err(|e| {
+            zbus::fdo::Error::Failed(format!("Failed to save config: {}", e))
+        })?;
+
+        info!("DBus: Bluetooth transport {} (restart required)", if enabled { "enabled" } else { "disabled" });
+        Ok(())
+    }
+
+    /// Set transport preference
+    ///
+    /// # Arguments
+    /// * `preference` - Transport preference: "prefer_tcp", "prefer_bluetooth",
+    ///                  "tcp_first", "bluetooth_first", "only_tcp", "only_bluetooth"
+    async fn set_transport_preference(&self, preference: String) -> Result<(), zbus::fdo::Error> {
+        info!("DBus: SetTransportPreference called: {}", preference);
+
+        // Validate and convert preference
+        use crate::config::TransportPreferenceConfig;
+        let pref_config = match preference.as_str() {
+            "prefer_tcp" => TransportPreferenceConfig::PreferTcp,
+            "prefer_bluetooth" => TransportPreferenceConfig::PreferBluetooth,
+            "tcp_first" => TransportPreferenceConfig::TcpFirst,
+            "bluetooth_first" => TransportPreferenceConfig::BluetoothFirst,
+            "only_tcp" => TransportPreferenceConfig::OnlyTcp,
+            "only_bluetooth" => TransportPreferenceConfig::OnlyBluetooth,
+            _ => {
+                return Err(zbus::fdo::Error::Failed(format!(
+                    "Invalid transport preference: {}. Must be prefer_tcp, prefer_bluetooth, tcp_first, bluetooth_first, only_tcp, or only_bluetooth",
+                    preference
+                )))
+            }
+        };
+
+        let mut config = self.config.write().await;
+        config.transport.preference = pref_config;
+
+        config.save().map_err(|e| {
+            zbus::fdo::Error::Failed(format!("Failed to save config: {}", e))
+        })?;
+
+        info!("DBus: Transport preference set to {} (restart required)", preference);
+        Ok(())
+    }
+
+    /// Set auto fallback enabled
+    ///
+    /// When enabled, automatically tries alternative transport if primary fails.
+    ///
+    /// # Arguments
+    /// * `enabled` - Whether auto fallback should be enabled
+    async fn set_auto_fallback(&self, enabled: bool) -> Result<(), zbus::fdo::Error> {
+        info!("DBus: SetAutoFallback called: {}", enabled);
+
+        let mut config = self.config.write().await;
+        config.transport.auto_fallback = enabled;
+
+        config.save().map_err(|e| {
+            zbus::fdo::Error::Failed(format!("Failed to save config: {}", e))
+        })?;
+
+        info!("DBus: Auto fallback {} (restart required)", if enabled { "enabled" } else { "disabled" });
+        Ok(())
+    }
+
     /// Signal: Device was added (discovered)
     ///
     /// Emitted when a new device is discovered on the network.
@@ -1405,6 +1642,7 @@ impl DbusServer {
     /// * `device_config_registry` - Device configuration registry
     /// * `pairing_service` - Optional pairing service reference
     /// * `mpris_manager` - Optional MPRIS manager for local media player control
+    /// * `config` - Daemon configuration (for settings management)
     ///
     /// # Returns
     /// DBus server instance with active connection
@@ -1417,6 +1655,7 @@ impl DbusServer {
         mpris_manager: Option<Arc<crate::mpris_manager::MprisManager>>,
         pending_pairing_requests: Arc<RwLock<std::collections::HashMap<String, bool>>>,
         metrics: Option<Arc<RwLock<crate::diagnostics::Metrics>>>,
+        config: Arc<RwLock<crate::config::Config>>,
     ) -> Result<Self> {
         info!("Starting DBus server on {}", SERVICE_NAME);
 
@@ -1427,7 +1666,7 @@ impl DbusServer {
             .context("Failed to build DBus connection")?;
 
         // Create interface with connection reference
-        let interface = KdeConnectInterface::new(
+        let interface = CConnectInterface::new(
             device_manager,
             plugin_manager,
             connection_manager,
@@ -1437,6 +1676,7 @@ impl DbusServer {
             pending_pairing_requests,
             connection.clone(),
             metrics,
+            config,
         );
 
         // Serve the interface BEFORE requesting the name
@@ -1467,10 +1707,10 @@ impl DbusServer {
         let device_info = DeviceInfo::from(device);
         let object_server = self.connection.object_server();
         let iface_ref = object_server
-            .interface::<_, KdeConnectInterface>(OBJECT_PATH)
+            .interface::<_, CConnectInterface>(OBJECT_PATH)
             .await?;
 
-        KdeConnectInterface::device_added(iface_ref.signal_context(), device.id(), device_info)
+        CConnectInterface::device_added(iface_ref.signal_context(), device.id(), device_info)
             .await?;
 
         debug!("Emitted DeviceAdded signal for {}", device.id());
@@ -1481,10 +1721,10 @@ impl DbusServer {
     pub async fn emit_device_removed(&self, device_id: &str) -> Result<()> {
         let object_server = self.connection.object_server();
         let iface_ref = object_server
-            .interface::<_, KdeConnectInterface>(OBJECT_PATH)
+            .interface::<_, CConnectInterface>(OBJECT_PATH)
             .await?;
 
-        KdeConnectInterface::device_removed(iface_ref.signal_context(), device_id).await?;
+        CConnectInterface::device_removed(iface_ref.signal_context(), device_id).await?;
 
         debug!("Emitted DeviceRemoved signal for {}", device_id);
         Ok(())
@@ -1494,10 +1734,10 @@ impl DbusServer {
     pub async fn emit_device_state_changed(&self, device_id: &str, state: &str) -> Result<()> {
         let object_server = self.connection.object_server();
         let iface_ref = object_server
-            .interface::<_, KdeConnectInterface>(OBJECT_PATH)
+            .interface::<_, CConnectInterface>(OBJECT_PATH)
             .await?;
 
-        KdeConnectInterface::device_state_changed(iface_ref.signal_context(), device_id, state)
+        CConnectInterface::device_state_changed(iface_ref.signal_context(), device_id, state)
             .await?;
 
         debug!(
@@ -1511,10 +1751,10 @@ impl DbusServer {
     pub async fn emit_pairing_request(&self, device_id: &str) -> Result<()> {
         let object_server = self.connection.object_server();
         let iface_ref = object_server
-            .interface::<_, KdeConnectInterface>(OBJECT_PATH)
+            .interface::<_, CConnectInterface>(OBJECT_PATH)
             .await?;
 
-        KdeConnectInterface::pairing_request(iface_ref.signal_context(), device_id).await?;
+        CConnectInterface::pairing_request(iface_ref.signal_context(), device_id).await?;
 
         debug!("Emitted PairingRequest signal for {}", device_id);
         Ok(())
@@ -1524,10 +1764,10 @@ impl DbusServer {
     pub async fn emit_pairing_status_changed(&self, device_id: &str, status: &str) -> Result<()> {
         let object_server = self.connection.object_server();
         let iface_ref = object_server
-            .interface::<_, KdeConnectInterface>(OBJECT_PATH)
+            .interface::<_, CConnectInterface>(OBJECT_PATH)
             .await?;
 
-        KdeConnectInterface::pairing_status_changed(iface_ref.signal_context(), device_id, status)
+        CConnectInterface::pairing_status_changed(iface_ref.signal_context(), device_id, status)
             .await?;
 
         debug!(
@@ -1541,10 +1781,10 @@ impl DbusServer {
     pub async fn emit_plugin_event(&self, device_id: &str, plugin: &str, data: &str) -> Result<()> {
         let object_server = self.connection.object_server();
         let iface_ref = object_server
-            .interface::<_, KdeConnectInterface>(OBJECT_PATH)
+            .interface::<_, CConnectInterface>(OBJECT_PATH)
             .await?;
 
-        KdeConnectInterface::plugin_event(iface_ref.signal_context(), device_id, plugin, data)
+        CConnectInterface::plugin_event(iface_ref.signal_context(), device_id, plugin, data)
             .await?;
 
         debug!("Emitted PluginEvent signal for {} ({})", device_id, plugin);
@@ -1563,10 +1803,10 @@ impl DbusServer {
     ) -> Result<()> {
         let object_server = self.connection.object_server();
         let iface_ref = object_server
-            .interface::<_, KdeConnectInterface>(OBJECT_PATH)
+            .interface::<_, CConnectInterface>(OBJECT_PATH)
             .await?;
 
-        KdeConnectInterface::transfer_progress(
+        CConnectInterface::transfer_progress(
             iface_ref.signal_context(),
             transfer_id,
             device_id,
@@ -1595,10 +1835,10 @@ impl DbusServer {
     ) -> Result<()> {
         let object_server = self.connection.object_server();
         let iface_ref = object_server
-            .interface::<_, KdeConnectInterface>(OBJECT_PATH)
+            .interface::<_, CConnectInterface>(OBJECT_PATH)
             .await?;
 
-        KdeConnectInterface::transfer_complete(
+        CConnectInterface::transfer_complete(
             iface_ref.signal_context(),
             transfer_id,
             device_id,

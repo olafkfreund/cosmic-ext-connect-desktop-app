@@ -84,7 +84,7 @@ impl Transport for MockTransport {
 
     async fn receive_packet(&mut self) -> Result<Packet> {
         // For testing, just return a dummy packet
-        Ok(Packet::new("kdeconnect.test", json!({})))
+        Ok(Packet::new("cconnect.test", json!({})))
     }
 
     async fn close(self: Box<Self>) -> Result<()> {
@@ -123,7 +123,7 @@ async fn test_small_packet_over_bluetooth() {
     let mut transport = MockTransport::new(TransportType::Bluetooth, 512);
 
     // Create a small packet (ping)
-    let packet = Packet::new("kdeconnect.ping", json!({ "message": "Hello!" }));
+    let packet = Packet::new("cconnect.ping", json!({ "message": "Hello!" }));
 
     // Should succeed
     let result = transport.send_packet(&packet).await;
@@ -132,7 +132,7 @@ async fn test_small_packet_over_bluetooth() {
     // Verify packet was sent
     let sent = transport.get_sent_packets().await;
     assert_eq!(sent.len(), 1);
-    assert_eq!(sent[0].packet_type, "kdeconnect.ping");
+    assert_eq!(sent[0].packet_type, "cconnect.ping");
 }
 
 #[tokio::test]
@@ -141,7 +141,7 @@ async fn test_large_packet_over_bluetooth_fails() {
 
     // Create a packet that will exceed 512 bytes when serialized
     let large_text = "A".repeat(1000);
-    let packet = Packet::new("kdeconnect.test", json!({ "data": large_text }));
+    let packet = Packet::new("cconnect.test", json!({ "data": large_text }));
 
     // Should fail with MTU error
     let result = transport.send_packet(&packet).await;
@@ -160,7 +160,7 @@ async fn test_medium_packet_over_bluetooth() {
 
     // Create a medium-sized packet (MPRIS-like)
     let packet = Packet::new(
-        "kdeconnect.mpris",
+        "cconnect.mpris",
         json!({
             "player": "spotify",
             "artist": "Test Artist",
@@ -212,7 +212,7 @@ async fn test_multiple_packets_over_bluetooth() {
     // Send multiple small packets
     for i in 0..5 {
         let packet = Packet::new(
-            "kdeconnect.ping",
+            "cconnect.ping",
             json!({ "message": format!("Ping {}", i) }),
         );
 
@@ -231,7 +231,7 @@ async fn test_battery_packet_bluetooth_compatible() {
 
     // Create battery status packet
     let packet = Packet::new(
-        "kdeconnect.battery",
+        "cconnect.battery",
         json!({
             "currentCharge": 75,
             "isCharging": true,
@@ -249,7 +249,7 @@ async fn test_share_metadata_bluetooth_compatible() {
 
     // Create share file metadata packet (not the actual file)
     let mut packet = Packet::new(
-        "kdeconnect.share.request",
+        "cconnect.share.request",
         json!({
             "filename": "document.pdf",
             "creationTime": 1640000000000i64,
@@ -280,7 +280,7 @@ async fn test_notification_packet_bluetooth_compatible() {
 
     // Create notification packet with typical content
     let packet = Packet::new(
-        "kdeconnect.notification",
+        "cconnect.notification",
         json!({
             "id": "notification_123",
             "appName": "Signal",
@@ -304,7 +304,7 @@ async fn test_very_long_notification_bluetooth() {
     // Create notification with very long text
     let long_text = "A".repeat(400);
     let packet = Packet::new(
-        "kdeconnect.notification",
+        "cconnect.notification",
         json!({
             "id": "notification_123",
             "appName": "App",
@@ -344,7 +344,7 @@ async fn test_packet_roundtrip() {
 
     // Create and send packet
     let original = Packet::new(
-        "kdeconnect.ping",
+        "cconnect.ping",
         json!({ "message": "Test" }),
     );
 

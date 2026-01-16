@@ -1,10 +1,10 @@
-//! KDE Connect Device Discovery
+//! CConnect Device Discovery
 //!
-//! This module implements UDP broadcast-based device discovery for KDE Connect.
+//! This module implements UDP broadcast-based device discovery for CConnect.
 //!
 //! ## Discovery Protocol
 //!
-//! 1. **Broadcast**: Send identity packet via UDP broadcast on port 1716
+//! 1. **Broadcast**: Send identity packet via UDP broadcast on port 1816
 //! 2. **Listen**: Listen for identity packets from other devices
 //! 3. **Track**: Track device presence and timeouts
 //!
@@ -17,7 +17,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     let device_info = DeviceInfo::new("My Computer", DeviceType::Desktop, 1716);
+//!     let device_info = DeviceInfo::new("My Computer", DeviceType::Desktop, 1816);
 //!     let mut service = DiscoveryService::with_defaults(device_info).unwrap();
 //!
 //!     // Subscribe to events
@@ -38,7 +38,7 @@
 //! ```no_run
 //! use cosmic_connect_core::discovery::{Discovery, DeviceInfo, DeviceType};
 //!
-//! let device_info = DeviceInfo::new("My Computer", DeviceType::Desktop, 1716);
+//! let device_info = DeviceInfo::new("My Computer", DeviceType::Desktop, 1816);
 //! let discovery = Discovery::new(device_info).unwrap();
 //!
 //! // Broadcast once
@@ -78,7 +78,7 @@ pub use service::{
 };
 pub use unified::{UnifiedDiscoveryConfig, UnifiedDiscoveryService};
 
-/// Device types supported by KDE Connect
+/// Device types supported by CConnect
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DeviceType {
@@ -144,7 +144,7 @@ impl DeviceInfo {
     /// ```
     /// use cosmic_connect_core::discovery::{DeviceInfo, DeviceType};
     ///
-    /// let info = DeviceInfo::new("My Computer", DeviceType::Desktop, 1716);
+    /// let info = DeviceInfo::new("My Computer", DeviceType::Desktop, 1816);
     /// ```
     pub fn new(device_name: impl Into<String>, device_type: DeviceType, tcp_port: u16) -> Self {
         let device_name = device_name.into();
@@ -168,7 +168,7 @@ impl DeviceInfo {
 
     /// Generate a UUIDv4 device ID with underscores
     ///
-    /// KDE Connect uses UUIDs with underscores instead of hyphens
+    /// CConnect uses UUIDs with underscores instead of hyphens
     fn generate_device_id() -> String {
         Uuid::new_v4().to_string().replace('-', "_")
     }
@@ -217,11 +217,11 @@ impl DeviceInfo {
 
     /// Convert DeviceInfo to an identity packet
     ///
-    /// Field order matches official KDE Connect implementation:
+    /// Field order matches official CConnect implementation:
     /// deviceId, deviceName, protocolVersion, deviceType, tcpPort, capabilities
     pub fn to_identity_packet(&self) -> Packet {
         Packet::new(
-            "kdeconnect.identity",
+            "cconnect.identity",
             json!({
                 "deviceId": self.device_id,
                 "deviceName": self.device_name,
@@ -236,7 +236,7 @@ impl DeviceInfo {
 
     /// Parse DeviceInfo from an identity packet
     pub fn from_identity_packet(packet: &Packet) -> Result<Self> {
-        if !packet.is_type("kdeconnect.identity") {
+        if !packet.is_type("cconnect.identity") {
             return Err(ProtocolError::InvalidPacket(
                 "Not an identity packet".to_string(),
             ));
@@ -392,7 +392,7 @@ impl Discovery {
 
                     match Packet::from_bytes(&buf[..size]) {
                         Ok(packet) => {
-                            if !packet.is_type("kdeconnect.identity") {
+                            if !packet.is_type("cconnect.identity") {
                                 debug!("Ignoring non-identity packet from {}", src_addr);
                                 continue;
                             }
@@ -463,7 +463,7 @@ mod tests {
     #[test]
     #[ignore]
     fn test_discovery_broadcast() {
-        let device_info = DeviceInfo::new("Test Device", DeviceType::Desktop, 1716);
+        let device_info = DeviceInfo::new("Test Device", DeviceType::Desktop, 1816);
         let discovery = Discovery::new(device_info).unwrap();
         let result = discovery.broadcast_identity();
         assert!(result.is_ok());

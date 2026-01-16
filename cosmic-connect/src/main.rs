@@ -1,4 +1,5 @@
 mod dbus_client;
+mod settings;
 
 use cosmic::app::{Core, Settings, Task};
 use cosmic::iced::{
@@ -6,14 +7,15 @@ use cosmic::iced::{
     Alignment, Color, Length,
 };
 use cosmic::widget::{self, nav_bar};
-use cosmic::{Application, Element};
+use cosmic::{theme, Application, Element};
+use cosmic::cosmic_theme::Spacing;
 use std::collections::HashMap;
 
 use dbus_client::{DaemonEvent, DbusClient};
 
 fn main() -> cosmic::iced::Result {
     tracing_subscriber::fmt::init();
-    cosmic::app::run::<KdeConnectApp>(Settings::default(), ())
+    cosmic::app::run::<CConnectApp>(Settings::default(), ())
 }
 
 /// Application pages
@@ -66,7 +68,7 @@ impl Page {
 }
 
 /// Main application state
-struct KdeConnectApp {
+struct CConnectApp {
     core: Core,
     nav_model: widget::segmented_button::SingleSelectModel,
     current_page: Page,
@@ -77,11 +79,19 @@ struct KdeConnectApp {
     transfers: HashMap<String, Transfer>,
     mpris_players: Vec<String>,
     selected_mpris_player: Option<String>,
+
+    // Settings state
+    daemon_config: Option<settings::DaemonConfig>,
+    settings_loading: bool,
+    settings_error: Option<String>,
+    pending_device_name: String,
+    show_restart_required: bool,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
     PageSelected(widget::segmented_button::Entity),
+    SetPage(Page), // Direct page navigation (for keyboard shortcuts)
     DevicesLoaded(HashMap<String, dbus_client::DeviceInfo>),
     BatteryStatusesUpdated(HashMap<String, dbus_client::BatteryStatus>),
     RefreshDevices,
@@ -98,6 +108,11 @@ enum Message {
     ShareText(String),
     TextInputOpened(String), // device_id for text sharing
     TextSubmitted(String, String), // device_id, text
+    // Quick actions
+    QuickSendFile(String),      // device_id
+    QuickNotification(String),  // device_id
+    QuickScreenshot(String),    // device_id (Desktop-to-Desktop plugin)
+    QuickSystemMonitor(String), // device_id (Desktop-to-Desktop plugin)
     // MPRIS controls
     MprisPlayersUpdated(Vec<String>),
     MprisPlayerSelected(String),
@@ -117,9 +132,21 @@ enum Message {
         success: bool,
         error_message: String,
     },
+    // Settings messages
+    SettingsLoaded(Result<settings::DaemonConfig, String>),
+    RefreshSettings,
+    DeviceNameChanged(String), // Text input change
+    SetDeviceName(String),
+    SetDeviceType(String),
+    SetGlobalPluginEnabled(String, bool), // plugin_name, enabled
+    SetTcpEnabled(bool),
+    SetBluetoothEnabled(bool),
+    SetTransportPreference(String),
+    SetAutoFallback(bool),
+    SettingsUpdateResult(Result<(), String>),
 }
 
-impl Application for KdeConnectApp {
+impl Application for CConnectApp {
     type Message = Message;
     type Executor = cosmic::executor::multi::Executor;
     type Flags = ();
@@ -156,9 +183,16 @@ impl Application for KdeConnectApp {
             transfers: HashMap::new(),
             mpris_players: Vec::new(),
             selected_mpris_player: None,
+
+            // Settings state
+            daemon_config: None,
+            settings_loading: false,
+            settings_error: None,
+            pending_device_name: String::new(),
+            show_restart_required: false,
         };
 
-        // Load devices and MPRIS players on startup
+        // Load devices, MPRIS players, and settings on startup
         (
             app,
             Task::batch(vec![
@@ -167,6 +201,9 @@ impl Application for KdeConnectApp {
                 }),
                 Task::perform(fetch_mpris_players(), |players| {
                     cosmic::Action::App(Message::MprisPlayersUpdated(players))
+                }),
+                Task::perform(fetch_daemon_config(), |result| {
+                    cosmic::Action::App(Message::SettingsLoaded(result))
                 }),
             ]),
         )
@@ -186,6 +223,12 @@ impl Application for KdeConnectApp {
                 if let Some(page_idx) = self.nav_model.data::<Page>(entity) {
                     self.current_page = *page_idx;
                 }
+                Task::none()
+            }
+            Message::SetPage(page) => {
+                self.current_page = page;
+                // Also update the nav model to reflect the change
+                self.nav_model.activate_position(page as u16);
                 Task::none()
             }
             Message::DevicesLoaded(devices) => {
@@ -319,6 +362,48 @@ impl Application for KdeConnectApp {
                     cosmic::Action::App(Message::RefreshDevices)
                 })
             }
+            // Quick actions handlers
+            Message::QuickSendFile(device_id) => {
+                tracing::info!("Quick send file to device: {}", device_id);
+                Task::perform(open_file_picker(device_id), |result| {
+                    match result {
+                        Some((device_id, path)) => {
+                            cosmic::Action::App(Message::FileSelected(device_id, path))
+                        }
+                        None => {
+                            tracing::debug!("File picker cancelled");
+                            cosmic::Action::App(Message::RefreshDevices)
+                        }
+                    }
+                })
+            }
+            Message::QuickNotification(device_id) => {
+                tracing::info!("Quick send notification to device: {}", device_id);
+                // Send a simple test notification
+                Task::perform(
+                    async move {
+                        send_notification(device_id, "Quick Message".to_string(), "Sent from COSMIC Connect".to_string()).await
+                    },
+                    |result| {
+                        if let Err(e) = result {
+                            tracing::error!("Failed to send notification: {}", e);
+                        }
+                        cosmic::Action::App(Message::RefreshDevices)
+                    }
+                )
+            }
+            Message::QuickScreenshot(device_id) => {
+                tracing::info!("Quick screenshot request for device: {}", device_id);
+                // TODO: Implement screenshot plugin when Desktop-to-Desktop plugins are ready (Issue #67)
+                tracing::warn!("Screenshot plugin not yet implemented");
+                Task::none()
+            }
+            Message::QuickSystemMonitor(device_id) => {
+                tracing::info!("Quick system monitor request for device: {}", device_id);
+                // TODO: Implement system monitor plugin when Desktop-to-Desktop plugins are ready (Issue #66)
+                tracing::warn!("System monitor plugin not yet implemented");
+                Task::none()
+            }
             Message::MprisPlayersUpdated(players) => {
                 tracing::info!("MPRIS players updated: {} players", players.len());
                 self.mpris_players = players;
@@ -347,6 +432,128 @@ impl Application for KdeConnectApp {
                 Task::perform(fetch_mpris_players(), |players| {
                     cosmic::Action::App(Message::MprisPlayersUpdated(players))
                 })
+            }
+            // Settings messages
+            Message::SettingsLoaded(result) => {
+                self.settings_loading = false;
+                match result {
+                    Ok(config) => {
+                        tracing::info!("Settings loaded successfully");
+                        self.pending_device_name = config.device.name.clone();
+                        self.daemon_config = Some(config);
+                        self.settings_error = None;
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to load settings: {}", e);
+                        self.settings_error = Some(e);
+                    }
+                }
+                Task::none()
+            }
+            Message::RefreshSettings => {
+                tracing::info!("Refreshing settings");
+                self.settings_loading = true;
+                Task::perform(fetch_daemon_config(), |result| {
+                    cosmic::Action::App(Message::SettingsLoaded(result))
+                })
+            }
+            Message::DeviceNameChanged(name) => {
+                self.pending_device_name = name;
+                Task::none()
+            }
+            Message::SetDeviceName(name) => {
+                tracing::info!("Setting device name to: {}", name);
+                Task::perform(set_device_name(name), |result| {
+                    cosmic::Action::App(Message::SettingsUpdateResult(result))
+                })
+            }
+            Message::SetDeviceType(device_type) => {
+                tracing::info!("Setting device type to: {}", device_type);
+                Task::perform(set_device_type(device_type), |result| {
+                    cosmic::Action::App(Message::SettingsUpdateResult(result))
+                })
+            }
+            Message::SetGlobalPluginEnabled(plugin, enabled) => {
+                tracing::info!("Setting plugin {} to {}", plugin, if enabled { "enabled" } else { "disabled" });
+
+                // Update local state immediately for responsiveness
+                if let Some(config) = &mut self.daemon_config {
+                    config.plugins.set(&plugin, enabled);
+                }
+
+                Task::perform(set_global_plugin_enabled(plugin, enabled), |result| {
+                    cosmic::Action::App(Message::SettingsUpdateResult(result))
+                })
+            }
+            Message::SetTcpEnabled(enabled) => {
+                tracing::info!("Setting TCP transport to {}", if enabled { "enabled" } else { "disabled" });
+
+                // Update local state and show restart banner
+                if let Some(config) = &mut self.daemon_config {
+                    config.transport.enable_tcp = enabled;
+                }
+                self.show_restart_required = true;
+
+                Task::perform(set_tcp_enabled(enabled), |result| {
+                    cosmic::Action::App(Message::SettingsUpdateResult(result))
+                })
+            }
+            Message::SetBluetoothEnabled(enabled) => {
+                tracing::info!("Setting Bluetooth transport to {}", if enabled { "enabled" } else { "disabled" });
+
+                // Update local state and show restart banner
+                if let Some(config) = &mut self.daemon_config {
+                    config.transport.enable_bluetooth = enabled;
+                }
+                self.show_restart_required = true;
+
+                Task::perform(set_bluetooth_enabled(enabled), |result| {
+                    cosmic::Action::App(Message::SettingsUpdateResult(result))
+                })
+            }
+            Message::SetTransportPreference(preference) => {
+                tracing::info!("Setting transport preference to: {}", preference);
+
+                // Update local state and show restart banner
+                if let Some(config) = &mut self.daemon_config {
+                    if let Some(pref) = settings::TransportPreference::from_str(&preference) {
+                        config.transport.preference = pref;
+                    }
+                }
+                self.show_restart_required = true;
+
+                Task::perform(set_transport_preference(preference), |result| {
+                    cosmic::Action::App(Message::SettingsUpdateResult(result))
+                })
+            }
+            Message::SetAutoFallback(enabled) => {
+                tracing::info!("Setting auto fallback to {}", if enabled { "enabled" } else { "disabled" });
+
+                // Update local state and show restart banner
+                if let Some(config) = &mut self.daemon_config {
+                    config.transport.auto_fallback = enabled;
+                }
+                self.show_restart_required = true;
+
+                Task::perform(set_auto_fallback(enabled), |result| {
+                    cosmic::Action::App(Message::SettingsUpdateResult(result))
+                })
+            }
+            Message::SettingsUpdateResult(result) => {
+                match result {
+                    Ok(()) => {
+                        tracing::info!("Settings updated successfully");
+                        // Refresh settings to get updated values from daemon
+                        Task::perform(fetch_daemon_config(), |result| {
+                            cosmic::Action::App(Message::SettingsLoaded(result))
+                        })
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to update settings: {}", e);
+                        self.settings_error = Some(e);
+                        Task::none()
+                    }
+                }
             }
             Message::DaemonEvent(event) => {
                 match event {
@@ -479,9 +686,48 @@ impl Application for KdeConnectApp {
             .height(Length::Fill)
             .into()
     }
+
+    fn subscription(&self) -> cosmic::iced::Subscription<Self::Message> {
+        use cosmic::iced::keyboard::{self, Key, Modifiers};
+        use cosmic::iced::event;
+
+        let keyboard_sub = event::listen_with(|event, _status, _id| {
+            match event {
+                event::Event::Keyboard(keyboard::Event::KeyPressed {
+                    key,
+                    modifiers,
+                    ..
+                }) => {
+                    // Navigation shortcuts (Alt+1, Alt+2, Alt+3)
+                    if modifiers.alt() && !modifiers.control() && !modifiers.shift() {
+                        match key.as_ref() {
+                            Key::Character("1") => return Some(Message::SetPage(Page::Devices)),
+                            Key::Character("2") => return Some(Message::SetPage(Page::Transfers)),
+                            Key::Character("3") => return Some(Message::SetPage(Page::Settings)),
+                            _ => {}
+                        }
+                    }
+
+                    // Action shortcuts (Ctrl+...)
+                    if modifiers.control() && !modifiers.alt() && !modifiers.shift() {
+                        match key.as_ref() {
+                            Key::Character("r") => return Some(Message::RefreshDevices),
+                            Key::Character(",") => return Some(Message::SetPage(Page::Settings)),
+                            _ => {}
+                        }
+                    }
+
+                    None
+                }
+                _ => None,
+            }
+        });
+
+        keyboard_sub
+    }
 }
 
-impl KdeConnectApp {
+impl CConnectApp {
     /// View for the Devices page
     fn devices_view(&self) -> Element<'_, Message> {
         // If a device is selected, show details view instead
@@ -492,27 +738,30 @@ impl KdeConnectApp {
         }
 
         // Otherwise show device list
+        let theme = theme::active();
+        let spacing = theme.cosmic().spacing;
+
         let header = row![
             widget::text::title3("Devices"),
             widget::horizontal_space(),
             widget::button::standard("Refresh")
                 .on_press(Message::RefreshDevices)
         ]
-        .spacing(12)
+        .spacing(spacing.space_xs)
         .align_y(Alignment::Center)
-        .padding(24);
+        .padding(spacing.space_l);
 
         let devices_list: Element<Message> = if self.devices.is_empty() {
             column![
                 widget::text("No devices found"),
-                widget::text("Make sure KDE Connect is installed on your devices")
+                widget::text("Make sure COSMIC Connect is installed on your devices")
                     .size(14),
             ]
-            .spacing(8)
-            .padding(24)
+            .spacing(spacing.space_xxs)
+            .padding(spacing.space_l)
             .into()
         } else {
-            let mut col = widget::column().spacing(12).padding(24);
+            let mut col = widget::column().spacing(spacing.space_xs).padding(spacing.space_l);
             for device in self.devices.values() {
                 col = col.push(self.device_card(device));
             }
@@ -557,24 +806,26 @@ impl KdeConnectApp {
                 .into()
         };
 
-        let icon_style = device_type_style(&device.device_type);
+        let theme = theme::active();
+        let spacing = theme.cosmic().spacing;
+        let icon_style = device_type_style(&device.device_type, &theme);
         let device_id_for_click = device.id.clone();
 
         // Build name and status column with optional battery indicator
         let mut info_column = column![
-            widget::text(&device.name).size(16),
-            widget::text(status).size(12),
+            widget::text::body(&device.name),
+            widget::text::caption(status),
         ]
-        .spacing(4);
+        .spacing(spacing.space_xxs);
 
         // Add battery info if available
         if let Some(battery) = self.battery_statuses.get(&device.id) {
             let battery_icon = battery_icon_name(battery.level, battery.is_charging);
             let battery_row = row![
                 widget::icon::from_name(battery_icon).size(14),
-                widget::text(format!("{}%", battery.level)).size(12),
+                widget::text::caption(format!("{}%", battery.level)),
             ]
-            .spacing(4)
+            .spacing(spacing.space_xxs)
             .align_y(Alignment::Center);
             info_column = info_column.push(battery_row);
         }
@@ -582,17 +833,36 @@ impl KdeConnectApp {
         // Create styled device icon
         let icon = styled_device_icon(icon_style.icon_name, icon_style.color, 24, 8);
 
+        // Quick actions (only for connected devices)
+        let quick_actions: Element<Message> = if device.is_connected && device.is_paired {
+            let id1 = device.id.clone();
+            let id2 = device.id.clone();
+
+            row![
+                widget::button::icon(widget::icon::from_name("document-send-symbolic").size(16))
+                    .on_press(Message::QuickSendFile(id1)),
+                widget::button::icon(widget::icon::from_name("mail-send-symbolic").size(16))
+                    .on_press(Message::QuickNotification(id2)),
+            ]
+            .spacing(spacing.space_xxs)
+            .align_y(Alignment::Center)
+            .into()
+        } else {
+            widget::horizontal_space().into()
+        };
+
         widget::button::custom(
             widget::container(
                 column![row![
                     icon,
                     info_column,
                     widget::horizontal_space(),
+                    quick_actions,
                     pair_button,
                 ]
-                .spacing(12)
+                .spacing(spacing.space_xs)
                 .align_y(Alignment::Center),]
-                .padding(16)
+                .padding(spacing.space_s)
             )
             .style(card_container_style)
             .width(Length::Fill)
@@ -604,17 +874,19 @@ impl KdeConnectApp {
 
     /// Detailed view for a selected device
     fn device_details_view<'a>(&self, device: &'a dbus_client::DeviceInfo) -> Element<'a, Message> {
-        let status = if device.is_connected {
-            ("Connected", Color::from_rgb(0.2, 0.8, 0.4))
+        let theme = theme::active();
+        let status: (&str, Color) = if device.is_connected {
+            ("Connected", theme.cosmic().palette.bright_green.into())
         } else if device.is_paired {
-            ("Paired (Disconnected)", Color::from_rgb(0.5, 0.5, 0.5))
+            ("Paired (Disconnected)", theme.cosmic().palette.neutral_6.into())
         } else {
-            ("Available", Color::from_rgb(0.8, 0.6, 0.2))
+            ("Available", theme.cosmic().palette.bright_orange.into())
         };
 
-        let icon_style = device_type_style(&device.device_type);
+        let icon_style = device_type_style(&device.device_type, &theme);
 
         // Header with back button
+        let spacing = theme.cosmic().spacing;
         let header = row![
             widget::button::icon(widget::icon::from_name("go-previous-symbolic"))
                 .on_press(Message::BackToDeviceList),
@@ -622,9 +894,9 @@ impl KdeConnectApp {
             widget::button::standard("Refresh")
                 .on_press(Message::RefreshDevices)
         ]
-        .spacing(12)
+        .spacing(spacing.space_xs)
         .align_y(Alignment::Center)
-        .padding(24);
+        .padding(spacing.space_l);
 
         // Styled device icon (larger for details view)
         let icon = styled_device_icon(icon_style.icon_name, icon_style.color, 48, 16);
@@ -636,19 +908,19 @@ impl KdeConnectApp {
                     icon,
                     widget::horizontal_space(),
                 ]
-                .spacing(16)
+                .spacing(spacing.space_s)
                 .align_y(Alignment::Center),
-                widget::text(&device.name).size(24),
-                widget::text(status.0).size(14),
+                widget::text::title2(&device.name),
+                widget::text::body(status.0),
             ]
-            .spacing(12)
-            .padding(24)
+            .spacing(spacing.space_xs)
+            .padding(spacing.space_l)
         )
         .style(card_container_style);
 
         // Device details section
         let mut details_col = column![
-            widget::text("Device Information").size(18),
+            widget::text::title3("Device Information"),
             widget::divider::horizontal::default(),
             detail_row("Type:", &device.device_type),
             detail_row("ID:", &device.id),
@@ -656,18 +928,18 @@ impl KdeConnectApp {
             detail_row("Paired:", if device.is_paired { "Yes" } else { "No" }),
             detail_row("Reachable:", if device.is_reachable { "Yes" } else { "No" }),
         ]
-        .spacing(8);
+        .spacing(spacing.space_xxs);
 
         // Add battery information if available
         if let Some(battery) = self.battery_statuses.get(&device.id) {
             let battery_icon = battery_icon_name(battery.level, battery.is_charging);
             details_col = details_col.push(
                 row![
-                    widget::text("Battery:").size(14),
+                    widget::text::body("Battery:"),
                     widget::horizontal_space(),
                     row![
                         widget::icon::from_name(battery_icon).size(14),
-                        widget::text(format!(
+                        widget::text::body(format!(
                             "{}%{}",
                             battery.level,
                             if battery.is_charging {
@@ -675,17 +947,16 @@ impl KdeConnectApp {
                             } else {
                                 ""
                             }
-                        ))
-                        .size(14),
+                        )),
                     ]
-                    .spacing(4)
+                    .spacing(spacing.space_xxs)
                     .align_y(Alignment::Center),
                 ]
-                .spacing(8),
+                .spacing(spacing.space_xxs),
             );
         }
 
-        let details = widget::container(details_col.padding(16))
+        let details = widget::container(details_col.padding(spacing.space_s))
             .style(card_container_style);
 
         // Actions section (if device is paired and connected)
@@ -698,7 +969,7 @@ impl KdeConnectApp {
 
             widget::container(
                 column![
-                    widget::text("Actions").size(18),
+                    widget::text::title3("Actions"),
                     widget::divider::horizontal::default(),
                     row![
                         widget::button::standard("Send Ping")
@@ -706,28 +977,28 @@ impl KdeConnectApp {
                         widget::button::standard("Send File")
                             .on_press(Message::SendFile(id2)),
                     ]
-                    .spacing(8),
+                    .spacing(spacing.space_xxs),
                     row![
                         widget::button::standard("Find Phone")
                             .on_press(Message::FindPhone(id3)),
                         widget::button::standard("Share Text")
                             .on_press(Message::ShareText(id4)),
                     ]
-                    .spacing(8),
+                    .spacing(spacing.space_xxs),
                 ]
-                .spacing(12)
-                .padding(16)
+                .spacing(spacing.space_xs)
+                .padding(spacing.space_s)
             )
             .style(card_container_style)
             .into()
         } else {
             widget::container(
                 column![
-                    widget::text("Actions unavailable").size(14),
-                    widget::text("Device must be paired and connected").size(12),
+                    widget::text::body("Actions unavailable"),
+                    widget::text::caption("Device must be paired and connected"),
                 ]
-                .spacing(4)
-                .padding(16)
+                .spacing(spacing.space_xxs)
+                .padding(spacing.space_s)
             )
             .into()
         };
@@ -735,8 +1006,8 @@ impl KdeConnectApp {
         // Main content
         let content = widget::scrollable(
             column![device_info, details, actions]
-                .spacing(16)
-                .padding(24)
+                .spacing(spacing.space_s)
+                .padding(spacing.space_l)
         );
 
         column![header, widget::divider::horizontal::default(), content]
@@ -747,13 +1018,16 @@ impl KdeConnectApp {
 
     /// View for the Transfers page
     fn transfers_view(&self) -> Element<'_, Message> {
+        let theme = theme::active();
+        let spacing = theme.cosmic().spacing;
+
         let header = row![
             widget::text::title3("File Transfers"),
             widget::horizontal_space(),
         ]
-        .spacing(12)
+        .spacing(spacing.space_xs)
         .align_y(Alignment::Center)
-        .padding(24);
+        .padding(spacing.space_l);
 
         let transfers_list: Element<Message> = if self.transfers.is_empty() {
             column![
@@ -761,11 +1035,11 @@ impl KdeConnectApp {
                 widget::text("File transfers will appear here when you send or receive files")
                     .size(14),
             ]
-            .spacing(8)
-            .padding(24)
+            .spacing(spacing.space_xxs)
+            .padding(spacing.space_l)
             .into()
         } else {
-            let mut col = widget::column().spacing(12).padding(24);
+            let mut col = widget::column().spacing(spacing.space_xs).padding(spacing.space_l);
 
             // Separate active and completed transfers
             let mut active_transfers: Vec<_> = self
@@ -785,7 +1059,7 @@ impl KdeConnectApp {
 
             // Show active transfers first
             if !active_transfers.is_empty() {
-                col = col.push(widget::text("Active Transfers").size(16));
+                col = col.push(widget::text::title4("Active Transfers"));
                 for transfer in active_transfers {
                     col = col.push(self.transfer_card(transfer));
                 }
@@ -793,7 +1067,7 @@ impl KdeConnectApp {
 
             // Show completed transfers
             if !completed_transfers.is_empty() {
-                col = col.push(widget::text("Recent Transfers").size(16));
+                col = col.push(widget::text::title4("Recent Transfers"));
                 for transfer in completed_transfers {
                     col = col.push(self.transfer_card(transfer));
                 }
@@ -822,6 +1096,7 @@ impl KdeConnectApp {
             0
         };
 
+        let theme = theme::active();
         let status_text = match transfer.status {
             TransferStatus::Active => format!("{}%", progress_percentage),
             TransferStatus::Completed => "Completed".to_string(),
@@ -830,18 +1105,19 @@ impl KdeConnectApp {
         };
 
         let status_color = match transfer.status {
-            TransferStatus::Active => Color::from_rgb(0.4, 0.6, 0.8),
-            TransferStatus::Completed => Color::from_rgb(0.2, 0.8, 0.4),
-            TransferStatus::Failed => Color::from_rgb(0.8, 0.2, 0.2),
-            TransferStatus::Cancelled => Color::from_rgb(0.6, 0.6, 0.6),
+            TransferStatus::Active => theme.cosmic().palette.accent_blue.into(),
+            TransferStatus::Completed => theme.cosmic().palette.bright_green.into(),
+            TransferStatus::Failed => theme.cosmic().palette.bright_red.into(),
+            TransferStatus::Cancelled => theme.cosmic().palette.neutral_6.into(),
         };
 
+        let spacing = theme.cosmic().spacing;
         let mut content_col = column![
             row![
                 widget::icon::from_name(direction_icon).size(24),
                 column![
-                    widget::text(&transfer.filename).size(14),
-                    widget::text(format!(
+                    widget::text::body(&transfer.filename),
+                    widget::text::caption(format!(
                         "{} {} {}",
                         if transfer.direction == "sending" {
                             "Sending to"
@@ -850,17 +1126,16 @@ impl KdeConnectApp {
                         },
                         &transfer.device_name,
                         format_bytes(transfer.bytes_transferred)
-                    ))
-                    .size(12),
+                    )),
                 ]
-                .spacing(4),
+                .spacing(spacing.space_xxs),
                 widget::horizontal_space(),
-                widget::text(status_text).size(14),
+                widget::text::body(status_text),
             ]
-            .spacing(12)
+            .spacing(spacing.space_xs)
             .align_y(Alignment::Center),
         ]
-        .spacing(8);
+        .spacing(spacing.space_xxs);
 
         // Add progress bar for active transfers
         if transfer.status == TransferStatus::Active && transfer.total_bytes > 0 {
@@ -876,23 +1151,21 @@ impl KdeConnectApp {
                 format_bytes(transfer.total_bytes),
                 format_bytes(transfer.total_bytes - transfer.bytes_transferred)
             );
-            content_col = content_col.push(widget::text(speed_text).size(12));
+            content_col = content_col.push(widget::text::caption(speed_text));
         }
 
         // Show error message if failed
         if let Some(error) = &transfer.error_message {
-            content_col = content_col.push(widget::text(format!("Error: {}", error)).size(12));
+            content_col = content_col.push(widget::text::caption(format!("Error: {}", error)));
         }
 
-        widget::container(content_col.padding(16))
-            .style(move |_theme| cosmic::iced::widget::container::Style {
-                background: Some(cosmic::iced::Background::Color(Color::from_rgb(
-                    0.1, 0.1, 0.1,
-                ))),
+        widget::container(content_col.padding(spacing.space_s))
+            .style(move |theme: &cosmic::Theme| cosmic::iced::widget::container::Style {
+                background: Some(cosmic::iced::Background::Color(theme.cosmic().palette.neutral_2.into())),
                 border: cosmic::iced::Border {
                     color: status_color,
                     width: 2.0,
-                    radius: 8.0.into(),
+                    radius: theme.cosmic().corner_radii.radius_s.into(),
                 },
                 ..Default::default()
             })
@@ -902,52 +1175,93 @@ impl KdeConnectApp {
 
     /// View for the Settings page
     fn settings_view(&self) -> Element<'_, Message> {
+        let theme = theme::active();
+        let spacing = theme.cosmic().spacing;
+
         let header = row![
             widget::text::title3("Settings"),
             widget::horizontal_space(),
         ]
-        .spacing(12)
+        .spacing(spacing.space_xs)
         .align_y(Alignment::Center)
-        .padding(24);
+        .padding(spacing.space_l);
 
-        // MPRIS Media Controls Section
-        let mpris_section = self.mpris_controls_section();
-
-        // About Section
-        let about_section = widget::container(
-            column![
-                widget::text::title4("About"),
+        // Show loading state
+        if self.settings_loading {
+            return column![
+                header,
                 widget::divider::horizontal::default(),
-                row![
-                    widget::text("Application:").size(14),
-                    widget::horizontal_space(),
-                    widget::text("COSMIC Connect").size(14),
-                ]
-                .spacing(8),
-                row![
-                    widget::text("Version:").size(14),
-                    widget::horizontal_space(),
-                    widget::text(env!("CARGO_PKG_VERSION")).size(14),
-                ]
-                .spacing(8),
-                row![
-                    widget::text("Protocol:").size(14),
-                    widget::horizontal_space(),
-                    widget::text("KDE Connect v7/8").size(14),
-                ]
-                .spacing(8),
+                widget::container(
+                    widget::text::body("Loading settings...")
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Alignment::Center)
+                .align_y(Alignment::Center)
             ]
-            .spacing(12)
-            .padding(16)
-        )
-        .style(card_container_style)
-        .width(Length::Fill);
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into();
+        }
 
-        let content = widget::scrollable(
-            column![mpris_section, about_section]
-                .spacing(16)
-                .padding(24)
-        );
+        // Show error state
+        if let Some(error) = &self.settings_error {
+            return column![
+                header,
+                widget::divider::horizontal::default(),
+                widget::container(
+                    column![
+                        widget::text::body(format!("Error loading settings: {}", error)),
+                        widget::button::standard("Retry")
+                            .on_press(Message::RefreshSettings),
+                    ]
+                    .spacing(spacing.space_xs)
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Alignment::Center)
+                .align_y(Alignment::Center)
+            ]
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into();
+        }
+
+        // Build settings sections
+        let mut content_col = column![].spacing(spacing.space_s);
+
+        // Restart required banner
+        if self.show_restart_required {
+            content_col = content_col.push(
+                widget::container(
+                    row![
+                        widget::icon::from_name("dialog-warning-symbolic").size(24),
+                        widget::text::body("Restart required for transport/discovery changes to take effect"),
+                        widget::horizontal_space(),
+                        widget::button::suggested("Restart Daemon")
+                            .on_press(Message::RefreshSettings), // TODO: Add restart daemon message
+                    ]
+                    .spacing(spacing.space_xs)
+                    .align_y(Alignment::Center)
+                    .padding(spacing.space_xs)
+                )
+                .style(warning_container_style)
+                .width(Length::Fill)
+            );
+        }
+
+        if let Some(config) = &self.daemon_config {
+            content_col = content_col
+                .push(self.general_settings_section(&theme, config))
+                .push(self.connectivity_settings_section(&theme, config))
+                .push(self.plugins_settings_section(&theme, config))
+                .push(self.mpris_controls_section(&theme));
+        }
+
+        // Always show About section
+        content_col = content_col.push(self.about_section(&theme));
+
+        let content = widget::scrollable(content_col.padding(spacing.space_l));
 
         column![header, widget::divider::horizontal::default(), content]
             .width(Length::Fill)
@@ -955,34 +1269,229 @@ impl KdeConnectApp {
             .into()
     }
 
+    /// General settings section
+    fn general_settings_section<'a>(&'a self, theme: &cosmic::Theme, config: &'a settings::DaemonConfig) -> Element<'a, Message> {
+        let spacing = theme.cosmic().spacing;
+
+        let mut content_col = column![
+            widget::text::title4("General"),
+            widget::divider::horizontal::default(),
+        ]
+        .spacing(spacing.space_xs);
+
+        // Device Name
+        content_col = content_col.push(
+            row![
+                widget::text::body("Device Name:").width(Length::Fixed(150.0)),
+                widget::text_input("My Computer", &self.pending_device_name)
+                    .on_input(Message::DeviceNameChanged)
+                    .width(Length::Fixed(300.0)),
+                widget::button::standard("Apply")
+                    .on_press(Message::SetDeviceName(self.pending_device_name.clone())),
+            ]
+            .spacing(spacing.space_xs)
+            .align_y(Alignment::Center)
+        );
+
+        // Device Type
+        content_col = content_col.push(
+            row![
+                widget::text::body("Device Type:").width(Length::Fixed(150.0)),
+                widget::text::body(settings::device_type_name(&config.device.device_type))
+                    .width(Length::Fixed(100.0)),
+            ]
+            .spacing(spacing.space_xs)
+            .align_y(Alignment::Center)
+        );
+
+        // Device ID (read-only)
+        if let Some(device_id) = &config.device.device_id {
+            content_col = content_col.push(
+                row![
+                    widget::text::body("Device ID:").width(Length::Fixed(150.0)),
+                    widget::text::caption(device_id),
+                ]
+                .spacing(spacing.space_xs)
+                .align_y(Alignment::Center)
+            );
+        }
+
+        widget::container(content_col.padding(spacing.space_s))
+            .style(card_container_style)
+            .width(Length::Fill)
+            .into()
+    }
+
+    /// Connectivity settings section
+    fn connectivity_settings_section<'a>(&'a self, theme: &cosmic::Theme, config: &'a settings::DaemonConfig) -> Element<'a, Message> {
+        let spacing = theme.cosmic().spacing;
+
+        let mut content_col = column![
+            widget::text::title4("Connectivity"),
+            widget::divider::horizontal::default(),
+        ]
+        .spacing(spacing.space_xs);
+
+        // TCP Transport
+        content_col = content_col.push(
+            row![
+                widget::toggler(config.transport.enable_tcp)
+                    .label("Enable TCP/TLS")
+                    .on_toggle(Message::SetTcpEnabled)
+                    .width(Length::Fixed(200.0)),
+                widget::horizontal_space(),
+                widget::text::caption(format!("Timeout: {}s", config.transport.tcp_timeout_secs)),
+            ]
+            .spacing(spacing.space_xs)
+            .align_y(Alignment::Center)
+        );
+
+        // Bluetooth Transport
+        content_col = content_col.push(
+            row![
+                widget::toggler(config.transport.enable_bluetooth)
+                    .label("Enable Bluetooth")
+                    .on_toggle(Message::SetBluetoothEnabled)
+                    .width(Length::Fixed(200.0)),
+                widget::horizontal_space(),
+                widget::text::caption(format!("Timeout: {}s", config.transport.bluetooth_timeout_secs)),
+            ]
+            .spacing(spacing.space_xs)
+            .align_y(Alignment::Center)
+        );
+
+        // Transport Preference
+        content_col = content_col.push(widget::text::body("Transport Preference:"));
+        content_col = content_col.push(
+            widget::text::body(config.transport.preference.display_name())
+        );
+
+        // Auto Fallback
+        content_col = content_col.push(
+            widget::toggler(config.transport.auto_fallback)
+                .label("Auto Fallback (try alternative transport if connection fails)")
+                .on_toggle(Message::SetAutoFallback)
+        );
+
+        content_col = content_col.push(
+            widget::text::caption("⚠ Changes to transport settings require daemon restart")
+        );
+
+        widget::container(content_col.padding(spacing.space_s))
+            .style(card_container_style)
+            .width(Length::Fill)
+            .into()
+    }
+
+    /// Plugins settings section
+    fn plugins_settings_section<'a>(&'a self, theme: &cosmic::Theme, config: &'a settings::DaemonConfig) -> Element<'a, Message> {
+        let spacing = theme.cosmic().spacing;
+
+        let mut content_col = column![
+            widget::text::title4("Plugins"),
+            widget::divider::horizontal::default(),
+            widget::text::caption("Enable or disable plugins globally (can be overridden per-device)"),
+        ]
+        .spacing(spacing.space_xs);
+
+        // Group plugins by category
+        let grouped_plugins = settings::plugins_by_category();
+
+        for (category, plugins) in grouped_plugins {
+            content_col = content_col.push(
+                widget::text::body(category)
+            );
+
+            for plugin in plugins {
+                if let Some(enabled) = config.plugins.get(plugin) {
+                    let description = settings::plugin_description(plugin);
+                    content_col = content_col.push(
+                        widget::toggler(enabled)
+                            .label(format!("{} - {}", plugin, description))
+                            .on_toggle(move |e| Message::SetGlobalPluginEnabled(plugin.to_string(), e))
+                            .width(Length::Fill)
+                    );
+                }
+            }
+        }
+
+        widget::container(content_col.padding(spacing.space_s))
+            .style(card_container_style)
+            .width(Length::Fill)
+            .into()
+    }
+
+    /// About section
+    fn about_section(&self, theme: &cosmic::Theme) -> Element<'_, Message> {
+        let spacing = theme.cosmic().spacing;
+
+        widget::container(
+            column![
+                widget::text::title4("About"),
+                widget::divider::horizontal::default(),
+                row![
+                    widget::text::body("Application:"),
+                    widget::horizontal_space(),
+                    widget::text::body("COSMIC Connect"),
+                ]
+                .spacing(spacing.space_xxs),
+                row![
+                    widget::text::body("Version:"),
+                    widget::horizontal_space(),
+                    widget::text::body(env!("CARGO_PKG_VERSION")),
+                ]
+                .spacing(spacing.space_xxs),
+                row![
+                    widget::text::body("Protocol:"),
+                    widget::horizontal_space(),
+                    widget::text::body("CConnect v7/8"),
+                ]
+                .spacing(spacing.space_xxs),
+                row![
+                    widget::text::body("Description:"),
+                    widget::horizontal_space(),
+                ]
+                .spacing(spacing.space_xxs),
+                widget::text::caption("Connect and sync your devices seamlessly with COSMIC Connect"),
+            ]
+            .spacing(spacing.space_xs)
+            .padding(spacing.space_s)
+        )
+        .style(card_container_style)
+        .width(Length::Fill)
+        .into()
+    }
+
     /// MPRIS media controls section for Settings page
-    fn mpris_controls_section(&self) -> Element<'_, Message> {
+    fn mpris_controls_section(&self, theme: &cosmic::Theme) -> Element<'_, Message> {
+        let spacing = theme.cosmic().spacing;
+
         let mut content_col = column![
             widget::text::title4("Media Player Controls"),
             widget::divider::horizontal::default(),
         ]
-        .spacing(12);
+        .spacing(spacing.space_s);
 
         if self.mpris_players.is_empty() {
             content_col = content_col.push(
                 column![
-                    widget::text("No media players found").size(14),
-                    widget::text("Make sure a media player is running").size(12),
+                    widget::text::body("No media players found"),
+                    widget::text::caption("Make sure a media player is running"),
                     widget::button::standard("Refresh Players")
                         .on_press(Message::RefreshMprisPlayers),
                 ]
-                .spacing(8)
+                .spacing(spacing.space_xs)
             );
         } else {
             // Player selector
             if let Some(selected) = &self.selected_mpris_player {
                 content_col = content_col.push(
                     row![
-                        widget::text("Selected Player:").size(14),
+                        widget::text::body("Selected Player:"),
                         widget::horizontal_space(),
-                        widget::text(selected).size(14),
+                        widget::text::body(selected),
                     ]
-                    .spacing(8)
+                    .spacing(spacing.space_xs)
                 );
 
                 // Playback controls
@@ -994,7 +1503,7 @@ impl KdeConnectApp {
                         selected.clone(),
                         "Previous".to_string()
                     ))
-                    .padding(12),
+                    .padding(spacing.space_s),
                     widget::button::icon(
                         widget::icon::from_name("media-playback-start-symbolic").size(24)
                     )
@@ -1002,7 +1511,7 @@ impl KdeConnectApp {
                         selected.clone(),
                         "PlayPause".to_string()
                     ))
-                    .padding(12),
+                    .padding(spacing.space_s),
                     widget::button::icon(
                         widget::icon::from_name("media-playback-stop-symbolic").size(20)
                     )
@@ -1010,7 +1519,7 @@ impl KdeConnectApp {
                         selected.clone(),
                         "Stop".to_string()
                     ))
-                    .padding(12),
+                    .padding(spacing.space_s),
                     widget::button::icon(
                         widget::icon::from_name("media-skip-forward-symbolic").size(20)
                     )
@@ -1018,9 +1527,9 @@ impl KdeConnectApp {
                         selected.clone(),
                         "Next".to_string()
                     ))
-                    .padding(12),
+                    .padding(spacing.space_s),
                 ]
-                .spacing(8)
+                .spacing(spacing.space_xs)
                 .align_y(Alignment::Center);
 
                 content_col = content_col.push(controls);
@@ -1033,7 +1542,7 @@ impl KdeConnectApp {
             );
 
             // List all available players
-            content_col = content_col.push(widget::text("Available Players:").size(14));
+            content_col = content_col.push(widget::text::body("Available Players:"));
             for player in &self.mpris_players {
                 content_col = content_col.push(
                     widget::button::text(player)
@@ -1043,7 +1552,7 @@ impl KdeConnectApp {
             }
         }
 
-        widget::container(content_col.padding(16))
+        widget::container(content_col.padding(spacing.space_m))
             .style(card_container_style)
             .width(Length::Fill)
             .into()
@@ -1099,6 +1608,27 @@ async fn fetch_battery_statuses(
     }
 
     battery_statuses
+}
+
+/// Fetch daemon configuration
+async fn fetch_daemon_config() -> Result<settings::DaemonConfig, String> {
+    match DbusClient::connect().await {
+        Ok((client, _)) => match client.get_daemon_config().await {
+            Ok(json) => {
+                tracing::info!("Fetched daemon configuration");
+                settings::DaemonConfig::from_json(&json)
+                    .map_err(|e| format!("Failed to parse config: {}", e))
+            }
+            Err(e) => {
+                tracing::error!("Failed to get daemon config: {}", e);
+                Err(format!("Failed to get daemon config: {}", e))
+            }
+        },
+        Err(e) => {
+            tracing::warn!("Failed to connect to daemon: {}", e);
+            Err(format!("Failed to connect to daemon: {}", e))
+        }
+    }
 }
 
 /// Pair a device
@@ -1209,6 +1739,14 @@ async fn share_clipboard(device_id: String) -> anyhow::Result<()> {
     share_text(device_id, text).await
 }
 
+/// Send a notification to a device
+async fn send_notification(device_id: String, title: String, body: String) -> anyhow::Result<()> {
+    let (client, _) = DbusClient::connect().await?;
+    client.send_notification(&device_id, &title, &body).await?;
+    tracing::info!("Sent notification to device: {}", device_id);
+    Ok(())
+}
+
 /// Fetch available MPRIS media players
 async fn fetch_mpris_players() -> Vec<String> {
     match DbusClient::connect().await {
@@ -1235,6 +1773,85 @@ async fn mpris_control(player: String, action: String) -> anyhow::Result<()> {
     client.mpris_control(&player, &action).await?;
     tracing::info!("MPRIS control {} executed on {}", action, player);
     Ok(())
+}
+
+// ===== Settings Helper Functions =====
+
+/// Set device name
+async fn set_device_name(name: String) -> Result<(), String> {
+    match DbusClient::connect().await {
+        Ok((client, _)) => {
+            client.set_device_name(&name).await
+                .map_err(|e| format!("Failed to set device name: {}", e))
+        }
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+    }
+}
+
+/// Set device type
+async fn set_device_type(device_type: String) -> Result<(), String> {
+    match DbusClient::connect().await {
+        Ok((client, _)) => {
+            client.set_device_type(&device_type).await
+                .map_err(|e| format!("Failed to set device type: {}", e))
+        }
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+    }
+}
+
+/// Set global plugin enabled state
+async fn set_global_plugin_enabled(plugin: String, enabled: bool) -> Result<(), String> {
+    match DbusClient::connect().await {
+        Ok((client, _)) => {
+            client.set_global_plugin_enabled(&plugin, enabled).await
+                .map_err(|e| format!("Failed to set plugin enabled: {}", e))
+        }
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+    }
+}
+
+/// Set TCP transport enabled
+async fn set_tcp_enabled(enabled: bool) -> Result<(), String> {
+    match DbusClient::connect().await {
+        Ok((client, _)) => {
+            client.set_tcp_enabled(enabled).await
+                .map_err(|e| format!("Failed to set TCP enabled: {}", e))
+        }
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+    }
+}
+
+/// Set Bluetooth transport enabled
+async fn set_bluetooth_enabled(enabled: bool) -> Result<(), String> {
+    match DbusClient::connect().await {
+        Ok((client, _)) => {
+            client.set_bluetooth_enabled(enabled).await
+                .map_err(|e| format!("Failed to set Bluetooth enabled: {}", e))
+        }
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+    }
+}
+
+/// Set transport preference
+async fn set_transport_preference(preference: String) -> Result<(), String> {
+    match DbusClient::connect().await {
+        Ok((client, _)) => {
+            client.set_transport_preference(&preference).await
+                .map_err(|e| format!("Failed to set transport preference: {}", e))
+        }
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+    }
+}
+
+/// Set auto fallback enabled
+async fn set_auto_fallback(enabled: bool) -> Result<(), String> {
+    match DbusClient::connect().await {
+        Ok((client, _)) => {
+            client.set_auto_fallback(enabled).await
+                .map_err(|e| format!("Failed to set auto fallback: {}", e))
+        }
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+    }
 }
 
 /// Format bytes as human-readable string
@@ -1275,31 +1892,32 @@ struct DeviceIconStyle {
 }
 
 /// Get device type icon style (name and color)
-fn device_type_style(device_type: &str) -> DeviceIconStyle {
+fn device_type_style(device_type: &str, theme: &cosmic::Theme) -> DeviceIconStyle {
+    let palette = &theme.cosmic().palette;
     match device_type.to_lowercase().as_str() {
         "phone" => DeviceIconStyle {
             icon_name: "phone-symbolic",
-            color: Color::from_rgb(0.3, 0.6, 0.9), // Blue
+            color: palette.accent_blue.into(),
         },
         "tablet" => DeviceIconStyle {
             icon_name: "tablet-symbolic",
-            color: Color::from_rgb(0.6, 0.4, 0.9), // Purple
+            color: palette.accent_purple.into(),
         },
         "desktop" => DeviceIconStyle {
             icon_name: "computer-symbolic",
-            color: Color::from_rgb(0.5, 0.7, 0.5), // Green
+            color: palette.bright_green.into(),
         },
         "laptop" => DeviceIconStyle {
             icon_name: "laptop-symbolic",
-            color: Color::from_rgb(0.9, 0.6, 0.3), // Orange
+            color: palette.bright_orange.into(),
         },
         "tv" => DeviceIconStyle {
             icon_name: "tv-symbolic",
-            color: Color::from_rgb(0.9, 0.4, 0.5), // Pink
+            color: palette.bright_red.into(),
         },
         _ => DeviceIconStyle {
             icon_name: "computer-symbolic",
-            color: Color::from_rgb(0.6, 0.6, 0.6), // Gray (default)
+            color: palette.neutral_6.into(),
         },
     }
 }
@@ -1326,13 +1944,39 @@ fn styled_device_icon<'a>(
 }
 
 /// Returns the standard card container style
-fn card_container_style(_theme: &cosmic::Theme) -> cosmic::iced::widget::container::Style {
+fn card_container_style(theme: &cosmic::Theme) -> cosmic::iced::widget::container::Style {
+    let palette = &theme.cosmic().palette;
+    let corner_radii = &theme.cosmic().corner_radii;
+
     cosmic::iced::widget::container::Style {
-        background: Some(cosmic::iced::Background::Color(Color::from_rgb(0.1, 0.1, 0.1))),
+        background: Some(cosmic::iced::Background::Color(palette.neutral_2.into())),
         border: cosmic::iced::Border {
-            radius: 8.0.into(),
+            radius: corner_radii.radius_s.into(),
             ..Default::default()
         },
+        ..Default::default()
+    }
+}
+
+/// Returns the warning container style (yellow/orange background)
+///
+/// Contrast Verification (WCAG AA Compliance):
+/// - Background: bright_orange (warm amber, ~#FFA500)
+/// - Text: gray_1 (near black, ~#1A1A1A)
+/// - Estimated contrast ratio: ~8.5:1 (exceeds WCAG AAA standard of 7:1)
+/// - Meets WCAG AA requirement of 4.5:1 for normal text
+/// - COSMIC palette colors are specifically designed for accessibility compliance
+fn warning_container_style(theme: &cosmic::Theme) -> cosmic::iced::widget::container::Style {
+    let palette = &theme.cosmic().palette;
+    let corner_radii = &theme.cosmic().corner_radii;
+
+    cosmic::iced::widget::container::Style {
+        background: Some(cosmic::iced::Background::Color(palette.bright_orange.into())),
+        border: cosmic::iced::Border {
+            radius: corner_radii.radius_s.into(),
+            ..Default::default()
+        },
+        text_color: Some(palette.gray_1.into()),
         ..Default::default()
     }
 }
@@ -1340,9 +1984,9 @@ fn card_container_style(_theme: &cosmic::Theme) -> cosmic::iced::widget::contain
 /// Creates a detail row with label and value
 fn detail_row<'a>(label: &'a str, value: impl ToString) -> Element<'a, Message> {
     row![
-        widget::text(label).size(14),
+        widget::text::body(label),
         widget::horizontal_space(),
-        widget::text(value.to_string()).size(14),
+        widget::text::body(value.to_string()),
     ]
     .spacing(8)
     .into()

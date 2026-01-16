@@ -1,15 +1,15 @@
 //! Share Plugin
 //!
-//! Facilitates file, text, and URL sharing between KDE Connect devices.
+//! Facilitates file, text, and URL sharing between CConnect devices.
 //! Supports single and multiple file transfers with metadata preservation.
 //!
 //! ## Protocol
 //!
 //! **Packet Types**:
-//! - Incoming: `kdeconnect.share.request`, `kdeconnect.share.request.update`
-//! - Outgoing: `kdeconnect.share.request`, `kdeconnect.share.request.update`
+//! - Incoming: `cconnect.share.request`, `cconnect.share.request.update`
+//! - Outgoing: `cconnect.share.request`, `cconnect.share.request.update`
 //!
-//! **Capabilities**: `kdeconnect.share.request`
+//! **Capabilities**: `cconnect.share.request`
 //!
 //! ## Share Types
 //!
@@ -21,7 +21,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.share.request",
+//!     "type": "cconnect.share.request",
 //!     "body": {
 //!         "filename": "image.png",
 //!         "creationTime": 1640000000000,
@@ -42,7 +42,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.share.request",
+//!     "type": "cconnect.share.request",
 //!     "body": {
 //!         "text": "Some text to share"
 //!     }
@@ -56,7 +56,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.share.request",
+//!     "type": "cconnect.share.request",
 //!     "body": {
 //!         "url": "https://kdeconnect.kde.org"
 //!     }
@@ -70,7 +70,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.share.request.update",
+//!     "type": "cconnect.share.request.update",
 //!     "body": {
 //!         "numberOfFiles": 5,
 //!         "totalPayloadSize": 10485760
@@ -245,7 +245,7 @@ pub struct ShareRecord {
 
 /// Share plugin for file, text, and URL sharing
 ///
-/// Handles `kdeconnect.share.request` packets for transferring content between devices.
+/// Handles `cconnect.share.request` packets for transferring content between devices.
 /// Maintains history of share operations and provides packet creation helpers.
 ///
 /// ## Features
@@ -296,7 +296,7 @@ impl SharePlugin {
 
     /// Create a file share packet
     ///
-    /// Creates a `kdeconnect.share.request` packet for file transfer.
+    /// Creates a `cconnect.share.request` packet for file transfer.
     /// Includes payload size and transfer info with the specified port.
     ///
     /// # Parameters
@@ -323,7 +323,7 @@ impl SharePlugin {
     /// };
     ///
     /// let packet = plugin.create_file_packet(file_info, 1739);
-    /// assert_eq!(packet.packet_type, "kdeconnect.share.request");
+    /// assert_eq!(packet.packet_type, "cconnect.share.request");
     /// assert_eq!(packet.payload_size, Some(1024));
     /// ```
     pub fn create_file_packet(&self, file_info: FileShareInfo, port: u16) -> Packet {
@@ -346,14 +346,14 @@ impl SharePlugin {
         let mut transfer_info = HashMap::new();
         transfer_info.insert("port".to_string(), json!(port));
 
-        Packet::new("kdeconnect.share.request", body)
+        Packet::new("cconnect.share.request", body)
             .with_payload_size(file_info.size)
             .with_payload_transfer_info(transfer_info)
     }
 
     /// Create a text share packet
     ///
-    /// Creates a `kdeconnect.share.request` packet for text sharing.
+    /// Creates a `cconnect.share.request` packet for text sharing.
     ///
     /// # Parameters
     ///
@@ -371,19 +371,19 @@ impl SharePlugin {
     /// let plugin = SharePlugin::new();
     /// let packet = plugin.create_text_packet("Hello, World!".to_string());
     ///
-    /// assert_eq!(packet.packet_type, "kdeconnect.share.request");
+    /// assert_eq!(packet.packet_type, "cconnect.share.request");
     /// assert_eq!(
     ///     packet.body.get("text").and_then(|v| v.as_str()),
     ///     Some("Hello, World!")
     /// );
     /// ```
     pub fn create_text_packet(&self, text: String) -> Packet {
-        Packet::new("kdeconnect.share.request", json!({ "text": text }))
+        Packet::new("cconnect.share.request", json!({ "text": text }))
     }
 
     /// Create a URL share packet
     ///
-    /// Creates a `kdeconnect.share.request` packet for URL sharing.
+    /// Creates a `cconnect.share.request` packet for URL sharing.
     ///
     /// # Parameters
     ///
@@ -401,19 +401,19 @@ impl SharePlugin {
     /// let plugin = SharePlugin::new();
     /// let packet = plugin.create_url_packet("https://rust-lang.org".to_string());
     ///
-    /// assert_eq!(packet.packet_type, "kdeconnect.share.request");
+    /// assert_eq!(packet.packet_type, "cconnect.share.request");
     /// assert_eq!(
     ///     packet.body.get("url").and_then(|v| v.as_str()),
     ///     Some("https://rust-lang.org")
     /// );
     /// ```
     pub fn create_url_packet(&self, url: String) -> Packet {
-        Packet::new("kdeconnect.share.request", json!({ "url": url }))
+        Packet::new("cconnect.share.request", json!({ "url": url }))
     }
 
     /// Create a multi-file update packet
     ///
-    /// Creates a `kdeconnect.share.request.update` packet to announce
+    /// Creates a `cconnect.share.request.update` packet to announce
     /// a composite transfer. Send this before the individual file packets.
     ///
     /// # Parameters
@@ -436,10 +436,10 @@ impl SharePlugin {
     /// };
     ///
     /// let packet = plugin.create_multifile_update_packet(info);
-    /// assert_eq!(packet.packet_type, "kdeconnect.share.request.update");
+    /// assert_eq!(packet.packet_type, "cconnect.share.request.update");
     /// ```
     pub fn create_multifile_update_packet(&self, info: MultiFileInfo) -> Packet {
-        Packet::new("kdeconnect.share.request.update", json!(info))
+        Packet::new("cconnect.share.request.update", json!(info))
     }
 
     /// Get the number of recorded shares
@@ -695,15 +695,15 @@ impl Plugin for SharePlugin {
 
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.share.request".to_string(),
-            "kdeconnect.share.request.update".to_string(),
+            "cconnect.share.request".to_string(),
+            "cconnect.share.request.update".to_string(),
         ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.share.request".to_string(),
-            "kdeconnect.share.request.update".to_string(),
+            "cconnect.share.request".to_string(),
+            "cconnect.share.request.update".to_string(),
         ]
     }
 
@@ -726,10 +726,10 @@ impl Plugin for SharePlugin {
 
     async fn handle_packet(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
         match packet.packet_type.as_str() {
-            "kdeconnect.share.request" => {
+            "cconnect.share.request" => {
                 self.handle_share_request(packet, device).await;
             }
-            "kdeconnect.share.request.update" => {
+            "cconnect.share.request.update" => {
                 self.handle_multifile_update(packet, device);
             }
             _ => {}
@@ -749,15 +749,15 @@ impl PluginFactory for SharePluginFactory {
 
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.share.request".to_string(),
-            "kdeconnect.share.request.update".to_string(),
+            "cconnect.share.request".to_string(),
+            "cconnect.share.request.update".to_string(),
         ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.share.request".to_string(),
-            "kdeconnect.share.request.update".to_string(),
+            "cconnect.share.request".to_string(),
+            "cconnect.share.request.update".to_string(),
         ]
     }
 
@@ -790,13 +790,13 @@ mod tests {
 
         let incoming = plugin.incoming_capabilities();
         assert_eq!(incoming.len(), 2);
-        assert!(incoming.contains(&"kdeconnect.share.request".to_string()));
-        assert!(incoming.contains(&"kdeconnect.share.request.update".to_string()));
+        assert!(incoming.contains(&"cconnect.share.request".to_string()));
+        assert!(incoming.contains(&"cconnect.share.request.update".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 2);
-        assert!(outgoing.contains(&"kdeconnect.share.request".to_string()));
-        assert!(outgoing.contains(&"kdeconnect.share.request.update".to_string()));
+        assert!(outgoing.contains(&"cconnect.share.request".to_string()));
+        assert!(outgoing.contains(&"cconnect.share.request.update".to_string()));
     }
 
     #[tokio::test]
@@ -828,7 +828,7 @@ mod tests {
 
         let packet = plugin.create_file_packet(file_info, 1739);
 
-        assert_eq!(packet.packet_type, "kdeconnect.share.request");
+        assert_eq!(packet.packet_type, "cconnect.share.request");
         assert_eq!(
             packet.body.get("filename").and_then(|v| v.as_str()),
             Some("test.txt")
@@ -847,7 +847,7 @@ mod tests {
         let plugin = SharePlugin::new();
         let packet = plugin.create_text_packet("Hello, World!".to_string());
 
-        assert_eq!(packet.packet_type, "kdeconnect.share.request");
+        assert_eq!(packet.packet_type, "cconnect.share.request");
         assert_eq!(
             packet.body.get("text").and_then(|v| v.as_str()),
             Some("Hello, World!")
@@ -860,7 +860,7 @@ mod tests {
         let plugin = SharePlugin::new();
         let packet = plugin.create_url_packet("https://rust-lang.org".to_string());
 
-        assert_eq!(packet.packet_type, "kdeconnect.share.request");
+        assert_eq!(packet.packet_type, "cconnect.share.request");
         assert_eq!(
             packet.body.get("url").and_then(|v| v.as_str()),
             Some("https://rust-lang.org")
@@ -878,7 +878,7 @@ mod tests {
 
         let packet = plugin.create_multifile_update_packet(info);
 
-        assert_eq!(packet.packet_type, "kdeconnect.share.request.update");
+        assert_eq!(packet.packet_type, "cconnect.share.request.update");
         assert_eq!(
             packet.body.get("numberOfFiles").and_then(|v| v.as_i64()),
             Some(5)
@@ -897,7 +897,7 @@ mod tests {
 
         let mut device = create_test_device();
         let packet = Packet::new(
-            "kdeconnect.share.request",
+            "cconnect.share.request",
             json!({
                 "filename": "document.pdf",
                 "creationTime": 1640000000000i64,
@@ -930,7 +930,7 @@ mod tests {
 
         let mut device = create_test_device();
         let packet = Packet::new(
-            "kdeconnect.share.request",
+            "cconnect.share.request",
             json!({ "text": "Test message" }),
         );
 
@@ -954,7 +954,7 @@ mod tests {
 
         let mut device = create_test_device();
         let packet = Packet::new(
-            "kdeconnect.share.request",
+            "cconnect.share.request",
             json!({ "url": "https://example.com" }),
         );
 
@@ -978,7 +978,7 @@ mod tests {
 
         let mut device = create_test_device();
         let packet = Packet::new(
-            "kdeconnect.share.request.update",
+            "cconnect.share.request.update",
             json!({
                 "numberOfFiles": 3,
                 "totalPayloadSize": 5242880
@@ -1058,19 +1058,19 @@ mod tests {
 
         // Share file
         let packet1 = Packet::new(
-            "kdeconnect.share.request",
+            "cconnect.share.request",
             json!({ "filename": "file1.txt" }),
         )
         .with_payload_size(100);
         plugin.handle_packet(&packet1, &mut device).await.unwrap();
 
         // Share text
-        let packet2 = Packet::new("kdeconnect.share.request", json!({ "text": "Hello" }));
+        let packet2 = Packet::new("cconnect.share.request", json!({ "text": "Hello" }));
         plugin.handle_packet(&packet2, &mut device).await.unwrap();
 
         // Share URL
         let packet3 = Packet::new(
-            "kdeconnect.share.request",
+            "cconnect.share.request",
             json!({ "url": "https://example.com" }),
         );
         plugin.handle_packet(&packet3, &mut device).await.unwrap();
@@ -1093,7 +1093,7 @@ mod tests {
 
         // Packet with no recognizable content
         let packet = Packet::new(
-            "kdeconnect.share.request",
+            "cconnect.share.request",
             json!({ "invalidField": "value" }),
         );
 

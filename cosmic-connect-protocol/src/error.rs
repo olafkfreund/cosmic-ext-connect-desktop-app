@@ -1,4 +1,4 @@
-//! Error handling for KDE Connect protocol
+//! Error handling for CConnect protocol
 //!
 //! This module provides a comprehensive error type for all protocol operations.
 //! Errors are automatically converted from underlying library errors using `thiserror`.
@@ -119,7 +119,7 @@
 //! Automatically converted from `rcgen::Error`.
 //!
 //! ### Protocol Errors
-//! Domain-specific KDE Connect protocol errors:
+//! Domain-specific CConnect protocol errors:
 //! - `DeviceNotFound`: Requested device doesn't exist
 //! - `NotPaired`: Operation requires paired device
 //! - `InvalidPacket`: Malformed or invalid packet
@@ -147,7 +147,7 @@ pub type Result<T> = std::result::Result<T, ProtocolError>;
 /// Errors that can occur during protocol operations
 ///
 /// This enum encompasses all possible errors that can occur when using
-/// the KDE Connect protocol. Most errors automatically convert from
+/// the CConnect protocol. Most errors automatically convert from
 /// underlying library errors using the `From` trait.
 ///
 /// # Automatic Conversions
@@ -518,7 +518,7 @@ impl ProtocolError {
                 format!("Connection timeout: {}. Check network connection.", msg)
             }
             ProtocolError::ConnectionRefused(_) => {
-                "Connection refused. Check if KDE Connect is running on the device.".to_string()
+                "Connection refused. Check if CConnect is running on the device.".to_string()
             }
             ProtocolError::NetworkUnreachable(_) => {
                 "Network unreachable. Check if both devices are on the same network.".to_string()

@@ -4,7 +4,7 @@
 //! transport. This is analogous to ConnectionManager but specifically for Bluetooth.
 
 use crate::{
-    transport::{BluetoothConnection, Transport, KDECONNECT_SERVICE_UUID},
+    transport::{BluetoothConnection, Transport, CCONNECT_SERVICE_UUID},
     transport_manager::TransportManagerEvent,
     Packet, ProtocolError, Result,
 };

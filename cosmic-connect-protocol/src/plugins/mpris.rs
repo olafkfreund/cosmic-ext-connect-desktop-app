@@ -1,16 +1,16 @@
 //! MPRIS Plugin
 //!
-//! Enables remote control of media players between KDE Connect devices using MPRIS2
+//! Enables remote control of media players between CConnect devices using MPRIS2
 //! (Media Player Remote Interfacing Specification). Supports player discovery, playback
 //! control, metadata synchronization, and album art transfer.
 //!
 //! ## Protocol
 //!
 //! **Packet Types**:
-//! - Incoming: `kdeconnect.mpris`, `kdeconnect.mpris.request`
-//! - Outgoing: `kdeconnect.mpris`, `kdeconnect.mpris.request`
+//! - Incoming: `cconnect.mpris`, `cconnect.mpris.request`
+//! - Outgoing: `cconnect.mpris`, `cconnect.mpris.request`
 //!
-//! **Capabilities**: `kdeconnect.mpris`
+//! **Capabilities**: `cconnect.mpris`
 //!
 //! ## Player Discovery
 //!
@@ -19,7 +19,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.mpris",
+//!     "type": "cconnect.mpris",
 //!     "body": {
 //!         "playerList": ["vlc", "spotify"],
 //!         "supportAlbumArtPayload": true
@@ -34,7 +34,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.mpris",
+//!     "type": "cconnect.mpris",
 //!     "body": {
 //!         "player": "spotify",
 //!         "isPlaying": true,
@@ -63,7 +63,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.mpris.request",
+//!     "type": "cconnect.mpris.request",
 //!     "body": {
 //!         "requestPlayerList": true
 //!     }
@@ -75,7 +75,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.mpris.request",
+//!     "type": "cconnect.mpris.request",
 //!     "body": {
 //!         "player": "spotify",
 //!         "requestNowPlaying": true
@@ -88,7 +88,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.mpris.request",
+//!     "type": "cconnect.mpris.request",
 //!     "body": {
 //!         "player": "spotify",
 //!         "action": "PlayPause"
@@ -103,7 +103,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.mpris.request",
+//!     "type": "cconnect.mpris.request",
 //!     "body": {
 //!         "player": "spotify",
 //!         "Seek": 5000000
@@ -118,7 +118,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.mpris.request",
+//!     "type": "cconnect.mpris.request",
 //!     "body": {
 //!         "player": "spotify",
 //!         "SetPosition": 60000
@@ -133,7 +133,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.mpris.request",
+//!     "type": "cconnect.mpris.request",
 //!     "body": {
 //!         "player": "spotify",
 //!         "setVolume": 85
@@ -146,7 +146,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.mpris.request",
+//!     "type": "cconnect.mpris.request",
 //!     "body": {
 //!         "player": "spotify",
 //!         "setShuffle": true,
@@ -164,7 +164,7 @@
 //! ```json
 //! {
 //!     "id": 1234567890,
-//!     "type": "kdeconnect.mpris",
+//!     "type": "cconnect.mpris",
 //!     "body": {
 //!         "transferringAlbumArt": true,
 //!         "player": "spotify"
@@ -403,7 +403,7 @@ pub struct PlayerState {
 
 /// MPRIS plugin for media player control
 ///
-/// Handles `kdeconnect.mpris` packets for controlling and monitoring media
+/// Handles `cconnect.mpris` packets for controlling and monitoring media
 /// players via MPRIS2. Supports player discovery, playback control, metadata
 /// synchronization, and album art transfer.
 ///
@@ -480,11 +480,11 @@ impl MprisPlugin {
     ///     "vlc".to_string(),
     ///     "spotify".to_string(),
     /// ]);
-    /// assert_eq!(packet.packet_type, "kdeconnect.mpris");
+    /// assert_eq!(packet.packet_type, "cconnect.mpris");
     /// ```
     pub fn create_player_list_packet(&self, players: Vec<String>) -> Packet {
         Packet::new(
-            "kdeconnect.mpris",
+            "cconnect.mpris",
             json!({
                 "playerList": players,
                 "supportAlbumArtPayload": self.support_album_art
@@ -527,7 +527,7 @@ impl MprisPlugin {
     /// };
     ///
     /// let packet = plugin.create_status_packet("vlc".to_string(), status, metadata);
-    /// assert_eq!(packet.packet_type, "kdeconnect.mpris");
+    /// assert_eq!(packet.packet_type, "cconnect.mpris");
     /// ```
     pub fn create_status_packet(
         &self,
@@ -564,7 +564,7 @@ impl MprisPlugin {
             body["albumArtUrl"] = json!(album_art_url);
         }
 
-        Packet::new("kdeconnect.mpris", body)
+        Packet::new("cconnect.mpris", body)
     }
 
     /// Create a request player list packet
@@ -582,11 +582,11 @@ impl MprisPlugin {
     ///
     /// let plugin = MprisPlugin::new();
     /// let packet = plugin.create_request_player_list_packet();
-    /// assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+    /// assert_eq!(packet.packet_type, "cconnect.mpris.request");
     /// ```
     pub fn create_request_player_list_packet(&self) -> Packet {
         Packet::new(
-            "kdeconnect.mpris.request",
+            "cconnect.mpris.request",
             json!({ "requestPlayerList": true }),
         )
     }
@@ -610,11 +610,11 @@ impl MprisPlugin {
     ///
     /// let plugin = MprisPlugin::new();
     /// let packet = plugin.create_request_now_playing_packet("spotify".to_string());
-    /// assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+    /// assert_eq!(packet.packet_type, "cconnect.mpris.request");
     /// ```
     pub fn create_request_now_playing_packet(&self, player: String) -> Packet {
         Packet::new(
-            "kdeconnect.mpris.request",
+            "cconnect.mpris.request",
             json!({
                 "player": player,
                 "requestNowPlaying": true
@@ -642,11 +642,11 @@ impl MprisPlugin {
     ///
     /// let plugin = MprisPlugin::new();
     /// let packet = plugin.create_control_packet("vlc".to_string(), PlaybackAction::PlayPause);
-    /// assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+    /// assert_eq!(packet.packet_type, "cconnect.mpris.request");
     /// ```
     pub fn create_control_packet(&self, player: String, action: PlaybackAction) -> Packet {
         Packet::new(
-            "kdeconnect.mpris.request",
+            "cconnect.mpris.request",
             json!({
                 "player": player,
                 "action": action.as_str()
@@ -675,11 +675,11 @@ impl MprisPlugin {
     /// let plugin = MprisPlugin::new();
     /// // Seek forward 5 seconds
     /// let packet = plugin.create_seek_packet("vlc".to_string(), 5_000_000);
-    /// assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+    /// assert_eq!(packet.packet_type, "cconnect.mpris.request");
     /// ```
     pub fn create_seek_packet(&self, player: String, offset_microseconds: i64) -> Packet {
         Packet::new(
-            "kdeconnect.mpris.request",
+            "cconnect.mpris.request",
             json!({
                 "player": player,
                 "Seek": offset_microseconds
@@ -708,11 +708,11 @@ impl MprisPlugin {
     /// let plugin = MprisPlugin::new();
     /// // Set position to 1 minute
     /// let packet = plugin.create_set_position_packet("spotify".to_string(), 60000);
-    /// assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+    /// assert_eq!(packet.packet_type, "cconnect.mpris.request");
     /// ```
     pub fn create_set_position_packet(&self, player: String, position_milliseconds: i64) -> Packet {
         Packet::new(
-            "kdeconnect.mpris.request",
+            "cconnect.mpris.request",
             json!({
                 "player": player,
                 "SetPosition": position_milliseconds
@@ -740,11 +740,11 @@ impl MprisPlugin {
     ///
     /// let plugin = MprisPlugin::new();
     /// let packet = plugin.create_set_volume_packet("vlc".to_string(), 50);
-    /// assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+    /// assert_eq!(packet.packet_type, "cconnect.mpris.request");
     /// ```
     pub fn create_set_volume_packet(&self, player: String, volume: i32) -> Packet {
         Packet::new(
-            "kdeconnect.mpris.request",
+            "cconnect.mpris.request",
             json!({
                 "player": player,
                 "setVolume": volume
@@ -772,11 +772,11 @@ impl MprisPlugin {
     ///
     /// let plugin = MprisPlugin::new();
     /// let packet = plugin.create_set_loop_status_packet("spotify".to_string(), LoopStatus::Playlist);
-    /// assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+    /// assert_eq!(packet.packet_type, "cconnect.mpris.request");
     /// ```
     pub fn create_set_loop_status_packet(&self, player: String, loop_status: LoopStatus) -> Packet {
         Packet::new(
-            "kdeconnect.mpris.request",
+            "cconnect.mpris.request",
             json!({
                 "player": player,
                 "setLoopStatus": loop_status.as_str()
@@ -804,11 +804,11 @@ impl MprisPlugin {
     ///
     /// let plugin = MprisPlugin::new();
     /// let packet = plugin.create_set_shuffle_packet("vlc".to_string(), true);
-    /// assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+    /// assert_eq!(packet.packet_type, "cconnect.mpris.request");
     /// ```
     pub fn create_set_shuffle_packet(&self, player: String, shuffle: bool) -> Packet {
         Packet::new(
-            "kdeconnect.mpris.request",
+            "cconnect.mpris.request",
             json!({
                 "player": player,
                 "setShuffle": shuffle
@@ -1067,15 +1067,15 @@ impl Plugin for MprisPlugin {
 
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.mpris".to_string(),
-            "kdeconnect.mpris.request".to_string(),
+            "cconnect.mpris".to_string(),
+            "cconnect.mpris.request".to_string(),
         ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.mpris".to_string(),
-            "kdeconnect.mpris.request".to_string(),
+            "cconnect.mpris".to_string(),
+            "cconnect.mpris.request".to_string(),
         ]
     }
 
@@ -1098,10 +1098,10 @@ impl Plugin for MprisPlugin {
 
     async fn handle_packet(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
         match packet.packet_type.as_str() {
-            "kdeconnect.mpris" => {
+            "cconnect.mpris" => {
                 self.handle_mpris_status(packet, device).await;
             }
-            "kdeconnect.mpris.request" => {
+            "cconnect.mpris.request" => {
                 self.handle_mpris_request(packet, device);
             }
             _ => {}
@@ -1121,15 +1121,15 @@ impl PluginFactory for MprisPluginFactory {
 
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.mpris".to_string(),
-            "kdeconnect.mpris.request".to_string(),
+            "cconnect.mpris".to_string(),
+            "cconnect.mpris.request".to_string(),
         ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
         vec![
-            "kdeconnect.mpris".to_string(),
-            "kdeconnect.mpris.request".to_string(),
+            "cconnect.mpris".to_string(),
+            "cconnect.mpris.request".to_string(),
         ]
     }
 
@@ -1189,13 +1189,13 @@ mod tests {
 
         let incoming = plugin.incoming_capabilities();
         assert_eq!(incoming.len(), 2);
-        assert!(incoming.contains(&"kdeconnect.mpris".to_string()));
-        assert!(incoming.contains(&"kdeconnect.mpris.request".to_string()));
+        assert!(incoming.contains(&"cconnect.mpris".to_string()));
+        assert!(incoming.contains(&"cconnect.mpris.request".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 2);
-        assert!(outgoing.contains(&"kdeconnect.mpris".to_string()));
-        assert!(outgoing.contains(&"kdeconnect.mpris.request".to_string()));
+        assert!(outgoing.contains(&"cconnect.mpris".to_string()));
+        assert!(outgoing.contains(&"cconnect.mpris.request".to_string()));
     }
 
     #[tokio::test]
@@ -1216,7 +1216,7 @@ mod tests {
         let packet =
             plugin.create_player_list_packet(vec!["vlc".to_string(), "spotify".to_string()]);
 
-        assert_eq!(packet.packet_type, "kdeconnect.mpris");
+        assert_eq!(packet.packet_type, "cconnect.mpris");
         let player_list = packet.body.get("playerList").unwrap().as_array().unwrap();
         assert_eq!(player_list.len(), 2);
     }
@@ -1240,7 +1240,7 @@ mod tests {
 
         let packet = plugin.create_status_packet("vlc".to_string(), status, metadata);
 
-        assert_eq!(packet.packet_type, "kdeconnect.mpris");
+        assert_eq!(packet.packet_type, "cconnect.mpris");
         assert_eq!(
             packet.body.get("player").and_then(|v| v.as_str()),
             Some("vlc")
@@ -1270,11 +1270,11 @@ mod tests {
         let plugin = MprisPlugin::new();
 
         let packet = plugin.create_request_player_list_packet();
-        assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+        assert_eq!(packet.packet_type, "cconnect.mpris.request");
         assert!(packet.body.get("requestPlayerList").is_some());
 
         let packet = plugin.create_request_now_playing_packet("spotify".to_string());
-        assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+        assert_eq!(packet.packet_type, "cconnect.mpris.request");
         assert_eq!(
             packet.body.get("player").and_then(|v| v.as_str()),
             Some("spotify")
@@ -1287,7 +1287,7 @@ mod tests {
         let plugin = MprisPlugin::new();
         let packet = plugin.create_control_packet("vlc".to_string(), PlaybackAction::PlayPause);
 
-        assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+        assert_eq!(packet.packet_type, "cconnect.mpris.request");
         assert_eq!(
             packet.body.get("player").and_then(|v| v.as_str()),
             Some("vlc")
@@ -1303,7 +1303,7 @@ mod tests {
         let plugin = MprisPlugin::new();
         let packet = plugin.create_seek_packet("spotify".to_string(), 5_000_000);
 
-        assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+        assert_eq!(packet.packet_type, "cconnect.mpris.request");
         assert_eq!(
             packet.body.get("Seek").and_then(|v| v.as_i64()),
             Some(5_000_000)
@@ -1315,7 +1315,7 @@ mod tests {
         let plugin = MprisPlugin::new();
         let packet = plugin.create_set_position_packet("vlc".to_string(), 60000);
 
-        assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+        assert_eq!(packet.packet_type, "cconnect.mpris.request");
         assert_eq!(
             packet.body.get("SetPosition").and_then(|v| v.as_i64()),
             Some(60000)
@@ -1327,7 +1327,7 @@ mod tests {
         let plugin = MprisPlugin::new();
         let packet = plugin.create_set_volume_packet("spotify".to_string(), 50);
 
-        assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+        assert_eq!(packet.packet_type, "cconnect.mpris.request");
         assert_eq!(
             packet.body.get("setVolume").and_then(|v| v.as_i64()),
             Some(50)
@@ -1339,7 +1339,7 @@ mod tests {
         let plugin = MprisPlugin::new();
         let packet = plugin.create_set_loop_status_packet("vlc".to_string(), LoopStatus::Playlist);
 
-        assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+        assert_eq!(packet.packet_type, "cconnect.mpris.request");
         assert_eq!(
             packet.body.get("setLoopStatus").and_then(|v| v.as_str()),
             Some("Playlist")
@@ -1351,7 +1351,7 @@ mod tests {
         let plugin = MprisPlugin::new();
         let packet = plugin.create_set_shuffle_packet("spotify".to_string(), true);
 
-        assert_eq!(packet.packet_type, "kdeconnect.mpris.request");
+        assert_eq!(packet.packet_type, "cconnect.mpris.request");
         assert_eq!(
             packet.body.get("setShuffle").and_then(|v| v.as_bool()),
             Some(true)
@@ -1366,7 +1366,7 @@ mod tests {
 
         let mut device = create_test_device();
         let packet = Packet::new(
-            "kdeconnect.mpris",
+            "cconnect.mpris",
             json!({
                 "playerList": ["vlc", "spotify"],
                 "supportAlbumArtPayload": true
@@ -1385,7 +1385,7 @@ mod tests {
 
         let mut device = create_test_device();
         let packet = Packet::new(
-            "kdeconnect.mpris",
+            "cconnect.mpris",
             json!({
                 "player": "spotify",
                 "isPlaying": true,
@@ -1468,7 +1468,7 @@ mod tests {
 
         let mut device = create_test_device();
         let packet = Packet::new(
-            "kdeconnect.mpris.request",
+            "cconnect.mpris.request",
             json!({
                 "player": "spotify",
                 "action": "PlayPause"

@@ -35,8 +35,8 @@ use config::Config;
 
 /// Main daemon state
 struct Daemon {
-    /// Configuration
-    config: Config,
+    /// Configuration (wrapped for shared access with DBus)
+    config: Arc<RwLock<Config>>,
 
     /// Device certificate (for future TLS support)
     #[allow(dead_code)]
@@ -221,6 +221,9 @@ impl Daemon {
             None
         };
 
+        // Wrap config in Arc<RwLock<>> for shared access with DBus
+        let config = Arc::new(RwLock::new(config));
+
         Ok(Self {
             config,
             certificate,
@@ -257,7 +260,7 @@ impl Daemon {
                 .device
                 .device_id
                 .as_deref()
-                .unwrap_or("kdeconnect-device");
+                .unwrap_or("cconnect-device");
 
             let cert =
                 CertificateInfo::generate(device_id).context("Failed to generate certificate")?;
@@ -274,88 +277,89 @@ impl Daemon {
     /// Initialize plugin factories
     async fn initialize_plugins(&self) -> Result<()> {
         let mut manager = self.plugin_manager.write().await;
+        let config = self.config.read().await;
 
         info!("Registering plugin factories...");
 
         // Register enabled plugin factories
-        if self.config.plugins.enable_ping {
+        if config.plugins.enable_ping {
             info!("Registering ping plugin factory");
             manager
                 .register_factory(Arc::new(PingPluginFactory))
                 .context("Failed to register ping plugin factory")?;
         }
 
-        if self.config.plugins.enable_battery {
+        if config.plugins.enable_battery {
             info!("Registering battery plugin factory");
             manager
                 .register_factory(Arc::new(BatteryPluginFactory))
                 .context("Failed to register battery plugin factory")?;
         }
 
-        if self.config.plugins.enable_notification {
+        if config.plugins.enable_notification {
             info!("Registering notification plugin factory");
             manager
                 .register_factory(Arc::new(NotificationPluginFactory))
                 .context("Failed to register notification plugin factory")?;
         }
 
-        if self.config.plugins.enable_share {
+        if config.plugins.enable_share {
             info!("Registering share plugin factory");
             manager
                 .register_factory(Arc::new(SharePluginFactory))
                 .context("Failed to register share plugin factory")?;
         }
 
-        if self.config.plugins.enable_clipboard {
+        if config.plugins.enable_clipboard {
             info!("Registering clipboard plugin factory");
             manager
                 .register_factory(Arc::new(ClipboardPluginFactory))
                 .context("Failed to register clipboard plugin factory")?;
         }
 
-        if self.config.plugins.enable_mpris {
+        if config.plugins.enable_mpris {
             info!("Registering MPRIS plugin factory");
             manager
                 .register_factory(Arc::new(MprisPluginFactory))
                 .context("Failed to register MPRIS plugin factory")?;
         }
 
-        if self.config.plugins.enable_runcommand {
+        if config.plugins.enable_runcommand {
             info!("Registering RunCommand plugin factory");
             manager
                 .register_factory(Arc::new(RunCommandPluginFactory))
                 .context("Failed to register RunCommand plugin factory")?;
         }
 
-        if self.config.plugins.enable_remoteinput {
+        if config.plugins.enable_remoteinput {
             info!("Registering Remote Input plugin factory");
             manager
                 .register_factory(Arc::new(RemoteInputPluginFactory))
                 .context("Failed to register Remote Input plugin factory")?;
         }
 
-        if self.config.plugins.enable_findmyphone {
+        if config.plugins.enable_findmyphone {
             info!("Registering Find My Phone plugin factory");
             manager
                 .register_factory(Arc::new(FindMyPhonePluginFactory))
                 .context("Failed to register Find My Phone plugin factory")?;
         }
 
-        if self.config.plugins.enable_telephony {
+        if config.plugins.enable_telephony {
             info!("Registering Telephony/SMS plugin factory");
             manager
                 .register_factory(Arc::new(TelephonyPluginFactory))
                 .context("Failed to register Telephony plugin factory")?;
         }
 
-        if self.config.plugins.enable_presenter {
+        if config.plugins.enable_presenter {
             info!("Registering Presenter plugin factory");
             manager
                 .register_factory(Arc::new(PresenterPluginFactory))
                 .context("Failed to register Presenter plugin factory")?;
         }
 
-        if self.config.plugins.enable_contacts {
+        if config.plugins.enable_contacts {
             info!("Registering Contacts plugin factory");
             manager
                 .register_factory(Arc::new(ContactsPluginFactory))
@@ -374,6 +378,8 @@ impl Daemon {
     async fn start_discovery(&mut self) -> Result<()> {
         info!("Starting device discovery...");
 
+        let config = self.config.read().await;
+
         // Get capabilities from plugin manager
         let manager = self.plugin_manager.read().await;
         let incoming = manager.get_all_incoming_capabilities();
@@ -387,8 +393,8 @@ impl Daemon {
 
         // Create discovery config
         let discovery_config = DiscoveryConfig {
-            broadcast_interval: Duration::from_secs(self.config.network.discovery_interval),
-            device_timeout: Duration::from_secs(self.config.network.device_timeout),
+            broadcast_interval: Duration::from_secs(config.network.discovery_interval),
+            device_timeout: Duration::from_secs(config.network.device_timeout),
             enable_timeout_check: true,
         };
 
@@ -434,9 +440,11 @@ impl Daemon {
     async fn start_pairing(&mut self) -> Result<()> {
         info!("Starting pairing service...");
 
+        let config = self.config.read().await;
+
         // Create pairing service with certificate directory from config
         let pairing_config = PairingConfig {
-            cert_dir: self.config.paths.cert_dir.clone(),
+            cert_dir: config.paths.cert_dir.clone(),
             timeout: Duration::from_secs(30),
         };
 
@@ -846,6 +854,7 @@ impl Daemon {
             self.mpris_manager.clone(),
             self.pending_pairing_requests.clone(),
             self.metrics.clone(),
+            self.config.clone(),
         )
         .await
         .context("Failed to start DBus server")?;
@@ -887,7 +896,8 @@ impl Daemon {
     }
 
     async fn start_clipboard_monitor(&self) -> Result<()> {
-        if !self.config.plugins.enable_clipboard {
+        let config = self.config.read().await;
+        if !config.plugins.enable_clipboard {
             info!("Clipboard plugin disabled, skipping clipboard monitor");
             return Ok(());
         }
@@ -1169,14 +1179,14 @@ impl Daemon {
 
                 // Handle special protocol packets BEFORE routing to plugins
                 match packet.packet_type.as_str() {
-                    "kdeconnect.identity" => {
+                    "cconnect.identity" => {
                         // Protocol v8: Post-TLS identity exchange - ignore for now
                         // This is the second identity packet sent after TLS encryption
                         // In protocol v8, devices exchange identity packets again after TLS
                         debug!("Received post-TLS identity packet from {} (protocol v8)", device_id);
                         return Ok(());
                     }
-                    "kdeconnect.pair" => {
+                    "cconnect.pair" => {
                         info!("Received pairing packet from {} at {}", device_id, remote_addr);
 
                         let Some(pairing_svc) = pairing_service else {
@@ -1239,7 +1249,7 @@ impl Daemon {
                     // Send COSMIC notifications for specific packet types
                     if let Some(notifier) = &cosmic_notifier {
                         match packet.packet_type.as_str() {
-                            "kdeconnect.ping" => {
+                            "cconnect.ping" => {
                                 // Show notification for ping
                                 let message = packet
                                     .body
@@ -1250,7 +1260,7 @@ impl Daemon {
                                     warn!("Failed to send ping notification: {}", e);
                                 }
                             }
-                            "kdeconnect.notification" => {
+                            "cconnect.notification" => {
                                 // Check if it's a cancel notification
                                 let is_cancel = packet.body.get("isCancel")
                                     .and_then(|v| v.as_bool())
@@ -1286,7 +1296,7 @@ impl Daemon {
                                     }
                                 }
                             }
-                            "kdeconnect.share.request" => {
+                            "cconnect.share.request" => {
                                 // Handle different share types: file, URL, or text
                                 if let Some(filename) = packet.body.get("filename").and_then(|v| v.as_str()) {
                                     if packet.payload_size.is_some() {
@@ -1354,7 +1364,7 @@ impl Daemon {
                                     }
                                 }
                             }
-                            "kdeconnect.clipboard" | "kdeconnect.clipboard.connect" => {
+                            "cconnect.clipboard" | "kdeconnect.clipboard.connect" => {
                                 // Update system clipboard with received content
                                 if let Some(content) = packet.body.get("content").and_then(|v| v.as_str()) {
                                     if !content.is_empty() {
@@ -1375,7 +1385,7 @@ impl Daemon {
                                     }
                                 }
                             }
-                            "kdeconnect.battery" => {
+                            "cconnect.battery" => {
                                 // Handle battery status updates - show notification for low battery
                                 if let Some(charge) = packet.body.get("currentCharge").and_then(|v| v.as_i64()) {
                                     let is_charging = packet.body.get("isCharging")
@@ -1404,7 +1414,7 @@ impl Daemon {
                                     }
                                 }
                             }
-                            "kdeconnect.mpris.request" => {
+                            "cconnect.mpris.request" => {
                                 if let Some(mpris_mgr) = &mpris_manager {
                                     Self::handle_mpris_request(
                                         &packet.body,
@@ -1438,7 +1448,7 @@ impl Daemon {
         Ok(())
     }
 
-    /// Convert MprisManager PlayerState to protocol types for KDE Connect
+    /// Convert MprisManager PlayerState to protocol types for CConnect
     fn convert_player_state(
         state: &mpris_manager::PlayerState,
     ) -> (
@@ -1636,7 +1646,7 @@ impl Daemon {
         dbus_server: &Option<Arc<DbusServer>>,
     ) -> Result<()> {
         match event {
-            DiscoveryEvent::DeviceDiscovered { info, address } => {
+            DiscoveryEvent::DeviceDiscovered { info, address, .. } => {
                 info!(
                     "Device discovered: {} ({}) at {}",
                     info.device_name,
@@ -1665,7 +1675,7 @@ impl Daemon {
                 //
                 // This prevents reconnection loops where both sides try to connect simultaneously.
             }
-            DiscoveryEvent::DeviceUpdated { info, address } => {
+            DiscoveryEvent::DeviceUpdated { info, address, .. } => {
                 debug!("Device updated: {} at {}", info.device_name, address);
                 let mut manager = device_manager.write().await;
                 manager.update_from_discovery(info);
@@ -1699,7 +1709,7 @@ impl Daemon {
 
     /// Run the daemon
     async fn run(&self) -> Result<()> {
-        info!("KDE Connect daemon running");
+        info!("CConnect daemon running");
         info!(
             "Device: {} ({})",
             self.device_info.device_name, self.device_info.device_id
@@ -1964,7 +1974,7 @@ async fn handle_diagnostic_command(command: &DiagnosticCommand) -> Result<()> {
         DiagnosticCommand::ExportLogs { output, lines } => {
             println!("Exporting last {} lines of logs to: {}", lines, output);
             println!("\nNote: Log export currently requires manual journal extraction.");
-            println!("Run: journalctl -u kdeconnect-daemon -n {} > {}", lines, output);
+            println!("Run: journalctl -u cconnect-daemon -n {} > {}", lines, output);
             Ok(())
         }
         DiagnosticCommand::Metrics { interval, count } => {
@@ -1972,7 +1982,7 @@ async fn handle_diagnostic_command(command: &DiagnosticCommand) -> Result<()> {
             println!("Update interval: {} seconds", interval);
             println!("Updates: {}", if *count == 0 { "infinite".to_string() } else { count.to_string() });
             println!("\nNote: Metrics require running daemon with --metrics flag.");
-            println!("Start daemon with: kdeconnect-daemon --metrics");
+            println!("Start daemon with: cconnect-daemon --metrics");
             Ok(())
         }
     }
@@ -1991,7 +2001,7 @@ async fn main() -> Result<()> {
     // Initialize logging with CLI configuration
     diagnostics::init_logging(&cli).context("Failed to initialize logging")?;
 
-    info!("Starting KDE Connect daemon...");
+    info!("Starting CConnect daemon...");
 
     // Load configuration
     let config = Config::load().context("Failed to load configuration")?;

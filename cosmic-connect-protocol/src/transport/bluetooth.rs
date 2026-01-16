@@ -1,6 +1,6 @@
-//! Bluetooth Transport for KDE Connect
+//! Bluetooth Transport for CConnect
 //!
-//! Provides Bluetooth RFCOMM connection support for KDE Connect protocol.
+//! Provides Bluetooth RFCOMM connection support for CConnect protocol.
 //! Uses BlueZ on Linux for Bluetooth operations.
 
 use crate::transport::{
@@ -20,9 +20,9 @@ use tokio::time::{timeout, Duration};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-/// KDE Connect Bluetooth service UUID
-/// Using a custom UUID for KDE Connect Bluetooth service
-pub const KDECONNECT_SERVICE_UUID: Uuid = uuid::uuid!("185f3df4-3268-4e3f-9fca-d4d5059915bd");
+/// CConnect Bluetooth service UUID
+/// Using a custom UUID for CConnect Bluetooth service
+pub const CCONNECT_SERVICE_UUID: Uuid = uuid::uuid!("185f3df4-3268-4e3f-9fca-d4d5059915bd");
 
 /// Bluetooth RFCOMM characteristic UUID (for reading)
 pub const RFCOMM_READ_CHAR_UUID: Uuid = uuid::uuid!("8667556c-9a37-4c91-84ed-54ee27d90049");
@@ -390,10 +390,10 @@ impl BluetoothTransportFactory {
     ///
     /// # Arguments
     ///
-    /// * `service_uuid` - Optional service UUID (defaults to KDE Connect UUID)
+    /// * `service_uuid` - Optional service UUID (defaults to CConnect UUID)
     pub fn new(service_uuid: Option<Uuid>) -> Self {
         Self {
-            service_uuid: service_uuid.unwrap_or(KDECONNECT_SERVICE_UUID),
+            service_uuid: service_uuid.unwrap_or(CCONNECT_SERVICE_UUID),
         }
     }
 }
@@ -438,7 +438,7 @@ mod tests {
     fn test_service_uuid() {
         // Verify the service UUID is valid
         assert_eq!(
-            KDECONNECT_SERVICE_UUID.to_string(),
+            CCONNECT_SERVICE_UUID.to_string(),
             "185f3df4-3268-4e3f-9fca-d4d5059915bd"
         );
     }
@@ -447,6 +447,6 @@ mod tests {
     fn test_factory_creation() {
         let factory = BluetoothTransportFactory::default();
         assert_eq!(factory.transport_type(), TransportType::Bluetooth);
-        assert_eq!(factory.service_uuid, KDECONNECT_SERVICE_UUID);
+        assert_eq!(factory.service_uuid, CCONNECT_SERVICE_UUID);
     }
 }

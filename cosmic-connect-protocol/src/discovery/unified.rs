@@ -240,7 +240,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unified_discovery_creation() {
-        let device_info = DeviceInfo::new("Test Device", DeviceType::Desktop, 1716);
+        let device_info = DeviceInfo::new("Test Device", DeviceType::Desktop, 1816);
         let config = UnifiedDiscoveryConfig {
             enable_tcp: true,
             enable_bluetooth: false,
@@ -253,14 +253,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_unified_discovery_with_defaults() {
-        let device_info = DeviceInfo::new("Test Device", DeviceType::Desktop, 1716);
+        let device_info = DeviceInfo::new("Test Device", DeviceType::Desktop, 1816);
         let service = UnifiedDiscoveryService::with_defaults(device_info).await;
         assert!(service.is_ok());
     }
 
     #[tokio::test]
     async fn test_unified_discovery_tcp_only() {
-        let device_info = DeviceInfo::new("Test Device", DeviceType::Desktop, 1716);
+        let device_info = DeviceInfo::new("Test Device", DeviceType::Desktop, 1816);
         let config = UnifiedDiscoveryConfig {
             enable_tcp: true,
             enable_bluetooth: false,

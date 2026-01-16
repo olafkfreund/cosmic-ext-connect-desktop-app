@@ -1,6 +1,6 @@
-//! KDE Connect Transport Layer
+//! CConnect Transport Layer
 //!
-//! This module provides network transport for KDE Connect protocol.
+//! This module provides network transport for CConnect protocol.
 //! TLS implementation moved to cosmic-connect-core (rustls-based).
 //!
 //! The transport layer supports multiple transport types (TCP, Bluetooth)
@@ -16,7 +16,7 @@ pub mod tcp;
 // pub mod tls_config;
 
 pub use bluetooth::{
-    BluetoothConnection, BluetoothTransportFactory, KDECONNECT_SERVICE_UUID,
+    BluetoothConnection, BluetoothTransportFactory, CCONNECT_SERVICE_UUID,
     RFCOMM_READ_CHAR_UUID, RFCOMM_WRITE_CHAR_UUID,
 };
 pub use r#trait::{
