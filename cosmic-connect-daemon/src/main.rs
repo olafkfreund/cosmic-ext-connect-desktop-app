@@ -74,6 +74,12 @@ struct Daemon {
 
     /// Map of device IDs to pending pairing request status
     pending_pairing_requests: Arc<RwLock<std::collections::HashMap<String, bool>>>,
+
+    /// Performance metrics (if enabled)
+    metrics: Option<Arc<RwLock<Metrics>>>,
+
+    /// Enable packet dumping (debug mode)
+    dump_packets: bool,
 }
 
 impl Daemon {
@@ -193,6 +199,8 @@ impl Daemon {
             mpris_manager,
             pairing_notifications: Arc::new(RwLock::new(std::collections::HashMap::new())),
             pending_pairing_requests: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            metrics: None,
+            dump_packets: false,
         })
     }
 
@@ -659,6 +667,7 @@ impl Daemon {
         let dbus_server = self.dbus_server.clone();
         let cosmic_notifier = self.cosmic_notifier.clone();
         let mpris_manager = self.mpris_manager.clone();
+        let dump_packets = self.dump_packets;
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
                 if let Err(e) = Self::handle_connection_event(
@@ -670,6 +679,7 @@ impl Daemon {
                     &dbus_server,
                     &cosmic_notifier,
                     &mpris_manager,
+                    dump_packets,
                 )
                 .await
                 {
@@ -896,6 +906,7 @@ impl Daemon {
         dbus_server: &Option<Arc<DbusServer>>,
         cosmic_notifier: &Option<Arc<cosmic_notifications::CosmicNotifier>>,
         mpris_manager: &Option<Arc<mpris_manager::MprisManager>>,
+        dump_packets: bool,
     ) -> Result<()> {
         match event {
             ConnectionEvent::Connected {
@@ -1000,6 +1011,15 @@ impl Daemon {
                     "Received packet '{}' from device {} at {}",
                     packet.packet_type, device_id, remote_addr
                 );
+
+                // Dump packet contents if enabled
+                if dump_packets {
+                    let packet_json = serde_json::to_string_pretty(&packet).unwrap_or_else(|_| "Failed to serialize".to_string());
+                    debug!(
+                        "📨 PACKET DUMP (RX) - Type: {}, Device: {}, Size: {} bytes\n{}",
+                        packet.packet_type, device_id, packet_json.len(), packet_json
+                    );
+                }
 
                 // Handle special protocol packets BEFORE routing to plugins
                 match packet.packet_type.as_str() {
@@ -1582,6 +1602,20 @@ impl Daemon {
         Ok(())
     }
 
+    /// Enable performance metrics collection
+    fn enable_metrics(&mut self) {
+        let metrics = Arc::new(RwLock::new(Metrics::new()));
+        info!("Performance metrics enabled");
+        self.metrics = Some(metrics);
+    }
+
+    /// Enable packet dumping (debug mode)
+    fn enable_packet_dumping(&mut self) {
+        self.dump_packets = true;
+        info!("Packet dumping enabled (debug mode)");
+        warn!("Packet dumping generates large log output - use only for debugging");
+    }
+
     /// Shutdown the daemon
     async fn shutdown(&mut self) -> Result<()> {
         info!("Shutting down daemon...");
@@ -1821,6 +1855,16 @@ async fn main() -> Result<()> {
     let mut daemon = Daemon::new(config)
         .await
         .context("Failed to create daemon")?;
+
+    // Enable metrics if requested
+    if cli.metrics {
+        daemon.enable_metrics();
+    }
+
+    // Enable packet dumping if requested
+    if cli.dump_packets {
+        daemon.enable_packet_dumping();
+    }
 
     // Initialize plugins
     daemon
