@@ -293,11 +293,9 @@ impl BluetoothDiscoveryService {
         }
 
         // Check if peripheral advertises KDE Connect service
-        if let Some(service_data) = properties.service_data {
-            if !service_data.contains_key(&KDECONNECT_SERVICE_UUID) {
-                debug!("Device {} doesn't advertise KDE Connect service", bt_address);
-                return Ok(());
-            }
+        if !properties.service_data.contains_key(&KDECONNECT_SERVICE_UUID) {
+            debug!("Device {} doesn't advertise KDE Connect service", bt_address);
+            return Ok(());
         }
 
         // Try to get device name from properties
