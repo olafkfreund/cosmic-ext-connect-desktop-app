@@ -143,6 +143,10 @@ enum Message {
     SetBluetoothEnabled(bool),
     SetTransportPreference(String),
     SetAutoFallback(bool),
+    SetDiscoveryInterval(u64),
+    SetDeviceTimeout(u64),
+    ResetConfigToDefaults,
+    RestartDaemon,
     SettingsUpdateResult(Result<(), String>),
 }
 
@@ -536,6 +540,48 @@ impl Application for CConnectApp {
                 self.show_restart_required = true;
 
                 Task::perform(set_auto_fallback(enabled), |result| {
+                    cosmic::Action::App(Message::SettingsUpdateResult(result))
+                })
+            }
+            Message::SetDiscoveryInterval(interval_secs) => {
+                tracing::info!("Setting discovery interval to {} seconds", interval_secs);
+
+                // Update local state and show restart banner
+                if let Some(config) = &mut self.daemon_config {
+                    config.discovery.broadcast_interval_secs = interval_secs;
+                }
+                self.show_restart_required = true;
+
+                Task::perform(set_discovery_interval(interval_secs), |result| {
+                    cosmic::Action::App(Message::SettingsUpdateResult(result))
+                })
+            }
+            Message::SetDeviceTimeout(timeout_secs) => {
+                tracing::info!("Setting device timeout to {} seconds", timeout_secs);
+
+                // Update local state and show restart banner
+                if let Some(config) = &mut self.daemon_config {
+                    config.discovery.device_timeout_secs = timeout_secs;
+                }
+                self.show_restart_required = true;
+
+                Task::perform(set_device_timeout(timeout_secs), |result| {
+                    cosmic::Action::App(Message::SettingsUpdateResult(result))
+                })
+            }
+            Message::ResetConfigToDefaults => {
+                tracing::warn!("Resetting configuration to defaults");
+                self.show_restart_required = true;
+
+                Task::perform(reset_config_to_defaults(), |result| {
+                    cosmic::Action::App(Message::SettingsUpdateResult(result))
+                })
+            }
+            Message::RestartDaemon => {
+                tracing::warn!("Restarting daemon");
+                self.show_restart_required = false;
+
+                Task::perform(restart_daemon(), |result| {
                     cosmic::Action::App(Message::SettingsUpdateResult(result))
                 })
             }
@@ -1239,7 +1285,7 @@ impl CConnectApp {
                         widget::text::body("Restart required for transport/discovery changes to take effect"),
                         widget::horizontal_space(),
                         widget::button::suggested("Restart Daemon")
-                            .on_press(Message::RefreshSettings), // TODO: Add restart daemon message
+                            .on_press(Message::RestartDaemon),
                     ]
                     .spacing(spacing.space_xs)
                     .align_y(Alignment::Center)
@@ -1255,6 +1301,8 @@ impl CConnectApp {
                 .push(self.general_settings_section(&theme, config))
                 .push(self.connectivity_settings_section(&theme, config))
                 .push(self.plugins_settings_section(&theme, config))
+                .push(self.discovery_settings_section(&theme, config))
+                .push(self.advanced_settings_section(&theme, config))
                 .push(self.mpris_controls_section(&theme));
         }
 
@@ -1414,6 +1462,92 @@ impl CConnectApp {
                 }
             }
         }
+
+        widget::container(content_col.padding(spacing.space_s))
+            .style(card_container_style)
+            .width(Length::Fill)
+            .into()
+    }
+
+    /// Discovery settings section
+    fn discovery_settings_section<'a>(&'a self, theme: &cosmic::Theme, config: &'a settings::DaemonConfig) -> Element<'a, Message> {
+        let spacing = theme.cosmic().spacing;
+
+        let mut content_col = column![
+            widget::text::title4("Discovery"),
+            widget::divider::horizontal::default(),
+            widget::text::caption("Configure device discovery and timeout settings"),
+        ]
+        .spacing(spacing.space_xs);
+
+        // Discovery Interval
+        content_col = content_col.push(
+            row![
+                widget::text::body("Broadcast Interval:").width(Length::Fixed(180.0)),
+                widget::text::body(format!("{} seconds", config.discovery.broadcast_interval_secs))
+                    .width(Length::Fixed(100.0)),
+                widget::text::caption("(How often to announce presence)"),
+            ]
+            .spacing(spacing.space_xs)
+            .align_y(Alignment::Center)
+        );
+
+        // Device Timeout
+        content_col = content_col.push(
+            row![
+                widget::text::body("Device Timeout:").width(Length::Fixed(180.0)),
+                widget::text::body(format!("{} seconds", config.discovery.device_timeout_secs))
+                    .width(Length::Fixed(100.0)),
+                widget::text::caption("(How long before device is offline)"),
+            ]
+            .spacing(spacing.space_xs)
+            .align_y(Alignment::Center)
+        );
+
+        content_col = content_col.push(
+            widget::text::caption("⚠ Changes to discovery settings require daemon restart")
+        );
+
+        widget::container(content_col.padding(spacing.space_s))
+            .style(card_container_style)
+            .width(Length::Fill)
+            .into()
+    }
+
+    /// Advanced settings section
+    fn advanced_settings_section(&self, theme: &cosmic::Theme, _config: &settings::DaemonConfig) -> Element<'_, Message> {
+        let spacing = theme.cosmic().spacing;
+
+        let mut content_col = column![
+            widget::text::title4("Advanced"),
+            widget::divider::horizontal::default(),
+            widget::text::caption("Advanced configuration and maintenance options"),
+        ]
+        .spacing(spacing.space_xs);
+
+        // Reset to Defaults button
+        content_col = content_col.push(
+            column![
+                widget::text::body("Reset Configuration"),
+                widget::text::caption("Restore all settings to default values (preserves device ID)"),
+                widget::button::destructive("Reset to Defaults")
+                    .on_press(Message::ResetConfigToDefaults),
+            ]
+            .spacing(spacing.space_xs)
+        );
+
+        content_col = content_col.push(widget::divider::horizontal::default());
+
+        // Restart Daemon button
+        content_col = content_col.push(
+            column![
+                widget::text::body("Restart Daemon"),
+                widget::text::caption("Restart the background service to apply changes"),
+                widget::button::suggested("Restart Daemon")
+                    .on_press(Message::RestartDaemon),
+            ]
+            .spacing(spacing.space_xs)
+        );
 
         widget::container(content_col.padding(spacing.space_s))
             .style(card_container_style)
@@ -1849,6 +1983,50 @@ async fn set_auto_fallback(enabled: bool) -> Result<(), String> {
         Ok((client, _)) => {
             client.set_auto_fallback(enabled).await
                 .map_err(|e| format!("Failed to set auto fallback: {}", e))
+        }
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+    }
+}
+
+/// Set discovery interval in seconds
+async fn set_discovery_interval(interval_secs: u64) -> Result<(), String> {
+    match DbusClient::connect().await {
+        Ok((client, _)) => {
+            client.set_discovery_interval(interval_secs).await
+                .map_err(|e| format!("Failed to set discovery interval: {}", e))
+        }
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+    }
+}
+
+/// Set device timeout in seconds
+async fn set_device_timeout(timeout_secs: u64) -> Result<(), String> {
+    match DbusClient::connect().await {
+        Ok((client, _)) => {
+            client.set_device_timeout(timeout_secs).await
+                .map_err(|e| format!("Failed to set device timeout: {}", e))
+        }
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+    }
+}
+
+/// Reset configuration to defaults
+async fn reset_config_to_defaults() -> Result<(), String> {
+    match DbusClient::connect().await {
+        Ok((client, _)) => {
+            client.reset_config_to_defaults().await
+                .map_err(|e| format!("Failed to reset config to defaults: {}", e))
+        }
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+    }
+}
+
+/// Restart the daemon
+async fn restart_daemon() -> Result<(), String> {
+    match DbusClient::connect().await {
+        Ok((client, _)) => {
+            client.restart_daemon().await
+                .map_err(|e| format!("Failed to restart daemon: {}", e))
         }
         Err(e) => Err(format!("Failed to connect to daemon: {}", e))
     }
