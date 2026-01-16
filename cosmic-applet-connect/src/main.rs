@@ -19,7 +19,24 @@ use cosmic_connect_protocol::{ConnectionState, Device, DeviceInfo as ProtocolDev
 use dbus_client::DbusClient;
 
 fn main() -> cosmic::iced::Result {
-    tracing_subscriber::fmt::init();
+    // Initialize logging with environment variable support
+    // Set RUST_LOG=debug for verbose output, defaults to info level
+    use tracing_subscriber::{fmt, EnvFilter};
+
+    let filter = EnvFilter::try_from_default_env()
+        .or_else(|_| EnvFilter::try_new("info"))
+        .unwrap();
+
+    fmt()
+        .with_env_filter(filter)
+        .with_target(true)
+        .with_file(true)
+        .with_line_number(true)
+        .compact()
+        .init();
+
+    tracing::info!("COSMIC Connect applet starting");
+
     cosmic::applet::run::<KdeConnectApplet>(())
 }
 
