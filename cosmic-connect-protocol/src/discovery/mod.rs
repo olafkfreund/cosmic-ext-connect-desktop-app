@@ -50,8 +50,10 @@
 //! }
 //! ```
 
+pub mod bluetooth;
 pub mod events;
 pub mod service;
+pub mod unified;
 
 use crate::{Packet, ProtocolError, Result, PROTOCOL_VERSION};
 use serde::{Deserialize, Serialize};
@@ -65,11 +67,16 @@ use uuid::Uuid;
 pub const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(5);
 
 // Re-export main types
+pub use bluetooth::{
+    BluetoothDiscoveryConfig, BluetoothDiscoveryService, DEFAULT_BT_DEVICE_TIMEOUT,
+    DEFAULT_BT_SCAN_INTERVAL,
+};
 pub use events::DiscoveryEvent;
 pub use service::{
     DiscoveryConfig, DiscoveryService, BROADCAST_ADDR, DEFAULT_BROADCAST_INTERVAL,
     DEFAULT_DEVICE_TIMEOUT, DISCOVERY_PORT, PORT_RANGE_END, PORT_RANGE_START,
 };
+pub use unified::{UnifiedDiscoveryConfig, UnifiedDiscoveryService};
 
 /// Device types supported by KDE Connect
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

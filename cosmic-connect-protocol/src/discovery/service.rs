@@ -363,19 +363,13 @@ impl DiscoveryService {
                 device_info.device_type.as_str(),
                 src_addr
             );
-            DiscoveryEvent::DeviceDiscovered {
-                info: device_info,
-                address: src_addr,
-            }
+            DiscoveryEvent::tcp_discovered(device_info, src_addr)
         } else {
             debug!(
                 "Updated device: {} at {}",
                 device_info.device_name, src_addr
             );
-            DiscoveryEvent::DeviceUpdated {
-                info: device_info,
-                address: src_addr,
-            }
+            DiscoveryEvent::tcp_updated(device_info, src_addr)
         };
 
         let _ = event_tx.send(event);
