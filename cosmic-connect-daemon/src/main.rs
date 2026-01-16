@@ -1015,11 +1015,17 @@ impl Daemon {
 
                 // Dump packet contents if enabled
                 if dump_packets {
-                    let packet_json = serde_json::to_string_pretty(&packet).unwrap_or_else(|_| "Failed to serialize".to_string());
-                    debug!(
-                        "📨 PACKET DUMP (RX) - Type: {}, Device: {}, Size: {} bytes\n{}",
-                        packet.packet_type, device_id, packet_json.len(), packet_json
-                    );
+                    match serde_json::to_string_pretty(&packet) {
+                        Ok(json) => {
+                            debug!(
+                                "📨 PACKET DUMP (RX) - Type: {}, Device: {}, Size: {} bytes\n{}",
+                                packet.packet_type, device_id, json.len(), json
+                            );
+                        }
+                        Err(e) => {
+                            warn!("Failed to serialize packet for dumping: {}", e);
+                        }
+                    }
                 }
 
                 // Handle special protocol packets BEFORE routing to plugins

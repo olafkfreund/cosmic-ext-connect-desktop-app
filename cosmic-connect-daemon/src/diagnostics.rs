@@ -153,31 +153,31 @@ pub fn init_logging(cli: &Cli) -> Result<()> {
 #[derive(Debug, Default)]
 pub struct Metrics {
     /// Daemon start time
-    pub start_time: Option<Instant>,
+    start_time: Option<Instant>,
 
     /// Total packets sent
-    pub packets_sent: u64,
+    packets_sent: u64,
 
     /// Total packets received
-    pub packets_received: u64,
+    packets_received: u64,
 
     /// Total bytes sent
-    pub bytes_sent: u64,
+    bytes_sent: u64,
 
     /// Total bytes received
-    pub bytes_received: u64,
+    bytes_received: u64,
 
     /// Number of active connections
-    pub active_connections: usize,
+    active_connections: usize,
 
     /// Number of paired devices
-    pub paired_devices: usize,
+    paired_devices: usize,
 
     /// Total plugin invocations
-    pub plugin_invocations: u64,
+    plugin_invocations: u64,
 
     /// Total plugin errors
-    pub plugin_errors: u64,
+    plugin_errors: u64,
 }
 
 impl Metrics {
@@ -272,6 +272,48 @@ impl Metrics {
         }
         println!();
     }
+
+    // Getter methods for encapsulated fields
+
+    /// Get total packets sent
+    pub fn packets_sent(&self) -> u64 {
+        self.packets_sent
+    }
+
+    /// Get total packets received
+    pub fn packets_received(&self) -> u64 {
+        self.packets_received
+    }
+
+    /// Get total bytes sent
+    pub fn bytes_sent(&self) -> u64 {
+        self.bytes_sent
+    }
+
+    /// Get total bytes received
+    pub fn bytes_received(&self) -> u64 {
+        self.bytes_received
+    }
+
+    /// Get number of active connections
+    pub fn active_connections(&self) -> usize {
+        self.active_connections
+    }
+
+    /// Get number of paired devices
+    pub fn paired_devices(&self) -> usize {
+        self.paired_devices
+    }
+
+    /// Get total plugin invocations
+    pub fn plugin_invocations(&self) -> u64 {
+        self.plugin_invocations
+    }
+
+    /// Get total plugin errors
+    pub fn plugin_errors(&self) -> u64 {
+        self.plugin_errors
+    }
 }
 
 /// Format bytes in human-readable form
@@ -345,9 +387,15 @@ mod tests {
     #[test]
     fn test_metrics_new() {
         let metrics = Metrics::new();
-        assert_eq!(metrics.packets_sent, 0);
-        assert_eq!(metrics.packets_received, 0);
-        assert!(metrics.start_time.is_some());
+        assert_eq!(metrics.packets_sent(), 0);
+        assert_eq!(metrics.packets_received(), 0);
+        assert_eq!(metrics.bytes_sent(), 0);
+        assert_eq!(metrics.bytes_received(), 0);
+        assert_eq!(metrics.active_connections(), 0);
+        assert_eq!(metrics.paired_devices(), 0);
+        assert_eq!(metrics.plugin_invocations(), 0);
+        assert_eq!(metrics.plugin_errors(), 0);
+        assert!(metrics.uptime_seconds() >= 0);
     }
 
     #[test]
@@ -355,12 +403,12 @@ mod tests {
         let mut metrics = Metrics::new();
 
         metrics.record_packet_sent(100);
-        assert_eq!(metrics.packets_sent, 1);
-        assert_eq!(metrics.bytes_sent, 100);
+        assert_eq!(metrics.packets_sent(), 1);
+        assert_eq!(metrics.bytes_sent(), 100);
 
         metrics.record_packet_received(200);
-        assert_eq!(metrics.packets_received, 1);
-        assert_eq!(metrics.bytes_received, 200);
+        assert_eq!(metrics.packets_received(), 1);
+        assert_eq!(metrics.bytes_received(), 200);
     }
 
     #[test]
@@ -371,7 +419,52 @@ mod tests {
         metrics.record_plugin_invocation();
         metrics.record_plugin_error();
 
-        assert_eq!(metrics.plugin_invocations, 2);
-        assert_eq!(metrics.plugin_errors, 1);
+        assert_eq!(metrics.plugin_invocations(), 2);
+        assert_eq!(metrics.plugin_errors(), 1);
+    }
+
+    #[test]
+    fn test_metrics_connections_and_devices() {
+        let mut metrics = Metrics::new();
+
+        metrics.update_connections(3);
+        assert_eq!(metrics.active_connections(), 3);
+
+        metrics.update_paired_devices(5);
+        assert_eq!(metrics.paired_devices(), 5);
+    }
+
+    #[test]
+    fn test_metrics_calculations() {
+        let mut metrics = Metrics::new();
+
+        // Record some data
+        metrics.record_packet_sent(100);
+        metrics.record_packet_sent(200);
+        metrics.record_packet_received(150);
+
+        // Verify totals
+        assert_eq!(metrics.packets_sent(), 2);
+        assert_eq!(metrics.packets_received(), 1);
+        assert_eq!(metrics.bytes_sent(), 300);
+        assert_eq!(metrics.bytes_received(), 150);
+
+        // Verify calculations (should be >= 0)
+        assert!(metrics.packets_per_second() >= 0.0);
+        assert!(metrics.bandwidth_bps() >= 0.0);
+    }
+
+    #[test]
+    fn test_build_info() {
+        let build_info = BuildInfo::get();
+
+        // Verify version is not empty
+        assert!(!build_info.version.is_empty());
+
+        // Verify build timestamp is not empty
+        assert!(!build_info.build_timestamp.is_empty());
+
+        // Verify rustc version is not empty
+        assert!(!build_info.rustc_version.is_empty());
     }
 }

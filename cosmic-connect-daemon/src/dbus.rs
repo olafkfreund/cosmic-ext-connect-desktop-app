@@ -1070,14 +1070,14 @@ impl KdeConnectInterface {
         let m = metrics.read().await;
         Ok(DaemonMetrics {
             uptime_seconds: m.uptime_seconds(),
-            packets_sent: m.packets_sent,
-            packets_received: m.packets_received,
-            bytes_sent: m.bytes_sent,
-            bytes_received: m.bytes_received,
-            active_connections: m.active_connections as u32,
-            paired_devices: m.paired_devices as u32,
-            plugin_invocations: m.plugin_invocations,
-            plugin_errors: m.plugin_errors,
+            packets_sent: m.packets_sent(),
+            packets_received: m.packets_received(),
+            bytes_sent: m.bytes_sent(),
+            bytes_received: m.bytes_received(),
+            active_connections: m.active_connections() as u32,
+            paired_devices: m.paired_devices() as u32,
+            plugin_invocations: m.plugin_invocations(),
+            plugin_errors: m.plugin_errors(),
             packets_per_second: m.packets_per_second(),
             bandwidth_bps: m.bandwidth_bps(),
         })
