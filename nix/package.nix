@@ -33,7 +33,7 @@
 }:
 
 rustPlatform.buildRustPackage rec {
-  pname = "cosmic-applet-kdeconnect";
+  pname = "cosmic-connect";
   version = "0.1.0";
 
   src = lib.cleanSource ../.;
@@ -94,14 +94,14 @@ rustPlatform.buildRustPackage rec {
   postInstall = ''
     # Install systemd service
     mkdir -p $out/lib/systemd/user
-    cat > $out/lib/systemd/user/kdeconnect-daemon.service << EOF
+    cat > $out/lib/systemd/user/cosmic-connect-daemon.service << EOF
     [Unit]
-    Description=KDE Connect Daemon for COSMIC Desktop
+    Description=COSMIC Connect Daemon - Device connectivity service
     After=network.target
 
     [Service]
     Type=simple
-    ExecStart=$out/bin/kdeconnect-daemon
+    ExecStart=$out/bin/cosmic-connect-daemon
     Restart=on-failure
     RestartSec=5
 
@@ -115,7 +115,7 @@ rustPlatform.buildRustPackage rec {
     RestrictSUIDSGID=true
 
     # Allow access to config and data directories
-    ReadWritePaths=%h/.config/kdeconnect %h/.local/share/kdeconnect
+    ReadWritePaths=%h/.config/cosmic/cosmic-connect %h/.local/share/cosmic/cosmic-connect
 
     # Network access required for device discovery and communication
     PrivateNetwork=false
@@ -126,13 +126,13 @@ rustPlatform.buildRustPackage rec {
 
     # Install desktop entry for applet
     mkdir -p $out/share/applications
-    cat > $out/share/applications/cosmic-applet-kdeconnect.desktop << EOF
+    cat > $out/share/applications/cosmic-applet-connect.desktop << EOF
     [Desktop Entry]
     Type=Application
-    Name=KDE Connect
-    Comment=Integrate your devices with COSMIC Desktop
+    Name=COSMIC Connect
+    Comment=Device connectivity for COSMIC Desktop
     Icon=phone-symbolic
-    Exec=$out/bin/cosmic-applet-kdeconnect
+    Exec=$out/bin/cosmic-applet-connect
     Categories=Network;System;
     NoDisplay=true
     X-COSMIC-Applet=true
@@ -143,29 +143,30 @@ rustPlatform.buildRustPackage rec {
   dontStrip = stdenv.isDarwin;
 
   meta = with lib; {
-    description = "KDE Connect applet for COSMIC Desktop - Device synchronization and integration";
+    description = "COSMIC Connect - Device connectivity for COSMIC Desktop";
     longDescription = ''
-      COSMIC KDE Connect provides seamless integration between your Android/iOS
-      devices and COSMIC Desktop. Features include:
+      COSMIC Connect provides seamless integration between your Android devices
+      and COSMIC Desktop. Features include:
 
       - File sharing between devices
       - Clipboard synchronization
       - Notification mirroring
       - Battery status monitoring
       - Media player control (MPRIS)
-      - Remote input (planned)
-      - SMS messaging (planned)
+      - Remote input
+      - SMS messaging
+      - CConnect protocol (port 1816, side-by-side with KDE Connect)
 
       This package includes:
-      - cosmic-applet-kdeconnect: Panel applet for COSMIC
-      - kdeconnect-daemon: Background service for device communication
-      - cosmic-kdeconnect: Full application (future)
+      - cosmic-applet-connect: Panel applet for COSMIC
+      - cosmic-connect-daemon: Background service (DBus, systemd)
+      - cosmic-connect: CLI tool for device management
     '';
-    homepage = "https://github.com/olafkfreund/cosmic-applet-kdeconnect";
-    changelog = "https://github.com/olafkfreund/cosmic-applet-kdeconnect/releases";
+    homepage = "https://github.com/olafkfreund/cosmic-connect-desktop-app";
+    changelog = "https://github.com/olafkfreund/cosmic-connect-desktop-app/releases";
     license = licenses.gpl3Plus;
     maintainers = with maintainers; [ ]; # Add your maintainer info
-    mainProgram = "cosmic-applet-kdeconnect";
+    mainProgram = "cosmic-applet-connect";
     platforms = platforms.linux;
 
     # Requires COSMIC Desktop Environment

@@ -11,7 +11,7 @@
     let
       # Overlay for this package
       overlay = final: prev: {
-        cosmic-applet-kdeconnect = final.callPackage ./nix/package.nix { };
+        cosmic-connect = final.callPackage ./nix/package.nix { };
       };
 
       # NixOS module
@@ -142,7 +142,7 @@
       nixosModules.default = nixosModule;
 
       # Convenience aliases
-      nixosModules.cosmic-kdeconnect = nixosModule;
-      overlays.cosmic-kdeconnect = overlay;
+      nixosModules.cosmic-connect = nixosModule;
+      overlays.cosmic-connect = overlay;
     };
 }

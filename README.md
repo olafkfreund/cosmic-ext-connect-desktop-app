@@ -290,7 +290,7 @@ In your `configuration.nix`:
 
 ```nix
 {
-  services.cosmic-kdeconnect = {
+  services.cosmic-connect = {
     enable = true;
 
     # Open firewall ports (required for device discovery)
@@ -336,7 +336,7 @@ If you prefer using overlays instead of the module:
       modules = [
         {
           nixpkgs.overlays = [ cosmic-connect.overlays.default ];
-          environment.systemPackages = [ pkgs.cosmic-applet-kdeconnect ];
+          environment.systemPackages = [ pkgs.cosmic-connect ];
 
           # Manual firewall configuration
           networking.firewall = {
@@ -364,7 +364,7 @@ sudo nixos-rebuild switch --flake .#your-hostname
 
 # The daemon will start automatically if daemon.autoStart = true
 # Otherwise, start it manually:
-systemctl --user start kdeconnect-daemon
+systemctl --user start cosmic-connect-daemon
 ```
 
 ### Manual Installation
@@ -391,8 +391,8 @@ systemctl --user start cosmic-connect-daemon
 ### Initial Setup
 
 1. **Install companion app on your mobile device**:
-   - Android: [KDE Connect on Google Play](https://play.google.com/store/apps/details?id=org.kde.kdeconnect_tp)
-   - Or use [COSMIC Connect Android](https://github.com/olafkfreund/cosmic-connect-android) (when released)
+   - Android: [COSMIC Connect Android](https://github.com/olafkfreund/cosmic-connect-android) (in development)
+   - Note: COSMIC Connect uses the CConnect protocol (port 1816, cconnect.* packets) and is NOT compatible with standard KDE Connect apps
 
 2. **Configure firewall** (required for device discovery):
 

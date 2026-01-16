@@ -3,19 +3,19 @@
 with lib;
 
 let
-  cfg = config.services.cosmic-kdeconnect;
+  cfg = config.services.cosmic-connect;
 
   # Import the package
-  cosmic-kdeconnect-pkg = pkgs.callPackage ./package.nix { };
+  cosmic-connect-pkg = pkgs.callPackage ./package.nix { };
 
 in {
-  options.services.cosmic-kdeconnect = {
-    enable = mkEnableOption "KDE Connect for COSMIC Desktop";
+  options.services.cosmic-connect = {
+    enable = mkEnableOption "COSMIC Connect - Device connectivity for COSMIC Desktop";
 
-    package = mkPackageOption pkgs "cosmic-applet-kdeconnect" {
-      default = cosmic-kdeconnect-pkg;
-      example = literalExpression "pkgs.cosmic-applet-kdeconnect";
-      description = "The cosmic-applet-kdeconnect package to use.";
+    package = mkPackageOption pkgs "cosmic-connect" {
+      default = cosmic-connect-pkg;
+      example = literalExpression "pkgs.cosmic-connect";
+      description = "The cosmic-connect package to use.";
     };
 
     openFirewall = mkOption {
@@ -32,7 +32,7 @@ in {
         type = types.bool;
         default = true;
         description = ''
-          Whether to enable the KDE Connect daemon as a user service.
+          Whether to enable the COSMIC Connect daemon as a user service.
           The daemon handles device discovery, pairing, and plugin communication.
         '';
       };
@@ -62,16 +62,16 @@ in {
           {
             discovery = {
               broadcast_interval = 5000;
-              listen_port = 1716;
+              listen_port = 1816;
             };
             security = {
-              certificate_dir = "~/.config/kdeconnect/certs";
+              certificate_dir = "~/.config/cosmic-connect/certs";
             };
           }
         '';
         description = ''
-          Configuration for the KDE Connect daemon.
-          Settings are written to ~/.config/kdeconnect/config.toml
+          Configuration for the COSMIC Connect daemon.
+          Settings are written to ~/.config/cosmic-connect/daemon.toml
         '';
       };
     };
@@ -128,7 +128,7 @@ in {
     security = {
       certificateDirectory = mkOption {
         type = types.str;
-        default = "~/.config/kdeconnect/certs";
+        default = "~/.config/cosmic-connect/certs";
         description = ''
           Directory where device certificates are stored.
           Each paired device has its own certificate for TLS communication.
@@ -148,7 +148,7 @@ in {
     storage = {
       downloadDirectory = mkOption {
         type = types.str;
-        default = "~/.local/share/kdeconnect/downloads";
+        default = "~/Downloads";
         description = ''
           Directory where received files are stored.
         '';
@@ -156,9 +156,9 @@ in {
 
       dataDirectory = mkOption {
         type = types.str;
-        default = "~/.local/share/kdeconnect";
+        default = "~/.local/share/cosmic-connect";
         description = ''
-          Base directory for KDE Connect data.
+          Base directory for COSMIC Connect data.
         '';
       };
     };
@@ -169,11 +169,11 @@ in {
     assertions = [
       {
         assertion = cfg.daemon.enable -> cfg.enable;
-        message = "The KDE Connect daemon requires services.cosmic-kdeconnect.enable to be true.";
+        message = "The COSMIC Connect daemon requires services.cosmic-connect.enable to be true.";
       }
       {
         assertion = cfg.applet.enable -> cfg.enable;
-        message = "The COSMIC applet requires services.cosmic-kdeconnect.enable to be true.";
+        message = "The COSMIC Connect applet requires services.cosmic-connect.enable to be true.";
       }
     ];
 
@@ -192,16 +192,16 @@ in {
     };
 
     # User systemd service for the daemon
-    systemd.user.services.kdeconnect-daemon = mkIf cfg.daemon.enable {
-      description = "KDE Connect Daemon for COSMIC Desktop";
-      documentation = [ "https://github.com/olafkfreund/cosmic-applet-kdeconnect" ];
+    systemd.user.services.cosmic-connect-daemon = mkIf cfg.daemon.enable {
+      description = "COSMIC Connect Daemon - Device connectivity service";
+      documentation = [ "https://github.com/olafkfreund/cosmic-connect-desktop-app" ];
 
       after = [ "network.target" ];
       wantedBy = mkIf cfg.daemon.autoStart [ "default.target" ];
 
       serviceConfig = {
         Type = "simple";
-        ExecStart = "${cfg.package}/bin/kdeconnect-daemon";
+        ExecStart = "${cfg.package}/bin/cosmic-connect-daemon";
         Restart = "on-failure";
         RestartSec = 5;
 
@@ -223,8 +223,8 @@ in {
 
         # File system access
         ReadWritePaths = [
-          "%h/.config/kdeconnect"
-          "%h/.local/share/kdeconnect"
+          "%h/.config/cosmic/cosmic-connect"
+          "%h/.local/share/cosmic/cosmic-connect"
         ];
 
         # Network access required
@@ -243,32 +243,32 @@ in {
     };
 
     # Generate configuration file
-    environment.etc."xdg/kdeconnect/config.toml" = mkIf (cfg.daemon.settings != { }) {
+    environment.etc."xdg/cosmic-connect/config.toml" = mkIf (cfg.daemon.settings != { }) {
       text = generators.toINI { } cfg.daemon.settings;
     };
 
     # Create necessary directories
-    system.activationScripts.cosmic-kdeconnect = ''
+    system.activationScripts.cosmic-connect = ''
       # Ensure config directory exists
-      mkdir -p /etc/xdg/kdeconnect
+      mkdir -p /etc/xdg/cosmic-connect
 
       # Set proper permissions
-      chmod 755 /etc/xdg/kdeconnect
+      chmod 755 /etc/xdg/cosmic-connect
     '';
 
     # Warnings for common misconfigurations
     warnings =
       (optional (!cfg.openFirewall)
-        "KDE Connect firewall ports are not open. Device discovery may not work.")
+        "COSMIC Connect firewall ports are not open. Device discovery may not work.")
       ++
       (optional (!cfg.daemon.enable && cfg.applet.enable)
-        "The COSMIC applet is enabled but the daemon is not. The applet requires the daemon to function.")
+        "The COSMIC Connect applet is enabled but the daemon is not. The applet requires the daemon to function.")
       ++
       (optional (!cfg.plugins.share && !cfg.plugins.notification && !cfg.plugins.clipboard)
         "All major plugins are disabled. Consider enabling at least one plugin for functionality.");
 
     # Add documentation links
-    documentation.man.man1 = [ "${cfg.package}/share/man/man1/kdeconnect-daemon.1.gz" ];
+    documentation.man.man1 = [ "${cfg.package}/share/man/man1/cosmic-connect-daemon.1.gz" ];
   };
 
   meta = {
