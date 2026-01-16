@@ -49,6 +49,7 @@
 //! client.receive_file("/path/to/save/file.pdf", size).await?;
 //! ```
 
+use crate::fs_utils::{cleanup_partial_file, create_file_safe, write_file_safe};
 use crate::{ProtocolError, Result};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::Path;
@@ -56,7 +57,7 @@ use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{timeout, Duration};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Default timeout for TCP connections (30 seconds)
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
@@ -451,73 +452,86 @@ impl PayloadClient {
             save_path, expected_size
         );
 
-        // Create file
-        let mut file = File::create(save_path)
-            .await
-            .map_err(|e| ProtocolError::Io(e))?;
+        // Create file with safe error handling
+        let mut file = match create_file_safe(save_path).await {
+            Ok(f) => f,
+            Err(e) => {
+                warn!("Failed to create file {:?}: {}", save_path, e);
+                return Err(e);
+            }
+        };
 
         // Read and write data
         let mut buffer = vec![0u8; BUFFER_SIZE];
         let mut total_bytes = 0u64;
 
-        while total_bytes < expected_size {
-            let remaining = expected_size - total_bytes;
-            let to_read = std::cmp::min(remaining, BUFFER_SIZE as u64) as usize;
+        let result = async {
+            while total_bytes < expected_size {
+                let remaining = expected_size - total_bytes;
+                let to_read = std::cmp::min(remaining, BUFFER_SIZE as u64) as usize;
 
-            // Read from stream
-            let bytes_read = timeout(TRANSFER_TIMEOUT, self.stream.read(&mut buffer[..to_read]))
-                .await
-                .map_err(|_| {
-                    ProtocolError::Io(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "Stream read timeout",
-                    ))
-                })?
-                .map_err(|e| ProtocolError::Io(e))?;
+                // Read from stream
+                let bytes_read = timeout(TRANSFER_TIMEOUT, self.stream.read(&mut buffer[..to_read]))
+                    .await
+                    .map_err(|_| {
+                        ProtocolError::Timeout("Stream read timeout during file transfer".to_string())
+                    })?
+                    .map_err(|e| ProtocolError::Io(e))?;
 
-            if bytes_read == 0 {
-                return Err(ProtocolError::Io(std::io::Error::new(
-                    std::io::ErrorKind::UnexpectedEof,
-                    format!(
-                        "Connection closed prematurely: received {} bytes, expected {}",
-                        total_bytes, expected_size
-                    ),
-                )));
-            }
-
-            // Write to file
-            file.write_all(&buffer[..bytes_read])
-                .await
-                .map_err(|e| ProtocolError::Io(e))?;
-
-            total_bytes += bytes_read as u64;
-
-            debug!(
-                "Received {} bytes ({}/{} total)",
-                bytes_read, total_bytes, expected_size
-            );
-
-            // Call progress callback if set
-            if let Some(ref callback) = self.progress_callback {
-                if !callback(total_bytes, expected_size) {
-                    info!("Transfer cancelled by progress callback");
+                if bytes_read == 0 {
                     return Err(ProtocolError::Io(std::io::Error::new(
-                        std::io::ErrorKind::Interrupted,
-                        "Transfer cancelled",
+                        std::io::ErrorKind::UnexpectedEof,
+                        format!(
+                            "Connection closed prematurely: received {} bytes, expected {}",
+                            total_bytes, expected_size
+                        ),
                     )));
                 }
+
+                // Write to file with safe error handling
+                write_file_safe(&mut file, &buffer[..bytes_read]).await?;
+
+                total_bytes += bytes_read as u64;
+
+                debug!(
+                    "Received {} bytes ({}/{} total)",
+                    bytes_read, total_bytes, expected_size
+                );
+
+                // Call progress callback if set
+                if let Some(ref callback) = self.progress_callback {
+                    if !callback(total_bytes, expected_size) {
+                        info!("Transfer cancelled by progress callback");
+                        return Err(ProtocolError::Io(std::io::Error::new(
+                            std::io::ErrorKind::Interrupted,
+                            "Transfer cancelled",
+                        )));
+                    }
+                }
             }
+
+            // Flush file
+            file.flush().await.map_err(|e| ProtocolError::Io(e))?;
+
+            info!(
+                "File transfer complete: {} bytes received to {:?}",
+                total_bytes, save_path
+            );
+
+            Ok(())
+        }
+        .await;
+
+        // Clean up partial file on error
+        if result.is_err() {
+            warn!(
+                "Transfer failed, cleaning up partial file: {:?}",
+                save_path
+            );
+            cleanup_partial_file(save_path).await;
         }
 
-        // Flush file
-        file.flush().await.map_err(|e| ProtocolError::Io(e))?;
-
-        info!(
-            "File transfer complete: {} bytes received to {:?}",
-            total_bytes, save_path
-        );
-
-        Ok(())
+        result
     }
 }
 

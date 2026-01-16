@@ -6,6 +6,7 @@
 pub mod connection;
 pub mod device;
 pub mod discovery;
+pub mod fs_utils;
 pub mod packet;
 pub mod pairing;
 pub mod payload;
