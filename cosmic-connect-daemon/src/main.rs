@@ -16,14 +16,14 @@ use cosmic_connect_protocol::{
     pairing::{PairingConfig, PairingEvent, PairingService, PairingStatus},
     plugins::{
         battery::BatteryPluginFactory, clipboard::ClipboardPluginFactory,
-        contacts::ContactsPluginFactory, findmyphone::FindMyPhonePluginFactory,
-        lock::LockPluginFactory, mpris::MprisPluginFactory,
-        notification::NotificationPluginFactory, ping::PingPluginFactory,
-        power::PowerPluginFactory, presenter::PresenterPluginFactory,
-        remoteinput::RemoteInputPluginFactory, runcommand::RunCommandPluginFactory,
-        screenshot::ScreenshotPluginFactory, share::SharePluginFactory,
-        systemmonitor::SystemMonitorPluginFactory, telephony::TelephonyPluginFactory,
-        wol::WolPluginFactory, PluginManager,
+        clipboardhistory::ClipboardHistoryPluginFactory, contacts::ContactsPluginFactory,
+        findmyphone::FindMyPhonePluginFactory, lock::LockPluginFactory,
+        mpris::MprisPluginFactory, notification::NotificationPluginFactory,
+        ping::PingPluginFactory, power::PowerPluginFactory,
+        presenter::PresenterPluginFactory, remoteinput::RemoteInputPluginFactory,
+        runcommand::RunCommandPluginFactory, screenshot::ScreenshotPluginFactory,
+        share::SharePluginFactory, systemmonitor::SystemMonitorPluginFactory,
+        telephony::TelephonyPluginFactory, wol::WolPluginFactory, PluginManager,
     },
     CertificateInfo, DeviceInfo, DeviceManager, DeviceType, TransportManager,
     TransportManagerConfig, TransportManagerEvent,
@@ -410,6 +410,13 @@ impl Daemon {
             manager
                 .register_factory(Arc::new(PowerPluginFactory))
                 .context("Failed to register Power plugin factory")?;
+        }
+
+        if config.plugins.enable_clipboardhistory {
+            info!("Registering ClipboardHistory plugin factory");
+            manager
+                .register_factory(Arc::new(ClipboardHistoryPluginFactory))
+                .context("Failed to register ClipboardHistory plugin factory")?;
         }
 
         info!(

@@ -101,6 +101,7 @@
 
 pub mod battery;
 pub mod clipboard;
+pub mod clipboardhistory;
 pub mod contacts;
 pub mod findmyphone;
 pub mod lock;

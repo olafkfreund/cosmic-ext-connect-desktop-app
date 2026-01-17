@@ -212,6 +212,10 @@ pub struct PluginConfig {
     /// Enable Power plugin (remote power management)
     #[serde(default = "default_false")]
     pub enable_power: bool,
+
+    /// Enable ClipboardHistory plugin (persistent clipboard history)
+    #[serde(default = "default_true")]
+    pub enable_clipboardhistory: bool,
 }
 
 /// Storage paths configuration
@@ -346,6 +350,7 @@ impl Default for PluginConfig {
             enable_screenshot: true,      // Desktop-to-desktop screenshot capture
             enable_remotedesktop: false,  // Security: disabled by default, requires explicit opt-in
             enable_power: false,          // Security: power control disabled by default
+            enable_clipboardhistory: true, // Clipboard history with sync
         }
     }
 }
