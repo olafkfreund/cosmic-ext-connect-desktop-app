@@ -1,0 +1,57 @@
+# COSMIC Connect Test Configuration
+# For local testing and development
+
+[device]
+name = "Test COSMIC Desktop"
+device_type = "desktop"
+# device_id will be auto-generated if not set
+
+[network]
+discovery_port = 1716
+transfer_port_start = 1739
+transfer_port_end = 1764
+discovery_interval = 5  # seconds
+device_timeout = 30     # seconds
+
+[transport]
+enable_tcp = true
+enable_bluetooth = false  # Disable Bluetooth for local testing
+preference = "prefer_tcp"
+tcp_timeout_secs = 30
+bluetooth_timeout_secs = 30
+auto_fallback = true
+
+[plugins]
+# Core plugins
+enable_ping = true
+enable_battery = true
+enable_clipboard = true
+enable_findmyphone = true
+enable_mpris = true
+enable_notification = true
+enable_remoteinput = true
+enable_runcommand = true
+enable_screenshot = true
+enable_sftp = true
+enable_share = true
+enable_systemvolume = true
+enable_telephony = true
+enable_connectivity_report = false
+
+# RemoteDesktop plugin (TESTING)
+enable_remotedesktop = true
+
+# Advanced plugins
+enable_presenter = false
+enable_mousepad = false
+enable_systemmonitor = true
+enable_wol = false
+
+[paths]
+data_dir = "/tmp/cosmic-connect-test/data"
+config_dir = "/tmp/cosmic-connect-test/config"
+cert_dir = "/tmp/cosmic-connect-test/certs"
+cache_dir = "/tmp/cosmic-connect-test/cache"
+device_registry = "/tmp/cosmic-connect-test/devices.json"
+certificate_path = "/tmp/cosmic-connect-test/cert.pem"
+private_key_path = "/tmp/cosmic-connect-test/key.pem"
