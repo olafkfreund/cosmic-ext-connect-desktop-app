@@ -418,18 +418,22 @@ impl Application for CConnectApp {
                     transfer.error_message = Some("Cancelled by user".to_string());
                 }
 
-                // TODO: Implement cancel_transfer DBus method in daemon
-                // The daemon currently doesn't support transfer cancellation as transfers
-                // are spawned as independent tasks without cancellation tokens.
-                // Full implementation requires:
-                // 1. Add TransferManager to daemon with CancellationToken tracking
-                // 2. Check cancellation in progress callback (return false to stop)
-                // 3. Add cancel_transfer DBus method
-                // 4. Add to dbus_client.rs proxy
-                // See Issue #71 Phase 2 for details
-
-                tracing::warn!("Transfer cancellation UI implemented, but daemon support pending");
-                Task::none()
+                // Call daemon to cancel the transfer
+                Task::perform(
+                    async move {
+                        if let Ok((client, _)) = crate::dbus_client::DbusClient::connect().await {
+                            client.cancel_transfer(&transfer_id).await
+                        } else {
+                            Err(anyhow::anyhow!("Failed to connect to daemon"))
+                        }
+                    },
+                    |result| {
+                        if let Err(e) = result {
+                            tracing::error!("Failed to cancel transfer: {}", e);
+                        }
+                        cosmic::Action::None
+                    }
+                )
             }
             Message::MprisPlayersUpdated(players) => {
                 tracing::info!("MPRIS players updated: {} players", players.len());

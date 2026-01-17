@@ -6,11 +6,61 @@
 use anyhow::{Context, Result};
 use cosmic_connect_protocol::{ConnectionManager, Device, DeviceManager, PluginManager};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 use zbus::object_server::SignalContext;
 use zbus::{connection, interface, Connection};
+
+/// Tracks active file transfers with cancellation support
+pub struct TransferManager {
+    /// Map of transfer_id -> cancellation flag
+    active_transfers: Arc<RwLock<HashMap<String, Arc<AtomicBool>>>>,
+}
+
+impl TransferManager {
+    /// Create a new transfer manager
+    pub fn new() -> Self {
+        Self {
+            active_transfers: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Register a new transfer and get its cancellation flag
+    pub async fn register_transfer(&self, transfer_id: String) -> Arc<AtomicBool> {
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        self.active_transfers
+            .write()
+            .await
+            .insert(transfer_id, cancel_flag.clone());
+        cancel_flag
+    }
+
+    /// Cancel a transfer by ID
+    pub async fn cancel_transfer(&self, transfer_id: &str) -> bool {
+        if let Some(cancel_flag) = self.active_transfers.read().await.get(transfer_id) {
+            cancel_flag.store(true, Ordering::SeqCst);
+            info!("Transfer {} marked for cancellation", transfer_id);
+            true
+        } else {
+            warn!("Transfer {} not found", transfer_id);
+            false
+        }
+    }
+
+    /// Remove a completed or cancelled transfer
+    pub async fn remove_transfer(&self, transfer_id: &str) {
+        self.active_transfers.write().await.remove(transfer_id);
+        debug!("Transfer {} removed from tracking", transfer_id);
+    }
+}
+
+impl Default for TransferManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// DBus service name
 pub const SERVICE_NAME: &str = "com.system76.CosmicConnect";
@@ -121,6 +171,8 @@ pub struct CConnectInterface {
     metrics: Option<Arc<RwLock<crate::diagnostics::Metrics>>>,
     /// Daemon configuration (for settings management)
     config: Arc<RwLock<crate::config::Config>>,
+    /// Transfer manager for tracking and cancelling file transfers
+    transfer_manager: Arc<TransferManager>,
 }
 
 impl CConnectInterface {
@@ -148,6 +200,7 @@ impl CConnectInterface {
             dbus_connection,
             metrics,
             config,
+            transfer_manager: Arc::new(TransferManager::new()),
         }
     }
 
@@ -556,12 +609,16 @@ impl CConnectInterface {
             .as_millis();
         let transfer_id = format!("{}_{}", device_id, timestamp_millis);
 
+        // Register transfer and get cancellation flag
+        let cancel_flag = self.transfer_manager.register_transfer(transfer_id.clone()).await;
+
         // Spawn background task to handle file transfer with progress tracking
         let file_path = path.clone();
         let device_id_clone = device_id.clone();
         let filename = file_info.filename.clone();
         let transfer_id_clone = transfer_id.clone();
         let dbus_conn = self.dbus_connection.clone();
+        let transfer_manager = self.transfer_manager.clone();
 
         tokio::spawn(async move {
             // Create progress callback that emits DBus signals
@@ -569,8 +626,15 @@ impl CConnectInterface {
             let tid = transfer_id_clone.clone();
             let did = device_id_clone.clone();
             let fname = filename.clone();
+            let cancel_flag_inner = cancel_flag.clone();
 
             let progress_callback = Box::new(move |bytes_transferred: u64, total_bytes: u64| -> bool {
+                // Check if transfer is cancelled
+                if cancel_flag_inner.load(Ordering::SeqCst) {
+                    info!("Transfer {} cancelled by user", tid);
+                    return false; // Stop transfer
+                }
+
                 let conn_clone = conn.clone();
                 let tid_clone = tid.clone();
                 let did_clone = did.clone();
@@ -598,10 +662,14 @@ impl CConnectInterface {
             let server_with_progress = server.with_progress(progress_callback);
             let result = server_with_progress.send_file(&file_path).await;
 
-            // Emit completion signal
-            let success = result.is_ok();
-            let error_msg = result.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
+            // Determine completion status
+            let (success, error_msg) = if cancel_flag.load(Ordering::SeqCst) {
+                (false, "Transfer cancelled by user".to_string())
+            } else {
+                (result.is_ok(), result.as_ref().err().map(|e| e.to_string()).unwrap_or_default())
+            };
 
+            // Emit completion signal
             if let Ok(object_server) = dbus_conn.object_server().interface::<_, CConnectInterface>(OBJECT_PATH).await {
                 let _ = CConnectInterface::transfer_complete(
                     object_server.signal_context(),
@@ -612,6 +680,9 @@ impl CConnectInterface {
                     &error_msg,
                 ).await;
             }
+
+            // Remove transfer from manager
+            transfer_manager.remove_transfer(&transfer_id_clone).await;
 
             if success {
                 info!("File transfer completed successfully for device {}", device_id_clone);
@@ -700,6 +771,29 @@ impl CConnectInterface {
 
         info!("DBus: URL shared successfully to {}", device_id);
         Ok(())
+    }
+
+    /// Cancel an active file transfer
+    ///
+    /// # Arguments
+    /// * `transfer_id` - The transfer ID to cancel
+    ///
+    /// # Returns
+    /// * `Ok(())` if transfer was cancelled or not found
+    /// * `Err` if cancellation failed
+    async fn cancel_transfer(&self, transfer_id: String) -> Result<(), zbus::fdo::Error> {
+        info!("DBus: CancelTransfer called for transfer_id: {}", transfer_id);
+
+        let cancelled = self.transfer_manager.cancel_transfer(&transfer_id).await;
+
+        if cancelled {
+            info!("Transfer {} marked for cancellation", transfer_id);
+            Ok(())
+        } else {
+            // Transfer not found - this is not an error, it may have already completed
+            debug!("Transfer {} not found (may have already completed)", transfer_id);
+            Ok(())
+        }
     }
 
     /// Send a notification to a device
