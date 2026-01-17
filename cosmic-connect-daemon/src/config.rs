@@ -224,6 +224,10 @@ pub struct PluginConfig {
     /// Enable Chat plugin (instant messaging)
     #[serde(default = "default_true")]
     pub enable_chat: bool,
+
+    /// Enable AudioStream plugin (audio streaming between desktops)
+    #[serde(default = "default_false")]
+    pub enable_audiostream: bool,
 }
 
 /// Storage paths configuration
@@ -361,6 +365,7 @@ impl Default for PluginConfig {
             enable_clipboardhistory: true, // Clipboard history with sync
             enable_macro: false,          // Security: automation disabled by default
             enable_chat: true,            // Instant messaging enabled by default
+            enable_audiostream: false,    // Audio streaming disabled by default (requires audio backend)
         }
     }
 }

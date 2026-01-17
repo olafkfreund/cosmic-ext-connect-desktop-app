@@ -15,16 +15,17 @@ use cosmic_connect_protocol::{
     discovery::{DiscoveryConfig, DiscoveryEvent, DiscoveryService},
     pairing::{PairingConfig, PairingEvent, PairingService, PairingStatus},
     plugins::{
-        battery::BatteryPluginFactory, chat::ChatPluginFactory,
-        clipboard::ClipboardPluginFactory, clipboardhistory::ClipboardHistoryPluginFactory,
-        contacts::ContactsPluginFactory, findmyphone::FindMyPhonePluginFactory,
-        lock::LockPluginFactory, mpris::MprisPluginFactory,
-        notification::NotificationPluginFactory, ping::PingPluginFactory,
-        power::PowerPluginFactory, presenter::PresenterPluginFactory,
-        r#macro::MacroPluginFactory, remoteinput::RemoteInputPluginFactory,
-        runcommand::RunCommandPluginFactory, screenshot::ScreenshotPluginFactory,
-        share::SharePluginFactory, systemmonitor::SystemMonitorPluginFactory,
-        telephony::TelephonyPluginFactory, wol::WolPluginFactory, PluginManager,
+        audiostream::AudioStreamPluginFactory, battery::BatteryPluginFactory,
+        chat::ChatPluginFactory, clipboard::ClipboardPluginFactory,
+        clipboardhistory::ClipboardHistoryPluginFactory, contacts::ContactsPluginFactory,
+        findmyphone::FindMyPhonePluginFactory, lock::LockPluginFactory,
+        mpris::MprisPluginFactory, notification::NotificationPluginFactory,
+        ping::PingPluginFactory, power::PowerPluginFactory,
+        presenter::PresenterPluginFactory, r#macro::MacroPluginFactory,
+        remoteinput::RemoteInputPluginFactory, runcommand::RunCommandPluginFactory,
+        screenshot::ScreenshotPluginFactory, share::SharePluginFactory,
+        systemmonitor::SystemMonitorPluginFactory, telephony::TelephonyPluginFactory,
+        wol::WolPluginFactory, PluginManager,
     },
     CertificateInfo, DeviceInfo, DeviceManager, DeviceType, TransportManager,
     TransportManagerConfig, TransportManagerEvent,
@@ -432,6 +433,13 @@ impl Daemon {
             manager
                 .register_factory(Arc::new(ChatPluginFactory))
                 .context("Failed to register Chat plugin factory")?;
+        }
+
+        if config.plugins.enable_audiostream {
+            info!("Registering AudioStream plugin factory");
+            manager
+                .register_factory(Arc::new(AudioStreamPluginFactory))
+                .context("Failed to register AudioStream plugin factory")?;
         }
 
         info!(

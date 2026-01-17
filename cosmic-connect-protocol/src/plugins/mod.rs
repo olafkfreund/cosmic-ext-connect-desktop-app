@@ -99,6 +99,7 @@
 //! - [CConnect Community Wiki](https://community.kde.org/KDEConnect)
 //! - [CConnect GitHub](https://github.com/KDE/cconnect-kde)
 
+pub mod audiostream;
 pub mod battery;
 pub mod chat;
 pub mod clipboard;
