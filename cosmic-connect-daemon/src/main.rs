@@ -19,10 +19,11 @@ use cosmic_connect_protocol::{
         contacts::ContactsPluginFactory, findmyphone::FindMyPhonePluginFactory,
         lock::LockPluginFactory, mpris::MprisPluginFactory,
         notification::NotificationPluginFactory, ping::PingPluginFactory,
-        presenter::PresenterPluginFactory, remoteinput::RemoteInputPluginFactory,
-        runcommand::RunCommandPluginFactory, screenshot::ScreenshotPluginFactory,
-        share::SharePluginFactory, systemmonitor::SystemMonitorPluginFactory,
-        telephony::TelephonyPluginFactory, wol::WolPluginFactory, PluginManager,
+        power::PowerPluginFactory, presenter::PresenterPluginFactory,
+        remoteinput::RemoteInputPluginFactory, runcommand::RunCommandPluginFactory,
+        screenshot::ScreenshotPluginFactory, share::SharePluginFactory,
+        systemmonitor::SystemMonitorPluginFactory, telephony::TelephonyPluginFactory,
+        wol::WolPluginFactory, PluginManager,
     },
     CertificateInfo, DeviceInfo, DeviceManager, DeviceType, TransportManager,
     TransportManagerConfig, TransportManagerEvent,
@@ -402,6 +403,13 @@ impl Daemon {
             manager
                 .register_factory(Arc::new(RemoteDesktopPluginFactory))
                 .context("Failed to register RemoteDesktop plugin factory")?;
+        }
+
+        if config.plugins.enable_power {
+            info!("Registering Power plugin factory");
+            manager
+                .register_factory(Arc::new(PowerPluginFactory))
+                .context("Failed to register Power plugin factory")?;
         }
 
         info!(

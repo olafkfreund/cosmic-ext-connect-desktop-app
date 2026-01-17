@@ -107,6 +107,7 @@ pub mod lock;
 pub mod mpris;
 pub mod notification;
 pub mod ping;
+pub mod power;
 pub mod presenter;
 pub mod remotedesktop;
 pub mod remoteinput;

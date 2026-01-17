@@ -208,6 +208,10 @@ pub struct PluginConfig {
     /// Enable RemoteDesktop plugin (VNC-based remote desktop)
     #[serde(default = "default_false")]
     pub enable_remotedesktop: bool,
+
+    /// Enable Power plugin (remote power management)
+    #[serde(default = "default_false")]
+    pub enable_power: bool,
 }
 
 /// Storage paths configuration
@@ -341,6 +345,7 @@ impl Default for PluginConfig {
             enable_wol: true,             // Desktop-to-desktop Wake-on-LAN
             enable_screenshot: true,      // Desktop-to-desktop screenshot capture
             enable_remotedesktop: false,  // Security: disabled by default, requires explicit opt-in
+            enable_power: false,          // Security: power control disabled by default
         }
     }
 }
