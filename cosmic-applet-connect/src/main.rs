@@ -1228,14 +1228,19 @@ impl CConnectApplet {
                 plugin_row = plugin_row.push(text("").size(10));
             }
 
-            // Toggle switch
-            plugin_row = plugin_row.push(toggler(plugin_enabled).on_toggle({
-                let device_id = device_id.to_string();
-                let plugin_id = plugin_meta.id.to_string();
-                move |enabled| {
-                    Message::SetDevicePluginEnabled(device_id.clone(), plugin_id.clone(), enabled)
-                }
-            }));
+            // Toggle switch (only enabled for supported plugins)
+            if is_supported {
+                plugin_row = plugin_row.push(toggler(plugin_enabled).on_toggle({
+                    let device_id = device_id.to_string();
+                    let plugin_id = plugin_meta.id.to_string();
+                    move |enabled| {
+                        Message::SetDevicePluginEnabled(device_id.clone(), plugin_id.clone(), enabled)
+                    }
+                }));
+            } else {
+                // Show disabled toggle for unsupported plugins
+                plugin_row = plugin_row.push(toggler(plugin_enabled));
+            }
 
             // Reset button (if override exists)
             if has_override {
@@ -1273,10 +1278,15 @@ impl CConnectApplet {
             }
         }
 
-        // Footer with reset all button
-        let footer = button::text("Reset All Overrides")
-            .on_press(Message::ResetAllPluginOverrides(device_id.to_string()))
-            .padding(8);
+        // Footer with reset all button (only enabled if there are overrides)
+        let footer = if override_count > 0 {
+            button::text("Reset All Overrides")
+                .on_press(Message::ResetAllPluginOverrides(device_id.to_string()))
+                .padding(8)
+        } else {
+            button::text("Reset All Overrides")
+                .padding(8)
+        };
 
         // Combine everything
         container(
