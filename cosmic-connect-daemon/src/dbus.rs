@@ -1018,6 +1018,101 @@ impl CConnectInterface {
         Ok(())
     }
 
+    /// Reset all plugin overrides for a device (revert to global config)
+    ///
+    /// # Arguments
+    /// * `device_id` - The device ID
+    async fn reset_all_plugin_overrides(&self, device_id: String) -> Result<(), zbus::fdo::Error> {
+        info!("DBus: ResetAllPluginOverrides called for {}", device_id);
+
+        // Get list of all plugins that have overrides
+        let plugin_names: Vec<String> = {
+            let registry = self.device_config_registry.read().await;
+            if let Some(config) = registry.get(&device_id) {
+                // Collect all plugin names that have overrides
+                let mut names = Vec::new();
+                if config.plugins.enable_ping.is_some() {
+                    names.push("ping".to_string());
+                }
+                if config.plugins.enable_battery.is_some() {
+                    names.push("battery".to_string());
+                }
+                if config.plugins.enable_notification.is_some() {
+                    names.push("notification".to_string());
+                }
+                if config.plugins.enable_share.is_some() {
+                    names.push("share".to_string());
+                }
+                if config.plugins.enable_clipboard.is_some() {
+                    names.push("clipboard".to_string());
+                }
+                if config.plugins.enable_mpris.is_some() {
+                    names.push("mpris".to_string());
+                }
+                if config.plugins.enable_remotedesktop.is_some() {
+                    names.push("remotedesktop".to_string());
+                }
+                if config.plugins.enable_findmyphone.is_some() {
+                    names.push("findmyphone".to_string());
+                }
+                names
+            } else {
+                Vec::new()
+            }
+        };
+
+        // Clear all overrides
+        {
+            let mut registry = self.device_config_registry.write().await;
+            let config = registry.get_or_create(&device_id);
+
+            // Reset all plugin overrides to None
+            config.plugins.enable_ping = None;
+            config.plugins.enable_battery = None;
+            config.plugins.enable_notification = None;
+            config.plugins.enable_share = None;
+            config.plugins.enable_clipboard = None;
+            config.plugins.enable_mpris = None;
+            config.plugins.enable_remotedesktop = None;
+            config.plugins.enable_findmyphone = None;
+
+            registry.save().map_err(|e| {
+                zbus::fdo::Error::Failed(format!("Failed to save device config: {}", e))
+            })?;
+        }
+
+        // Emit signals for all plugins that had overrides
+        let num_affected = plugin_names.len();
+        for plugin_name in plugin_names {
+            // Get the global config to know what the default state is
+            let enabled = {
+                let config = self.config.read().await;
+                match plugin_name.as_str() {
+                    "ping" => config.plugins.enable_ping,
+                    "battery" => config.plugins.enable_battery,
+                    "notification" => config.plugins.enable_notification,
+                    "share" => config.plugins.enable_share,
+                    "clipboard" => config.plugins.enable_clipboard,
+                    "mpris" => config.plugins.enable_mpris,
+                    "remotedesktop" => config.plugins.enable_remotedesktop,
+                    "findmyphone" => config.plugins.enable_findmyphone,
+                    _ => false,
+                }
+            };
+
+            self.emit_plugin_state_changed(&device_id, &plugin_name, enabled)
+                .await;
+        }
+
+        info!(
+            "All plugin overrides reset for device {} ({} plugins affected)",
+            device_id,
+            num_affected
+        );
+
+        Ok(())
+    }
+
     /// Get device configuration as JSON string
     ///
     /// # Arguments

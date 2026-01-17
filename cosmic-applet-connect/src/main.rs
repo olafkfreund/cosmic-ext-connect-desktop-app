@@ -159,6 +159,7 @@ enum Message {
     ToggleDeviceSettings(String),                    // device_id
     SetDevicePluginEnabled(String, String, bool),   // device_id, plugin, enabled
     ClearDevicePluginOverride(String, String),      // device_id, plugin
+    ResetAllPluginOverrides(String),                // device_id
     DeviceConfigLoaded(String, dbus_client::DeviceConfig), // device_id, config
     // RemoteDesktop settings
     ShowRemoteDesktopSettings(String),              // device_id
@@ -626,6 +627,31 @@ impl cosmic::Application for CConnectApplet {
                     let plugin_clone = plugin.clone();
                     async move {
                         client.clear_device_plugin_override(&id, &plugin_clone).await
+                    }
+                })
+                .chain(Task::perform(
+                    async move {
+                        match DbusClient::connect().await {
+                            Ok((client, _)) => client.get_device_config(&device_id_for_async).await,
+                            Err(e) => Err(e),
+                        }
+                    },
+                    move |result| {
+                        let device_id = (*device_id_for_msg).clone();
+                        match result {
+                            Ok(config) => cosmic::Action::App(Message::DeviceConfigLoaded(device_id, config)),
+                            Err(_) => cosmic::Action::App(Message::RefreshDevices),
+                        }
+                    },
+                ))
+            }
+            Message::ResetAllPluginOverrides(device_id) => {
+                tracing::info!("Resetting all plugin overrides for device {}", device_id);
+                let device_id_for_async = device_id.clone();
+                let device_id_for_msg = std::sync::Arc::new(device_id.clone());
+                device_operation_task(device_id, "reset all plugin overrides", move |client, id| {
+                    async move {
+                        client.reset_all_plugin_overrides(&id).await
                     }
                 })
                 .chain(Task::perform(
@@ -1232,7 +1258,7 @@ impl CConnectApplet {
 
         // Footer with reset all button
         let footer = button::text("Reset All Overrides")
-            .on_press(Message::ToggleDeviceSettings(device_id.to_string())) // TODO: implement ResetAllPluginOverrides
+            .on_press(Message::ResetAllPluginOverrides(device_id.to_string()))
             .padding(8);
 
         // Combine everything

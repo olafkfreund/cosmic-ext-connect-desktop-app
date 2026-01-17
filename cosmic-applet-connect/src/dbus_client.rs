@@ -253,6 +253,9 @@ trait CConnect {
     async fn clear_device_plugin_override(&self, device_id: &str, plugin: &str)
         -> zbus::Result<()>;
 
+    /// Reset all plugin overrides for a device (revert to global config)
+    async fn reset_all_plugin_overrides(&self, device_id: &str) -> zbus::Result<()>;
+
     /// Get RemoteDesktop settings for a device
     async fn get_remotedesktop_settings(&self, device_id: &str) -> zbus::Result<String>;
 
@@ -653,6 +656,18 @@ impl DbusClient {
             .clear_device_plugin_override(device_id, plugin)
             .await
             .context("Failed to clear device plugin override")
+    }
+
+    /// Reset all plugin overrides for a device (revert all to global config)
+    ///
+    /// # Arguments
+    /// * `device_id` - Device ID
+    pub async fn reset_all_plugin_overrides(&self, device_id: &str) -> Result<()> {
+        info!("Resetting all plugin overrides for device {}", device_id);
+        self.proxy
+            .reset_all_plugin_overrides(device_id)
+            .await
+            .context("Failed to reset all plugin overrides")
     }
 
     /// Get RemoteDesktop settings for a device
