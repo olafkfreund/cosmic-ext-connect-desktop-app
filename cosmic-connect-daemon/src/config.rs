@@ -220,6 +220,10 @@ pub struct PluginConfig {
     /// Enable Macro plugin (automation scripts)
     #[serde(default = "default_false")]
     pub enable_macro: bool,
+
+    /// Enable Chat plugin (instant messaging)
+    #[serde(default = "default_true")]
+    pub enable_chat: bool,
 }
 
 /// Storage paths configuration
@@ -356,6 +360,7 @@ impl Default for PluginConfig {
             enable_power: false,          // Security: power control disabled by default
             enable_clipboardhistory: true, // Clipboard history with sync
             enable_macro: false,          // Security: automation disabled by default
+            enable_chat: true,            // Instant messaging enabled by default
         }
     }
 }

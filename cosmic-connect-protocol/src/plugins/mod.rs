@@ -100,6 +100,7 @@
 //! - [CConnect GitHub](https://github.com/KDE/cconnect-kde)
 
 pub mod battery;
+pub mod chat;
 pub mod clipboard;
 pub mod clipboardhistory;
 pub mod contacts;
