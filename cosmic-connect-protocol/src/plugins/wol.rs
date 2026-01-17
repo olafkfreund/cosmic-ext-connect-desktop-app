@@ -126,6 +126,16 @@ impl WolPlugin {
         }
     }
 
+    /// Get the stored MAC address
+    pub fn get_mac_address(&self) -> Option<String> {
+        self.mac_address.clone()
+    }
+
+    /// Set the MAC address (for loading from config)
+    pub fn set_mac_address(&mut self, mac: String) {
+        self.mac_address = Some(mac);
+    }
+
     /// Parse MAC address from various formats
     ///
     /// Accepts formats like:
@@ -285,8 +295,9 @@ impl WolPlugin {
 
         self.mac_address = Some(formatted);
 
-        // TODO: Persist to device config
-        // This should be saved to the device_configs.json file
+        // Note: Persistence is handled by the daemon via get_mac_address()
+        // The daemon should call get_mac_address() after packet handling
+        // and save it to DeviceConfig
 
         Ok(())
     }
@@ -308,6 +319,10 @@ impl Plugin for WolPlugin {
         self
     }
 
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
             "cconnect.wol.request".to_string(),
@@ -323,7 +338,9 @@ impl Plugin for WolPlugin {
         self.device_id = Some(device.id().to_string());
         info!("WOL plugin initialized for device {}", device.name());
 
-        // TODO: Load MAC address from device config if available
+        // Note: MAC address loading is handled by the daemon
+        // The daemon should call set_mac_address() after plugin initialization
+        // with the value from DeviceConfig
 
         Ok(())
     }

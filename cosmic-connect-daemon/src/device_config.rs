@@ -37,6 +37,10 @@ pub struct DeviceConfig {
     /// MAC address for Wake-on-LAN
     #[serde(default)]
     pub mac_address: Option<String>,
+
+    /// RemoteDesktop plugin-specific settings
+    #[serde(default)]
+    pub remotedesktop_settings: Option<RemoteDesktopSettings>,
 }
 
 /// Per-device plugin configuration
@@ -65,6 +69,66 @@ pub struct DevicePluginConfig {
     /// Enable MPRIS plugin for this device
     #[serde(default)]
     pub enable_mpris: Option<bool>,
+
+    /// Enable RemoteDesktop plugin for this device
+    #[serde(default)]
+    pub enable_remotedesktop: Option<bool>,
+
+    /// Enable FindMyPhone plugin for this device
+    #[serde(default)]
+    pub enable_findmyphone: Option<bool>,
+
+    /// Enable Lock plugin for this device
+    #[serde(default)]
+    pub enable_lock: Option<bool>,
+}
+
+/// RemoteDesktop plugin-specific settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteDesktopSettings {
+    /// Quality preset: "low", "medium", "high"
+    #[serde(default = "default_quality")]
+    pub quality: String,
+
+    /// Frames per second: 15, 30, or 60
+    #[serde(default = "default_fps")]
+    pub fps: u8,
+
+    /// Resolution mode: "native" or "custom"
+    #[serde(default = "default_resolution_mode")]
+    pub resolution_mode: String,
+
+    /// Custom width (only used if resolution_mode = "custom")
+    #[serde(default)]
+    pub custom_width: Option<u32>,
+
+    /// Custom height (only used if resolution_mode = "custom")
+    #[serde(default)]
+    pub custom_height: Option<u32>,
+}
+
+fn default_quality() -> String {
+    "medium".to_string()
+}
+
+fn default_fps() -> u8 {
+    30
+}
+
+fn default_resolution_mode() -> String {
+    "native".to_string()
+}
+
+impl Default for RemoteDesktopSettings {
+    fn default() -> Self {
+        Self {
+            quality: default_quality(),
+            fps: default_fps(),
+            resolution_mode: default_resolution_mode(),
+            custom_width: None,
+            custom_height: None,
+        }
+    }
 }
 
 impl Default for DevicePluginConfig {
@@ -76,6 +140,9 @@ impl Default for DevicePluginConfig {
             enable_share: None,
             enable_clipboard: None,
             enable_mpris: None,
+            enable_remotedesktop: None,
+            enable_findmyphone: None,
+            enable_lock: None,
         }
     }
 }
@@ -95,6 +162,7 @@ impl DeviceConfig {
             auto_connect: true,
             show_notifications: true,
             mac_address: None,
+            remotedesktop_settings: None,
         }
     }
 
@@ -131,6 +199,18 @@ impl DeviceConfig {
                 .plugins
                 .enable_mpris
                 .unwrap_or(global_config.enable_mpris),
+            "remotedesktop" => self
+                .plugins
+                .enable_remotedesktop
+                .unwrap_or(false), // Default to false for security
+            "findmyphone" => self
+                .plugins
+                .enable_findmyphone
+                .unwrap_or(global_config.enable_findmyphone),
+            "lock" => self
+                .plugins
+                .enable_lock
+                .unwrap_or(global_config.enable_lock),
             _ => {
                 warn!("Unknown plugin name: {}", plugin_name);
                 false
@@ -147,6 +227,9 @@ impl DeviceConfig {
             "share" => self.plugins.enable_share = Some(enabled),
             "clipboard" => self.plugins.enable_clipboard = Some(enabled),
             "mpris" => self.plugins.enable_mpris = Some(enabled),
+            "remotedesktop" => self.plugins.enable_remotedesktop = Some(enabled),
+            "findmyphone" => self.plugins.enable_findmyphone = Some(enabled),
+            "lock" => self.plugins.enable_lock = Some(enabled),
             _ => warn!("Unknown plugin name: {}", plugin_name),
         }
     }
@@ -160,8 +243,71 @@ impl DeviceConfig {
             "share" => self.plugins.enable_share = None,
             "clipboard" => self.plugins.enable_clipboard = None,
             "mpris" => self.plugins.enable_mpris = None,
+            "remotedesktop" => self.plugins.enable_remotedesktop = None,
+            "findmyphone" => self.plugins.enable_findmyphone = None,
+            "lock" => self.plugins.enable_lock = None,
             _ => warn!("Unknown plugin name: {}", plugin_name),
         }
+    }
+
+    /// Get RemoteDesktop settings for this device
+    pub fn get_remotedesktop_settings(&self) -> RemoteDesktopSettings {
+        self.remotedesktop_settings
+            .clone()
+            .unwrap_or_default()
+    }
+
+    /// Set RemoteDesktop settings for this device
+    pub fn set_remotedesktop_settings(&mut self, settings: RemoteDesktopSettings) {
+        self.remotedesktop_settings = Some(settings);
+    }
+
+    /// Clear RemoteDesktop settings (use defaults)
+    pub fn clear_remotedesktop_settings(&mut self) {
+        self.remotedesktop_settings = None;
+    }
+
+    /// Get MAC address for Wake-on-LAN
+    pub fn get_mac_address(&self) -> Option<String> {
+        self.mac_address.clone()
+    }
+
+    /// Set MAC address for Wake-on-LAN
+    ///
+    /// Validates MAC address format before storing.
+    /// Accepts formats: XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX
+    pub fn set_mac_address(&mut self, mac: String) -> Result<()> {
+        // Validate MAC address format
+        let normalized = mac.replace('-', ":");
+        let parts: Vec<&str> = normalized.split(':').collect();
+
+        if parts.len() != 6 {
+            return Err(anyhow::anyhow!(
+                "Invalid MAC address format: expected 6 octets, got {}",
+                parts.len()
+            ));
+        }
+
+        for part in &parts {
+            if part.len() != 2 {
+                return Err(anyhow::anyhow!(
+                    "Invalid MAC address format: each octet must be 2 hex digits"
+                ));
+            }
+            if !part.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Err(anyhow::anyhow!(
+                    "Invalid MAC address format: octets must be hexadecimal"
+                ));
+            }
+        }
+
+        self.mac_address = Some(normalized);
+        Ok(())
+    }
+
+    /// Clear MAC address
+    pub fn clear_mac_address(&mut self) {
+        self.mac_address = None;
     }
 }
 
