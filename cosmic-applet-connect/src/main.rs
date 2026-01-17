@@ -40,6 +40,75 @@ fn main() -> cosmic::iced::Result {
     cosmic::applet::run::<CConnectApplet>(())
 }
 
+/// Plugin metadata for UI display
+struct PluginMetadata {
+    id: &'static str,
+    name: &'static str,
+    description: &'static str,
+    icon: &'static str,
+    capability: &'static str,
+}
+
+/// Available plugins with their metadata
+const PLUGINS: &[PluginMetadata] = &[
+    PluginMetadata {
+        id: "ping",
+        name: "Ping",
+        description: "Send and receive pings",
+        icon: "user-available-symbolic",
+        capability: "cconnect.ping",
+    },
+    PluginMetadata {
+        id: "battery",
+        name: "Battery Monitor",
+        description: "Share battery status",
+        icon: "battery-symbolic",
+        capability: "cconnect.battery",
+    },
+    PluginMetadata {
+        id: "notification",
+        name: "Notifications",
+        description: "Sync notifications",
+        icon: "notification-symbolic",
+        capability: "cconnect.notification",
+    },
+    PluginMetadata {
+        id: "share",
+        name: "File Sharing",
+        description: "Send and receive files",
+        icon: "document-send-symbolic",
+        capability: "cconnect.share",
+    },
+    PluginMetadata {
+        id: "clipboard",
+        name: "Clipboard Sync",
+        description: "Share clipboard content",
+        icon: "edit-paste-symbolic",
+        capability: "cconnect.clipboard",
+    },
+    PluginMetadata {
+        id: "mpris",
+        name: "Media Control",
+        description: "Control media players",
+        icon: "multimedia-player-symbolic",
+        capability: "cconnect.mpris",
+    },
+    PluginMetadata {
+        id: "remotedesktop",
+        name: "Remote Desktop",
+        description: "VNC screen sharing",
+        icon: "preferences-desktop-remote-desktop-symbolic",
+        capability: "cconnect.remotedesktop",
+    },
+    PluginMetadata {
+        id: "findmyphone",
+        name: "Find My Phone",
+        description: "Ring device remotely",
+        icon: "find-location-symbolic",
+        capability: "cconnect.findmyphone",
+    },
+];
+
 #[derive(Debug, Clone)]
 struct DeviceState {
     device: Device,
@@ -54,6 +123,12 @@ struct CConnectApplet {
     dbus_client: Option<DbusClient>,
     mpris_players: Vec<String>,
     selected_player: Option<String>,
+    // Settings UI state
+    expanded_device_settings: Option<String>,                  // Currently expanded device_id
+    device_configs: HashMap<String, dbus_client::DeviceConfig>, // Device-specific configs
+    // RemoteDesktop settings UI state
+    remotedesktop_settings_device: Option<String>,             // device_id showing RemoteDesktop settings
+    remotedesktop_settings: HashMap<String, dbus_client::RemoteDesktopSettings>, // In-progress settings
 }
 
 #[derive(Debug, Clone)]
@@ -80,6 +155,21 @@ enum Message {
     MprisControl(String, String), // player, action
     MprisSetVolume(String, f64),  // player, volume
     MprisSeek(String, i64),       // player, offset_microseconds
+    // Settings UI
+    ToggleDeviceSettings(String),                    // device_id
+    SetDevicePluginEnabled(String, String, bool),   // device_id, plugin, enabled
+    ClearDevicePluginOverride(String, String),      // device_id, plugin
+    DeviceConfigLoaded(String, dbus_client::DeviceConfig), // device_id, config
+    // RemoteDesktop settings
+    ShowRemoteDesktopSettings(String),              // device_id
+    CloseRemoteDesktopSettings,
+    UpdateRemoteDesktopQuality(String, String),      // device_id, quality
+    UpdateRemoteDesktopFps(String, u8),              // device_id, fps
+    UpdateRemoteDesktopResolution(String, String),   // device_id, mode ("native" or "custom")
+    UpdateRemoteDesktopCustomWidth(String, String),  // device_id, width_str
+    UpdateRemoteDesktopCustomHeight(String, String), // device_id, height_str
+    SaveRemoteDesktopSettings(String),               // device_id
+    RemoteDesktopSettingsLoaded(String, dbus_client::RemoteDesktopSettings), // device_id, settings
 }
 
 /// Fetches device list from the daemon via D-Bus
@@ -262,6 +352,10 @@ impl cosmic::Application for CConnectApplet {
             dbus_client: None,
             mpris_players: Vec::new(),
             selected_player: None,
+            expanded_device_settings: None,
+            device_configs: HashMap::new(),
+            remotedesktop_settings_device: None,
+            remotedesktop_settings: HashMap::new(),
         };
         (app, Task::none())
     }
@@ -464,6 +558,192 @@ impl cosmic::Application for CConnectApplet {
                     },
                     |_| cosmic::Action::None,
                 )
+            }
+            Message::ToggleDeviceSettings(device_id) => {
+                if self.expanded_device_settings.as_ref() == Some(&device_id) {
+                    // Collapse
+                    self.expanded_device_settings = None;
+                    Task::none()
+                } else {
+                    // Expand - fetch config first
+                    self.expanded_device_settings = Some(device_id.clone());
+                    let device_id_for_async = device_id.clone();
+                    let device_id_for_msg = std::sync::Arc::new(device_id.clone());
+                    Task::perform(
+                        async move {
+                            match DbusClient::connect().await {
+                                Ok((client, _)) => client.get_device_config(&device_id_for_async).await,
+                                Err(e) => {
+                                    tracing::error!("Failed to connect to daemon: {}", e);
+                                    Err(e)
+                                }
+                            }
+                        },
+                        move |result| {
+                            let device_id = (*device_id_for_msg).clone();
+                            match result {
+                                Ok(config) => cosmic::Action::App(Message::DeviceConfigLoaded(device_id, config)),
+                                Err(e) => {
+                                    tracing::error!("Failed to load device config: {}", e);
+                                    cosmic::Action::App(Message::RefreshDevices)
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+            Message::SetDevicePluginEnabled(device_id, plugin, enabled) => {
+                tracing::info!("Setting plugin {} to {} for device {}", plugin, if enabled { "enabled" } else { "disabled" }, device_id);
+                let device_id_for_async = device_id.clone();
+                let device_id_for_msg = std::sync::Arc::new(device_id.clone());
+                device_operation_task(device_id, "set plugin enabled", move |client, id| {
+                    let plugin_clone = plugin.clone();
+                    async move {
+                        client.set_device_plugin_enabled(&id, &plugin_clone, enabled).await
+                    }
+                })
+                .chain(Task::perform(
+                    async move {
+                        match DbusClient::connect().await {
+                            Ok((client, _)) => client.get_device_config(&device_id_for_async).await,
+                            Err(e) => Err(e),
+                        }
+                    },
+                    move |result| {
+                        let device_id = (*device_id_for_msg).clone();
+                        match result {
+                            Ok(config) => cosmic::Action::App(Message::DeviceConfigLoaded(device_id, config)),
+                            Err(_) => cosmic::Action::App(Message::RefreshDevices),
+                        }
+                    },
+                ))
+            }
+            Message::ClearDevicePluginOverride(device_id, plugin) => {
+                tracing::info!("Clearing plugin override for {} on device {}", plugin, device_id);
+                let device_id_for_async = device_id.clone();
+                let device_id_for_msg = std::sync::Arc::new(device_id.clone());
+                device_operation_task(device_id, "clear plugin override", move |client, id| {
+                    let plugin_clone = plugin.clone();
+                    async move {
+                        client.clear_device_plugin_override(&id, &plugin_clone).await
+                    }
+                })
+                .chain(Task::perform(
+                    async move {
+                        match DbusClient::connect().await {
+                            Ok((client, _)) => client.get_device_config(&device_id_for_async).await,
+                            Err(e) => Err(e),
+                        }
+                    },
+                    move |result| {
+                        let device_id = (*device_id_for_msg).clone();
+                        match result {
+                            Ok(config) => cosmic::Action::App(Message::DeviceConfigLoaded(device_id, config)),
+                            Err(_) => cosmic::Action::App(Message::RefreshDevices),
+                        }
+                    },
+                ))
+            }
+            Message::DeviceConfigLoaded(device_id, config) => {
+                tracing::debug!("Device config loaded for {}", device_id);
+                self.device_configs.insert(device_id, config);
+                Task::none()
+            }
+            // RemoteDesktop settings handlers
+            Message::ShowRemoteDesktopSettings(device_id) => {
+                tracing::debug!("Showing RemoteDesktop settings for {}", device_id);
+                self.remotedesktop_settings_device = Some(device_id.clone());
+
+                let device_id_for_async = device_id.clone();
+                let device_id_for_msg = std::sync::Arc::new(device_id.clone());
+
+                // Fetch current settings
+                Task::perform(
+                    async move {
+                        match DbusClient::connect().await {
+                            Ok((client, _)) => client.get_remotedesktop_settings(&device_id_for_async).await,
+                            Err(e) => Err(e),
+                        }
+                    },
+                    move |result| {
+                        let device_id = (*device_id_for_msg).clone();
+                        match result {
+                            Ok(settings) => cosmic::Action::App(Message::RemoteDesktopSettingsLoaded(device_id, settings)),
+                            Err(e) => {
+                                tracing::error!("Failed to load RemoteDesktop settings: {}", e);
+                                cosmic::Action::App(Message::RefreshDevices)
+                            }
+                        }
+                    },
+                )
+            }
+            Message::CloseRemoteDesktopSettings => {
+                tracing::debug!("Closing RemoteDesktop settings");
+                self.remotedesktop_settings_device = None;
+                Task::none()
+            }
+            Message::RemoteDesktopSettingsLoaded(device_id, settings) => {
+                tracing::debug!("RemoteDesktop settings loaded for {}", device_id);
+                self.remotedesktop_settings.insert(device_id, settings);
+                Task::none()
+            }
+            Message::UpdateRemoteDesktopQuality(device_id, quality) => {
+                if let Some(settings) = self.remotedesktop_settings.get_mut(&device_id) {
+                    settings.quality = quality;
+                }
+                Task::none()
+            }
+            Message::UpdateRemoteDesktopFps(device_id, fps) => {
+                if let Some(settings) = self.remotedesktop_settings.get_mut(&device_id) {
+                    settings.fps = fps;
+                }
+                Task::none()
+            }
+            Message::UpdateRemoteDesktopResolution(device_id, mode) => {
+                if let Some(settings) = self.remotedesktop_settings.get_mut(&device_id) {
+                    settings.resolution_mode = mode;
+                }
+                Task::none()
+            }
+            Message::UpdateRemoteDesktopCustomWidth(device_id, width_str) => {
+                if let Some(settings) = self.remotedesktop_settings.get_mut(&device_id) {
+                    settings.custom_width = width_str.parse().ok();
+                }
+                Task::none()
+            }
+            Message::UpdateRemoteDesktopCustomHeight(device_id, height_str) => {
+                if let Some(settings) = self.remotedesktop_settings.get_mut(&device_id) {
+                    settings.custom_height = height_str.parse().ok();
+                }
+                Task::none()
+            }
+            Message::SaveRemoteDesktopSettings(device_id) => {
+                tracing::info!("Saving RemoteDesktop settings for {}", device_id);
+
+                if let Some(settings) = self.remotedesktop_settings.get(&device_id).cloned() {
+                    Task::perform(
+                        async move {
+                            match DbusClient::connect().await {
+                                Ok((client, _)) => {
+                                    client.set_remotedesktop_settings(&device_id, &settings).await
+                                }
+                                Err(e) => Err(e),
+                            }
+                        },
+                        move |result| match result {
+                            Ok(_) => {
+                                tracing::info!("RemoteDesktop settings saved successfully");
+                                cosmic::Action::App(Message::CloseRemoteDesktopSettings)
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to save RemoteDesktop settings: {}", e);
+                                cosmic::Action::App(Message::RefreshDevices)
+                            }
+                        },
+                    )
+                } else {
+                    Task::none()
+                }
             }
             Message::Surface(action) => {
                 cosmic::task::message(cosmic::Action::Cosmic(cosmic::app::Action::Surface(action)))
@@ -740,7 +1020,7 @@ impl CConnectApplet {
         let actions_row = self.build_device_actions(device, device_id);
 
         // Main device row layout with connection quality indicator
-        let content = column![
+        let mut content = column![
             row![
                 container(icon::from_name(device_icon).size(28))
                     .width(Length::Fixed(44.0))
@@ -771,6 +1051,26 @@ impl CConnectApplet {
         .spacing(0)
         .padding(Padding::from([8.0, 4.0]))
         .width(Length::Fill);
+
+        // Add settings panel if this device is expanded
+        if self.expanded_device_settings.as_ref() == Some(device_id) {
+            if let Some(config) = self.device_configs.get(device_id) {
+                content = content.push(
+                    container(self.device_settings_panel(device_id, device, config))
+                        .padding(Padding::from([8, 0, 0, 66])) // Indent under device name
+                );
+            }
+        }
+
+        // Add RemoteDesktop settings panel if active
+        if self.remotedesktop_settings_device.as_ref() == Some(device_id) {
+            if let Some(settings) = self.remotedesktop_settings.get(device_id) {
+                content = content.push(
+                    container(self.remotedesktop_settings_view(device_id, settings))
+                        .padding(Padding::from([8, 0, 0, 66])) // Indent under device name
+                );
+            }
+        }
 
         container(content).width(Length::Fill).into()
     }
@@ -816,6 +1116,14 @@ impl CConnectApplet {
             ));
         }
 
+        // Settings button (for paired devices)
+        if device.is_paired() {
+            actions = actions.push(action_button(
+                "emblem-system-symbolic",
+                Message::ToggleDeviceSettings(device_id.to_string()),
+            ));
+        }
+
         // Pair/Unpair button
         let (label, message) = if device.is_paired() {
             ("Unpair", Message::UnpairDevice(device_id.to_string()))
@@ -824,6 +1132,251 @@ impl CConnectApplet {
         };
         actions = actions.push(button::text(label).on_press(message).padding(6));
         actions
+    }
+
+    /// Builds the device settings panel UI
+    fn device_settings_panel<'a>(
+        &self,
+        device_id: &str,
+        device: &Device,
+        config: &dbus_client::DeviceConfig,
+    ) -> Element<'a, Message> {
+        use cosmic::widget::{horizontal_space, toggler};
+
+        // Header with close button
+        let header = row![
+            text("Plugin Settings").size(14),
+            horizontal_space(),
+            button::icon(icon::from_name("window-close-symbolic").size(14))
+                .on_press(Message::ToggleDeviceSettings(device_id.to_string()))
+                .padding(4)
+        ]
+        .width(Length::Fill)
+        .align_y(cosmic::iced::Alignment::Center);
+
+        // Build plugin list
+        let mut plugin_list = column![].spacing(8);
+
+        for plugin_meta in PLUGINS {
+            // Check if device supports this plugin
+            let is_supported = device.has_incoming_capability(plugin_meta.capability)
+                || device.has_outgoing_capability(plugin_meta.capability);
+
+            // Get current state (device override or global)
+            let plugin_enabled = config.get_plugin_enabled(plugin_meta.id);
+            let has_override = config.has_plugin_override(plugin_meta.id);
+
+            // Build plugin row
+            let mut plugin_row = row![
+                icon::from_name(plugin_meta.icon).size(16),
+                text(plugin_meta.name).size(12).width(Length::Fill),
+            ]
+            .spacing(8)
+            .align_y(cosmic::iced::Alignment::Center);
+
+            // Override indicator (🟢 or 🔴)
+            if has_override {
+                plugin_row = plugin_row.push(if plugin_enabled {
+                    text("🟢").size(10)
+                } else {
+                    text("🔴").size(10)
+                });
+            } else {
+                plugin_row = plugin_row.push(text("").size(10));
+            }
+
+            // Toggle switch
+            plugin_row = plugin_row.push(toggler(plugin_enabled).on_toggle({
+                let device_id = device_id.to_string();
+                let plugin_id = plugin_meta.id.to_string();
+                move |enabled| {
+                    Message::SetDevicePluginEnabled(device_id.clone(), plugin_id.clone(), enabled)
+                }
+            }));
+
+            // Reset button (if override exists)
+            if has_override {
+                plugin_row = plugin_row.push(
+                    button::icon(icon::from_name("view-refresh-symbolic").size(12))
+                        .on_press({
+                            let device_id = device_id.to_string();
+                            let plugin_id = plugin_meta.id.to_string();
+                            Message::ClearDevicePluginOverride(device_id, plugin_id)
+                        })
+                        .padding(4),
+                );
+            } else {
+                plugin_row = plugin_row.push(
+                    button::icon(icon::from_name("view-refresh-symbolic").size(12))
+                        .padding(4),
+                );
+            }
+
+            // Settings button (only for RemoteDesktop plugin)
+            if plugin_meta.id == "remotedesktop" {
+                plugin_row = plugin_row.push(
+                    button::icon(icon::from_name("emblem-system-symbolic").size(12))
+                        .on_press(Message::ShowRemoteDesktopSettings(device_id.to_string()))
+                        .padding(4),
+                );
+            }
+
+            // Add to list (grey out if not supported)
+            if is_supported {
+                plugin_list = plugin_list.push(plugin_row);
+            } else {
+                // Grey out unsupported plugins (just show them dimmed)
+                plugin_list = plugin_list.push(plugin_row);
+            }
+        }
+
+        // Footer with reset all button
+        let footer = button::text("Reset All Overrides")
+            .on_press(Message::ToggleDeviceSettings(device_id.to_string())) // TODO: implement ResetAllPluginOverrides
+            .padding(8);
+
+        // Combine everything
+        container(
+            column![
+                header,
+                divider::horizontal::default(),
+                scrollable(plugin_list).height(Length::Fixed(200.0)),
+                divider::horizontal::default(),
+                footer,
+            ]
+            .spacing(8),
+        )
+        .padding(12)
+        .into()
+    }
+
+    /// RemoteDesktop settings view with quality, FPS, and resolution controls
+    fn remotedesktop_settings_view<'a>(
+        &self,
+        device_id: &str,
+        settings: &dbus_client::RemoteDesktopSettings,
+    ) -> Element<'a, Message> {
+        use cosmic::widget::{horizontal_space, radio, text_input};
+
+        // Header with close button
+        let header = row![
+            text("Remote Desktop Settings").size(14),
+            horizontal_space(),
+            button::icon(icon::from_name("window-close-symbolic").size(14))
+                .on_press(Message::CloseRemoteDesktopSettings)
+                .padding(4)
+        ]
+        .width(Length::Fill)
+        .align_y(cosmic::iced::Alignment::Center);
+
+        // Quality dropdown
+        let quality_idx = match settings.quality.as_str() {
+            "low" => 0,
+            "medium" => 1,
+            "high" => 2,
+            _ => 1,
+        };
+
+        let quality_row = row![
+            text("Quality:").width(Length::Fixed(120.0)),
+            cosmic::widget::dropdown(
+                &["Low", "Medium", "High"],
+                Some(quality_idx),
+                {
+                    let device_id = device_id.to_string();
+                    move |idx| {
+                        let quality = match idx {
+                            0 => "low",
+                            1 => "medium",
+                            2 => "high",
+                            _ => "medium",
+                        }.to_string();
+                        Message::UpdateRemoteDesktopQuality(device_id.clone(), quality)
+                    }
+                }
+            )
+        ]
+        .spacing(8)
+        .align_y(cosmic::iced::Alignment::Center);
+
+        // FPS dropdown
+        let fps_idx = match settings.fps {
+            15 => 0,
+            30 => 1,
+            60 => 2,
+            _ => 1,
+        };
+
+        let fps_row = row![
+            text("Frame Rate:").width(Length::Fixed(120.0)),
+            cosmic::widget::dropdown(
+                &["15 FPS", "30 FPS", "60 FPS"],
+                Some(fps_idx),
+                {
+                    let device_id = device_id.to_string();
+                    move |idx| {
+                        let fps = match idx {
+                            0 => 15,
+                            1 => 30,
+                            2 => 60,
+                            _ => 30,
+                        };
+                        Message::UpdateRemoteDesktopFps(device_id.clone(), fps)
+                    }
+                }
+            )
+        ]
+        .spacing(8)
+        .align_y(cosmic::iced::Alignment::Center);
+
+        // Resolution mode radio buttons
+        let is_native = settings.resolution_mode == "native";
+        let resolution_radios = column![
+            radio(
+                "Native Resolution",
+                "native",
+                Some(settings.resolution_mode.as_str()).filter(|_| is_native),
+                {
+                    let device_id = device_id.to_string();
+                    move |_| Message::UpdateRemoteDesktopResolution(device_id.clone(), "native".to_string())
+                }
+            ),
+            radio(
+                "Custom Resolution",
+                "custom",
+                Some(settings.resolution_mode.as_str()).filter(|_| !is_native),
+                {
+                    let device_id = device_id.to_string();
+                    move |_| Message::UpdateRemoteDesktopResolution(device_id.clone(), "custom".to_string())
+                }
+            ),
+        ]
+        .spacing(4);
+
+        let resolution_row = row![
+            text("Resolution:").width(Length::Fixed(120.0)),
+            resolution_radios
+        ]
+        .spacing(8)
+        .align_y(cosmic::iced::Alignment::Start);
+
+        // Build content
+        let content = column![
+            header,
+            divider::horizontal::default(),
+            quality_row,
+            fps_row,
+            resolution_row,
+            divider::horizontal::default(),
+            button::text("Apply Settings")
+                .on_press(Message::SaveRemoteDesktopSettings(device_id.to_string()))
+                .padding(8),
+        ]
+        .spacing(12);
+
+        container(content)
+            .padding(12)
+            .into()
     }
 }
 

@@ -48,6 +48,100 @@ pub struct BatteryStatus {
     pub is_charging: bool,
 }
 
+/// Device-specific configuration
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DeviceConfig {
+    /// Device ID
+    pub device_id: String,
+    /// Optional nickname for the device
+    pub nickname: Option<String>,
+    /// Plugin configuration
+    pub plugins: DevicePluginConfig,
+    /// RemoteDesktop plugin-specific settings
+    #[serde(default)]
+    pub remotedesktop_settings: Option<RemoteDesktopSettings>,
+}
+
+/// Per-device plugin configuration
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DevicePluginConfig {
+    /// Ping plugin (None = use global config)
+    pub enable_ping: Option<bool>,
+    /// Battery plugin
+    pub enable_battery: Option<bool>,
+    /// Notification plugin
+    pub enable_notification: Option<bool>,
+    /// Share plugin
+    pub enable_share: Option<bool>,
+    /// Clipboard plugin
+    pub enable_clipboard: Option<bool>,
+    /// MPRIS plugin
+    pub enable_mpris: Option<bool>,
+    /// RemoteDesktop plugin
+    pub enable_remotedesktop: Option<bool>,
+    /// FindMyPhone plugin
+    pub enable_findmyphone: Option<bool>,
+}
+
+/// RemoteDesktop plugin-specific settings
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RemoteDesktopSettings {
+    /// Quality preset: "low", "medium", "high"
+    pub quality: String,
+    /// Frames per second: 15, 30, or 60
+    pub fps: u8,
+    /// Resolution mode: "native" or "custom"
+    pub resolution_mode: String,
+    /// Custom width (only used if resolution_mode = "custom")
+    pub custom_width: Option<u32>,
+    /// Custom height (only used if resolution_mode = "custom")
+    pub custom_height: Option<u32>,
+}
+
+impl Default for RemoteDesktopSettings {
+    fn default() -> Self {
+        Self {
+            quality: "medium".to_string(),
+            fps: 30,
+            resolution_mode: "native".to_string(),
+            custom_width: None,
+            custom_height: None,
+        }
+    }
+}
+
+impl DeviceConfig {
+    /// Get whether a plugin is enabled (considering device override vs global)
+    pub fn get_plugin_enabled(&self, plugin: &str) -> bool {
+        match plugin {
+            "ping" => self.plugins.enable_ping.unwrap_or(true),
+            "battery" => self.plugins.enable_battery.unwrap_or(true),
+            "notification" => self.plugins.enable_notification.unwrap_or(true),
+            "share" => self.plugins.enable_share.unwrap_or(true),
+            "clipboard" => self.plugins.enable_clipboard.unwrap_or(true),
+            "mpris" => self.plugins.enable_mpris.unwrap_or(true),
+            "remotedesktop" => self.plugins.enable_remotedesktop.unwrap_or(false),
+            "findmyphone" => self.plugins.enable_findmyphone.unwrap_or(true),
+            _ => false,
+        }
+    }
+
+    /// Check if a plugin has a device-specific override
+    pub fn has_plugin_override(&self, plugin: &str) -> bool {
+        match plugin {
+            "ping" => self.plugins.enable_ping.is_some(),
+            "battery" => self.plugins.enable_battery.is_some(),
+            "notification" => self.plugins.enable_notification.is_some(),
+            "share" => self.plugins.enable_share.is_some(),
+            "clipboard" => self.plugins.enable_clipboard.is_some(),
+            "mpris" => self.plugins.enable_mpris.is_some(),
+            "remotedesktop" => self.plugins.enable_remotedesktop.is_some(),
+            "findmyphone" => self.plugins.enable_findmyphone.is_some(),
+            _ => false,
+        }
+    }
+}
+
 /// Events emitted by the daemon
 #[derive(Debug, Clone)]
 pub enum DaemonEvent {
@@ -69,6 +163,12 @@ pub enum DaemonEvent {
         device_id: String,
         plugin: String,
         data: String,
+    },
+    /// Device plugin state changed
+    DevicePluginStateChanged {
+        device_id: String,
+        plugin_name: String,
+        enabled: bool,
     },
     /// Daemon disconnected
     DaemonDisconnected,
@@ -138,6 +238,28 @@ trait CConnect {
     /// Seek MPRIS player position
     async fn mpris_seek(&self, player: &str, offset_microseconds: i64) -> zbus::Result<()>;
 
+    /// Get device configuration (plugin settings)
+    async fn get_device_config(&self, device_id: &str) -> zbus::Result<String>;
+
+    /// Set plugin enabled state for a device
+    async fn set_device_plugin_enabled(
+        &self,
+        device_id: &str,
+        plugin: &str,
+        enabled: bool,
+    ) -> zbus::Result<()>;
+
+    /// Clear device-specific plugin override
+    async fn clear_device_plugin_override(&self, device_id: &str, plugin: &str)
+        -> zbus::Result<()>;
+
+    /// Get RemoteDesktop settings for a device
+    async fn get_remotedesktop_settings(&self, device_id: &str) -> zbus::Result<String>;
+
+    /// Set RemoteDesktop settings for a device
+    async fn set_remotedesktop_settings(&self, device_id: &str, settings_json: &str)
+        -> zbus::Result<()>;
+
     /// Signal: Device was added
     #[zbus(signal)]
     fn device_added(device_id: &str, device_info: DeviceInfo) -> zbus::Result<()>;
@@ -161,6 +283,10 @@ trait CConnect {
     /// Signal: Plugin event
     #[zbus(signal)]
     fn plugin_event(device_id: &str, plugin: &str, data: &str) -> zbus::Result<()>;
+
+    /// Signal: Device plugin state changed
+    #[zbus(signal)]
+    fn device_plugin_state_changed(device_id: &str, plugin_name: &str, enabled: bool) -> zbus::Result<()>;
 }
 
 /// DBus client for communicating with the daemon
@@ -280,6 +406,23 @@ impl DbusClient {
                         device_id,
                         plugin,
                         data,
+                    });
+                }
+            }
+        });
+
+        let event_tx = self.event_tx.clone();
+        let mut plugin_state_changed_stream = self.proxy.receive_device_plugin_state_changed().await?;
+        tokio::spawn(async move {
+            while let Some(signal) = plugin_state_changed_stream.next().await {
+                if let Ok(args) = signal.args() {
+                    let device_id = args.device_id().to_string();
+                    let plugin_name = args.plugin_name().to_string();
+                    let enabled = *args.enabled();
+                    let _ = event_tx.send(DaemonEvent::DevicePluginStateChanged {
+                        device_id,
+                        plugin_name,
+                        enabled,
                     });
                 }
             }
@@ -461,6 +604,90 @@ impl DbusClient {
             .mpris_seek(player, offset_microseconds)
             .await
             .context("Failed to seek MPRIS player")
+    }
+
+    /// Get device configuration (plugin settings)
+    pub async fn get_device_config(&self, device_id: &str) -> Result<DeviceConfig> {
+        debug!("Getting device config for {}", device_id);
+        let json = self
+            .proxy
+            .get_device_config(device_id)
+            .await
+            .context("Failed to get device config")?;
+
+        serde_json::from_str(&json).context("Failed to parse device config")
+    }
+
+    /// Set plugin enabled state for a device
+    ///
+    /// # Arguments
+    /// * `device_id` - Device ID
+    /// * `plugin` - Plugin name (e.g., "ping", "battery", "remotedesktop")
+    /// * `enabled` - Enable or disable the plugin
+    pub async fn set_device_plugin_enabled(
+        &self,
+        device_id: &str,
+        plugin: &str,
+        enabled: bool,
+    ) -> Result<()> {
+        info!(
+            "Setting plugin {} to {} for device {}",
+            plugin,
+            if enabled { "enabled" } else { "disabled" },
+            device_id
+        );
+        self.proxy
+            .set_device_plugin_enabled(device_id, plugin, enabled)
+            .await
+            .context("Failed to set device plugin enabled")
+    }
+
+    /// Clear device-specific plugin override
+    ///
+    /// # Arguments
+    /// * `device_id` - Device ID
+    /// * `plugin` - Plugin name
+    pub async fn clear_device_plugin_override(&self, device_id: &str, plugin: &str) -> Result<()> {
+        info!("Clearing plugin override for {} on device {}", plugin, device_id);
+        self.proxy
+            .clear_device_plugin_override(device_id, plugin)
+            .await
+            .context("Failed to clear device plugin override")
+    }
+
+    /// Get RemoteDesktop settings for a device
+    ///
+    /// # Arguments
+    /// * `device_id` - Device ID
+    pub async fn get_remotedesktop_settings(&self, device_id: &str) -> Result<RemoteDesktopSettings> {
+        debug!("Getting RemoteDesktop settings for {}", device_id);
+        let json = self
+            .proxy
+            .get_remotedesktop_settings(device_id)
+            .await
+            .context("Failed to get RemoteDesktop settings")?;
+
+        serde_json::from_str(&json).context("Failed to parse RemoteDesktop settings")
+    }
+
+    /// Set RemoteDesktop settings for a device
+    ///
+    /// # Arguments
+    /// * `device_id` - Device ID
+    /// * `settings` - RemoteDesktop settings to save
+    pub async fn set_remotedesktop_settings(
+        &self,
+        device_id: &str,
+        settings: &RemoteDesktopSettings,
+    ) -> Result<()> {
+        info!("Setting RemoteDesktop settings for {}", device_id);
+        let json = serde_json::to_string(settings)
+            .context("Failed to serialize RemoteDesktop settings")?;
+
+        self.proxy
+            .set_remotedesktop_settings(device_id, &json)
+            .await
+            .context("Failed to set RemoteDesktop settings")
     }
 
     /// Check if daemon is available
