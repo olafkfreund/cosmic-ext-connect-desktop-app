@@ -105,6 +105,7 @@ pub mod clipboardhistory;
 pub mod contacts;
 pub mod findmyphone;
 pub mod lock;
+pub mod r#macro;
 pub mod mpris;
 pub mod notification;
 pub mod ping;

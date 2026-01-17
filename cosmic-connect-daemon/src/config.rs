@@ -216,6 +216,10 @@ pub struct PluginConfig {
     /// Enable ClipboardHistory plugin (persistent clipboard history)
     #[serde(default = "default_true")]
     pub enable_clipboardhistory: bool,
+
+    /// Enable Macro plugin (automation scripts)
+    #[serde(default = "default_false")]
+    pub enable_macro: bool,
 }
 
 /// Storage paths configuration
@@ -351,6 +355,7 @@ impl Default for PluginConfig {
             enable_remotedesktop: false,  // Security: disabled by default, requires explicit opt-in
             enable_power: false,          // Security: power control disabled by default
             enable_clipboardhistory: true, // Clipboard history with sync
+            enable_macro: false,          // Security: automation disabled by default
         }
     }
 }

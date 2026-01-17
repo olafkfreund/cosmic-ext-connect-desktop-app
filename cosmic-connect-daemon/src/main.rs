@@ -20,10 +20,11 @@ use cosmic_connect_protocol::{
         findmyphone::FindMyPhonePluginFactory, lock::LockPluginFactory,
         mpris::MprisPluginFactory, notification::NotificationPluginFactory,
         ping::PingPluginFactory, power::PowerPluginFactory,
-        presenter::PresenterPluginFactory, remoteinput::RemoteInputPluginFactory,
-        runcommand::RunCommandPluginFactory, screenshot::ScreenshotPluginFactory,
-        share::SharePluginFactory, systemmonitor::SystemMonitorPluginFactory,
-        telephony::TelephonyPluginFactory, wol::WolPluginFactory, PluginManager,
+        presenter::PresenterPluginFactory, r#macro::MacroPluginFactory,
+        remoteinput::RemoteInputPluginFactory, runcommand::RunCommandPluginFactory,
+        screenshot::ScreenshotPluginFactory, share::SharePluginFactory,
+        systemmonitor::SystemMonitorPluginFactory, telephony::TelephonyPluginFactory,
+        wol::WolPluginFactory, PluginManager,
     },
     CertificateInfo, DeviceInfo, DeviceManager, DeviceType, TransportManager,
     TransportManagerConfig, TransportManagerEvent,
@@ -417,6 +418,13 @@ impl Daemon {
             manager
                 .register_factory(Arc::new(ClipboardHistoryPluginFactory))
                 .context("Failed to register ClipboardHistory plugin factory")?;
+        }
+
+        if config.plugins.enable_macro {
+            info!("Registering Macro plugin factory");
+            manager
+                .register_factory(Arc::new(MacroPluginFactory))
+                .context("Failed to register Macro plugin factory")?;
         }
 
         info!(
