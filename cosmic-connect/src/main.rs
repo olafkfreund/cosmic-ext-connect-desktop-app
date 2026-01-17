@@ -9,7 +9,6 @@ use cosmic::iced::{
 };
 use cosmic::widget::{self, nav_bar};
 use cosmic::{theme, Application, Element};
-use cosmic::cosmic_theme::Spacing;
 use std::collections::HashMap;
 
 use dbus_client::{DaemonEvent, DbusClient};
@@ -835,7 +834,7 @@ impl Application for CConnectApp {
     }
 
     fn subscription(&self) -> cosmic::iced::Subscription<Self::Message> {
-        use cosmic::iced::keyboard::{self, Key, Modifiers};
+        use cosmic::iced::keyboard::{self, Key};
         use cosmic::iced::event;
 
         let keyboard_sub = event::listen_with(|event, _status, _id| {
@@ -1469,7 +1468,7 @@ impl CConnectApp {
         );
 
         // Device type selector buttons
-        let device_types = vec!["desktop", "laptop", "tablet"];
+        let device_types = ["desktop", "laptop", "tablet"];
         let current_type = &config.device.device_type;
 
         let type_buttons: Vec<Element<'_, Message>> = device_types.iter().map(|&dt| {

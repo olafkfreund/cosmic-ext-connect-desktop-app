@@ -108,7 +108,7 @@ impl ErrorHandler {
                     .await?;
             }
 
-            ProtocolError::Timeout(msg) => {
+            ProtocolError::Timeout(_msg) => {
                 notifier.notify_connection_timeout(device_name).await?;
             }
 
@@ -153,7 +153,7 @@ impl ErrorHandler {
 
             ProtocolError::CertificateValidation(msg) => {
                 notifier
-                    .notify_certificate_error(device_name, &msg)
+                    .notify_certificate_error(device_name, msg)
                     .await?;
             }
 

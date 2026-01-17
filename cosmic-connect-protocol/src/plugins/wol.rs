@@ -89,9 +89,8 @@
 
 use crate::{Device, Packet, ProtocolError, Result};
 use async_trait::async_trait;
-use serde_json::{json, Value};
 use std::net::UdpSocket;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use super::{Plugin, PluginFactory};
 

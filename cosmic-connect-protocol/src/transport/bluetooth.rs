@@ -10,7 +10,7 @@ use crate::transport::{
 use crate::{Packet, ProtocolError, Result};
 use async_trait::async_trait;
 use btleplug::api::{
-    Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter, WriteType,
+    Central, Manager as _, Peripheral as _, ScanFilter, WriteType,
 };
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures::StreamExt;
@@ -71,12 +71,12 @@ impl BluetoothConnection {
         // Get Bluetooth adapter
         let manager = Manager::new()
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         let adapters = manager
             .adapters()
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         let adapter = adapters
             .into_iter()
@@ -93,7 +93,7 @@ impl BluetoothConnection {
         peripheral
             .connect()
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         debug!("Connected to peripheral, discovering services...");
 
@@ -101,7 +101,7 @@ impl BluetoothConnection {
         peripheral
             .discover_services()
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         // Find characteristics
         let (read_char, write_char) = Self::find_characteristics(&peripheral, service_uuid).await?;
@@ -111,7 +111,7 @@ impl BluetoothConnection {
             peripheral
                 .subscribe(char)
                 .await
-                .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+                .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
         }
 
         info!("Successfully connected to Bluetooth device: {}", address);
@@ -140,7 +140,7 @@ impl BluetoothConnection {
                 services: vec![service_uuid],
             })
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         // Wait for device to be discovered (with timeout)
         let start = std::time::Instant::now();
@@ -150,7 +150,7 @@ impl BluetoothConnection {
             let peripherals = adapter
                 .peripherals()
                 .await
-                .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+                .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
             for peripheral in peripherals {
                 if let Ok(Some(props)) = peripheral.properties().await {
@@ -159,8 +159,7 @@ impl BluetoothConnection {
                             adapter
                                 .stop_scan()
                                 .await
-                                .map_err(|e| ProtocolError::Io(std::io::Error::new(
-                                    std::io::ErrorKind::Other,
+                                .map_err(|e| ProtocolError::Io(std::io::Error::other(
                                     e,
                                 )))?;
                             return Ok(peripheral);
@@ -175,7 +174,7 @@ impl BluetoothConnection {
         adapter
             .stop_scan()
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         Err(ProtocolError::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -220,7 +219,7 @@ impl BluetoothConnection {
         self.peripheral
             .disconnect()
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         Ok(())
     }
@@ -291,7 +290,7 @@ impl Transport for BluetoothConnection {
         self.peripheral
             .write(write_char, &data_to_send, WriteType::WithResponse)
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         debug!("Packet sent successfully to {}", self.remote_address);
         Ok(())
@@ -300,7 +299,7 @@ impl Transport for BluetoothConnection {
     async fn receive_packet(&mut self) -> Result<Packet> {
         debug!("Waiting for packet from Bluetooth device {}", self.remote_address);
 
-        let read_char = self.read_char.as_ref().ok_or_else(|| {
+        let _read_char = self.read_char.as_ref().ok_or_else(|| {
             ProtocolError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotConnected,
                 "Read characteristic not available",
@@ -309,7 +308,7 @@ impl Transport for BluetoothConnection {
 
         // Read notifications from peripheral
         let mut notification_stream = self.peripheral.notifications().await
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         // Wait for notification with timeout
         use futures::StreamExt;

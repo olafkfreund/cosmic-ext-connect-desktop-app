@@ -1763,7 +1763,7 @@ impl CConnectInterface {
         info!("DBus: SetDeviceTimeout called: {}", timeout_secs);
 
         // Validate timeout (between 5 and 300 seconds)
-        if timeout_secs < 5 || timeout_secs > 300 {
+        if !(5..=300).contains(&timeout_secs) {
             return Err(zbus::fdo::Error::Failed(format!(
                 "Invalid device timeout: {}. Must be between 5 and 300 seconds",
                 timeout_secs

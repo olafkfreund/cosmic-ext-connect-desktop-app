@@ -5,8 +5,8 @@
 
 use super::events::DiscoveryEvent;
 use crate::transport::CCONNECT_SERVICE_UUID;
-use crate::{DeviceInfo, Packet, ProtocolError, Result};
-use btleplug::api::{Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter};
+use crate::{DeviceInfo, ProtocolError, Result};
+use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter};
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures::StreamExt;
 use std::collections::HashMap;
@@ -113,12 +113,12 @@ impl BluetoothDiscoveryService {
     async fn get_adapter() -> Result<Adapter> {
         let manager = Manager::new()
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         let adapters = manager
             .adapters()
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         adapters
             .into_iter()
@@ -227,7 +227,7 @@ impl BluetoothDiscoveryService {
                 services: vec![CCONNECT_SERVICE_UUID],
             })
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         // Wait for scan to complete (scan for 5 seconds)
         tokio::time::sleep(Duration::from_secs(5)).await;
@@ -236,13 +236,13 @@ impl BluetoothDiscoveryService {
         adapter
             .stop_scan()
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         // Get discovered peripherals
         let peripherals = adapter
             .peripherals()
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         debug!("Found {} potential peripherals", peripherals.len());
 
@@ -275,7 +275,7 @@ impl BluetoothDiscoveryService {
         let properties = peripheral
             .properties()
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?
             .ok_or_else(|| {
                 ProtocolError::Io(std::io::Error::new(
                     std::io::ErrorKind::NotFound,

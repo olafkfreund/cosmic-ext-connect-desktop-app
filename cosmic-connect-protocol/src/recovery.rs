@@ -6,7 +6,7 @@
 //! - Transfer state tracking for resumption
 //! - State persistence for daemon crash recovery
 
-use crate::{Device, DeviceManager, Packet, ProtocolError, Result};
+use crate::{Packet, ProtocolError, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -14,7 +14,6 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::fs;
 use tokio::sync::RwLock;
-use tokio::time::sleep;
 use tracing::{debug, info, warn};
 
 /// Maximum number of reconnection attempts before giving up
@@ -394,7 +393,7 @@ impl RecoveryManager {
         let states_vec: Vec<&TransferState> = states.values().collect();
 
         let json = serde_json::to_string_pretty(&states_vec)
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         // Ensure parent directory exists
         if let Some(parent) = self.state_file_path.parent() {
@@ -439,7 +438,7 @@ impl RecoveryManager {
             })?;
 
         let states_vec: Vec<TransferState> = serde_json::from_str(&json)
-            .map_err(|e| ProtocolError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         let mut states = self.transfer_states.write().await;
         for state in states_vec {

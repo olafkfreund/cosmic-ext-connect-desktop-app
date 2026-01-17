@@ -24,7 +24,6 @@ use cosmic_connect_protocol::{
         share::SharePluginFactory, systemmonitor::SystemMonitorPluginFactory,
         telephony::TelephonyPluginFactory, wol::WolPluginFactory, PluginManager,
     },
-    transport::{TransportPreference, TransportType},
     CertificateInfo, DeviceInfo, DeviceManager, DeviceType, TransportManager,
     TransportManagerConfig, TransportManagerEvent,
 };
@@ -1030,7 +1029,7 @@ impl Daemon {
             let notifier_clone = notifier.clone();
             let pairing_service = self.pairing_service.clone();
             let pairing_notifications = self.pairing_notifications.clone();
-            let device_manager = self.device_manager.clone();
+            let _device_manager = self.device_manager.clone();
 
             tokio::spawn(async move {
                 use futures::StreamExt;
@@ -1110,7 +1109,7 @@ impl Daemon {
                 info!("Device {} connected from {}", device_id, remote_addr);
 
                 // Get device name for notifications
-                let device_name = {
+                let _device_name = {
                     let dev_manager = device_manager.read().await;
                     dev_manager.get_device(&device_id).map(|d| d.name().to_string())
                 };
@@ -1182,7 +1181,7 @@ impl Daemon {
                 info!("Device {} disconnected (reason: {:?})", device_id, reason);
 
                 // Get device name for notifications
-                let device_name = {
+                let _device_name = {
                     let dev_manager = device_manager.read().await;
                     dev_manager.get_device(&device_id).map(|d| d.name().to_string())
                 };
@@ -1873,7 +1872,7 @@ impl Daemon {
             transport_mgr.stop().await;
         } else {
             // Stop connection manager directly if no TransportManager
-            let mut connection_manager = self.connection_manager.write().await;
+            let connection_manager = self.connection_manager.write().await;
             connection_manager.stop().await;
         }
 

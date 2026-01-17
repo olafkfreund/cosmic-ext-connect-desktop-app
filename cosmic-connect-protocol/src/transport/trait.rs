@@ -144,8 +144,10 @@ impl std::fmt::Display for TransportType {
 
 /// Transport selection preference
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum TransportPreference {
     /// Prefer TCP if available
+    #[default]
     PreferTcp,
 
     /// Prefer Bluetooth if available
@@ -161,12 +163,6 @@ pub enum TransportPreference {
     Only(TransportType),
 }
 
-impl Default for TransportPreference {
-    fn default() -> Self {
-        // TCP is generally faster and more reliable
-        TransportPreference::PreferTcp
-    }
-}
 
 #[cfg(test)]
 mod tests {

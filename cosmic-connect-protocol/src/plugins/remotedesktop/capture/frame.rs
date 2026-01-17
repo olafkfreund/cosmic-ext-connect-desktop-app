@@ -169,7 +169,7 @@ impl EncodedFrame {
 
     /// Set compression ratio
     pub fn with_compression_ratio(mut self, original_size: usize) -> Self {
-        if self.data.len() > 0 && original_size > 0 {
+        if !self.data.is_empty() && original_size > 0 {
             self.compression_ratio = Some(original_size as f32 / self.data.len() as f32);
         }
         self
@@ -183,10 +183,12 @@ impl EncodedFrame {
 
 /// Quality preset for encoding
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum QualityPreset {
     /// Low quality, high compression (bandwidth constrained)
     Low,
     /// Medium quality, balanced
+    #[default]
     Medium,
     /// High quality, low compression
     High,
@@ -223,11 +225,6 @@ impl QualityPreset {
     }
 }
 
-impl Default for QualityPreset {
-    fn default() -> Self {
-        QualityPreset::Medium
-    }
-}
 
 #[cfg(test)]
 mod tests {

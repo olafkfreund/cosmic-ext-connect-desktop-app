@@ -63,7 +63,7 @@
 //! loop.run()
 //! ```
 
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// DBus signal interface for contacts
 ///

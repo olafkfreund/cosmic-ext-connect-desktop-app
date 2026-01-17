@@ -316,7 +316,7 @@ impl TransportManager {
                     "Connected to {} via {:?}",
                     device_id, primary_transport
                 );
-                return Ok(());
+                Ok(())
             }
             Err(e) => {
                 warn!(
@@ -339,7 +339,7 @@ impl TransportManager {
                 }
 
                 // No fallback available or disabled
-                return Err(e);
+                Err(e)
             }
         }
     }

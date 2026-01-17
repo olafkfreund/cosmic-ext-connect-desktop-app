@@ -104,8 +104,10 @@ pub struct TransportConfig {
 /// Transport preference configuration (serialization wrapper)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum TransportPreferenceConfig {
     /// Prefer TCP if available
+    #[default]
     PreferTcp,
     /// Prefer Bluetooth if available
     PreferBluetooth,
@@ -119,11 +121,6 @@ pub enum TransportPreferenceConfig {
     OnlyBluetooth,
 }
 
-impl Default for TransportPreferenceConfig {
-    fn default() -> Self {
-        Self::PreferTcp
-    }
-}
 
 impl From<TransportPreferenceConfig> for TransportPreference {
     fn from(config: TransportPreferenceConfig) -> Self {

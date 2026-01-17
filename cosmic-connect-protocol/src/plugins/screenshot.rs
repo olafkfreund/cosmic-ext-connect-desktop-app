@@ -113,7 +113,6 @@
 
 use crate::{Device, Packet, ProtocolError, Result};
 use async_trait::async_trait;
-use serde_json::{json, Value};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};

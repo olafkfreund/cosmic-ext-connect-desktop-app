@@ -282,7 +282,7 @@ impl LockPlugin {
             .arg("lock-session")
             .output()
             .await
-            .map_err(|e| crate::ProtocolError::Io(e))?;
+            .map_err(crate::ProtocolError::Io)?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -305,7 +305,7 @@ impl LockPlugin {
             .arg("unlock-session")
             .output()
             .await
-            .map_err(|e| crate::ProtocolError::Io(e))?;
+            .map_err(crate::ProtocolError::Io)?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -329,7 +329,7 @@ impl LockPlugin {
             .arg("--property=LockedHint")
             .output()
             .await
-            .map_err(|e| crate::ProtocolError::Io(e))?;
+            .map_err(crate::ProtocolError::Io)?;
 
         if !output.status.success() {
             return Ok(false); // Default to unlocked if we can't determine

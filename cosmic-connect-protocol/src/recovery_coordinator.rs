@@ -5,7 +5,7 @@
 //! listening for connection failures and triggering appropriate recovery actions.
 
 use crate::{
-    ConnectionEvent, ConnectionManager, Device, DeviceManager, RecoveryManager, Result,
+    ConnectionEvent, ConnectionManager, DeviceManager, RecoveryManager, Result,
 };
 use std::net::SocketAddr;
 use std::sync::Arc;

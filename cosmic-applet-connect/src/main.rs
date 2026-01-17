@@ -829,7 +829,7 @@ impl cosmic::Application for CConnectApplet {
             btn,
             "CConnect",
             self.popup.is_some(),
-            |a| Message::Surface(a),
+            Message::Surface,
             None,
         ))
     }
@@ -1309,7 +1309,7 @@ impl CConnectApplet {
         device_id: &str,
         settings: &dbus_client::RemoteDesktopSettings,
     ) -> Element<'a, Message> {
-        use cosmic::widget::{horizontal_space, radio, text_input};
+        use cosmic::widget::{horizontal_space, radio};
 
         // Header with close button
         let header = row![

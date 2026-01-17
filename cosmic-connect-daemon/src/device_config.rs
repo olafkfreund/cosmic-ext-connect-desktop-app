@@ -45,6 +45,7 @@ pub struct DeviceConfig {
 
 /// Per-device plugin configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct DevicePluginConfig {
     /// Enable ping plugin for this device (None = use global config)
     #[serde(default)]
@@ -131,21 +132,6 @@ impl Default for RemoteDesktopSettings {
     }
 }
 
-impl Default for DevicePluginConfig {
-    fn default() -> Self {
-        Self {
-            enable_ping: None,
-            enable_battery: None,
-            enable_notification: None,
-            enable_share: None,
-            enable_clipboard: None,
-            enable_mpris: None,
-            enable_remotedesktop: None,
-            enable_findmyphone: None,
-            enable_lock: None,
-        }
-    }
-}
 
 fn default_true() -> bool {
     true

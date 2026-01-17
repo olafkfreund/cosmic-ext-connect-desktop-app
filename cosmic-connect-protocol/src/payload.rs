@@ -105,7 +105,7 @@ impl FileTransferInfo {
         let path = path.as_ref();
         let metadata = tokio::fs::metadata(path)
             .await
-            .map_err(|e| ProtocolError::Io(e))?;
+            .map_err(ProtocolError::Io)?;
 
         let filename = path
             .file_name()
@@ -226,7 +226,7 @@ impl PayloadServer {
     pub fn local_addr(&self) -> Result<SocketAddr> {
         self.listener
             .local_addr()
-            .map_err(|e| ProtocolError::Io(e))
+            .map_err(ProtocolError::Io)
     }
 
     /// Accept a connection and send a file
@@ -259,7 +259,7 @@ impl PayloadServer {
         // Get file size for progress tracking
         let file_size = tokio::fs::metadata(file_path)
             .await
-            .map_err(|e| ProtocolError::Io(e))?
+            .map_err(ProtocolError::Io)?
             .len();
 
         // Accept connection with timeout
@@ -271,14 +271,14 @@ impl PayloadServer {
                     "Connection timeout",
                 ))
             })?
-            .map_err(|e| ProtocolError::Io(e))?;
+            .map_err(ProtocolError::Io)?;
 
         info!("Accepted connection from {} for file transfer", remote_addr);
 
         // Open file
         let mut file = File::open(file_path)
             .await
-            .map_err(|e| ProtocolError::Io(e))?;
+            .map_err(ProtocolError::Io)?;
 
         // Stream file data
         let mut buffer = vec![0u8; BUFFER_SIZE];
@@ -294,7 +294,7 @@ impl PayloadServer {
                         "File read timeout",
                     ))
                 })?
-                .map_err(|e| ProtocolError::Io(e))?;
+                .map_err(ProtocolError::Io)?;
 
             if bytes_read == 0 {
                 break; // EOF
@@ -312,7 +312,7 @@ impl PayloadServer {
                     "Stream write timeout",
                 ))
             })?
-            .map_err(|e| ProtocolError::Io(e))?;
+            .map_err(ProtocolError::Io)?;
 
             total_bytes += bytes_read as u64;
 
@@ -334,7 +334,7 @@ impl PayloadServer {
         }
 
         // Flush stream
-        stream.flush().await.map_err(|e| ProtocolError::Io(e))?;
+        stream.flush().await.map_err(ProtocolError::Io)?;
 
         info!(
             "File transfer complete: {} bytes sent to {}",
@@ -367,7 +367,7 @@ impl PayloadClient {
     pub async fn new(host: impl ToSocketAddrs, port: u16) -> Result<Self> {
         let addrs: Vec<SocketAddr> = host
             .to_socket_addrs()
-            .map_err(|e| ProtocolError::Io(e))?
+            .map_err(ProtocolError::Io)?
             .collect();
 
         if addrs.is_empty() {
@@ -389,7 +389,7 @@ impl PayloadClient {
                     "Connection timeout",
                 ))
             })?
-            .map_err(|e| ProtocolError::Io(e))?;
+            .map_err(ProtocolError::Io)?;
 
         info!("Connected to payload server at {}", addr);
 
@@ -476,7 +476,7 @@ impl PayloadClient {
                     .map_err(|_| {
                         ProtocolError::Timeout("Stream read timeout during file transfer".to_string())
                     })?
-                    .map_err(|e| ProtocolError::Io(e))?;
+                    .map_err(ProtocolError::Io)?;
 
                 if bytes_read == 0 {
                     return Err(ProtocolError::Io(std::io::Error::new(
@@ -511,7 +511,7 @@ impl PayloadClient {
             }
 
             // Flush file
-            file.flush().await.map_err(|e| ProtocolError::Io(e))?;
+            file.flush().await.map_err(ProtocolError::Io)?;
 
             info!(
                 "File transfer complete: {} bytes received to {:?}",

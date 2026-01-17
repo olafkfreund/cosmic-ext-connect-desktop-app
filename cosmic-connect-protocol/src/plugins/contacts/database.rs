@@ -51,7 +51,7 @@
 
 use crate::Result;
 use std::path::Path;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Contact information
 #[derive(Debug, Clone)]

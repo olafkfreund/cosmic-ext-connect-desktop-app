@@ -549,7 +549,7 @@ impl CosmicNotifier {
         use futures::stream::StreamExt;
 
         // Create a proxy for the notifications service
-        let proxy = zbus::Proxy::new(
+        let _proxy = zbus::Proxy::new(
             &self.connection,
             "org.freedesktop.Notifications",
             "/org/freedesktop/Notifications",

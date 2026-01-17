@@ -31,9 +31,9 @@ pub async fn check_disk_space(path: impl AsRef<Path>, required_bytes: u64) -> Re
     // Get available space using statvfs (Unix) or GetDiskFreeSpaceEx (Windows)
     #[cfg(unix)]
     {
-        use std::os::unix::fs::MetadataExt;
+        
 
-        let metadata = fs::metadata(path).await.map_err(|e| {
+        let _metadata = fs::metadata(path).await.map_err(|e| {
             ProtocolError::from_io_error(e, &format!("checking disk space at {}", path.display()))
         })?;
 
