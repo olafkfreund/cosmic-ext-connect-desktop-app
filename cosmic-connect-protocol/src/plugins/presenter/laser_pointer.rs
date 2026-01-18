@@ -112,7 +112,10 @@ impl LaserPointer {
     /// Show the laser pointer
     pub fn show(&mut self) {
         if !self.active {
-            info!("Laser pointer overlay shown at ({}, {})", self.position.0, self.position.1);
+            info!(
+                "Laser pointer overlay shown at ({}, {})",
+                self.position.0, self.position.1
+            );
             self.active = true;
 
             // TODO: Create Wayland layer-shell surface

@@ -260,9 +260,8 @@ impl RunCommandPlugin {
             }
 
             let config = self.config.read().await;
-            let contents = serde_json::to_string_pretty(&*config).map_err(|e| {
-                ProtocolError::Plugin(format!("Failed to serialize config: {}", e))
-            })?;
+            let contents = serde_json::to_string_pretty(&*config)
+                .map_err(|e| ProtocolError::Plugin(format!("Failed to serialize config: {}", e)))?;
 
             fs::write(config_path, contents).await.map_err(|e| {
                 ProtocolError::Plugin(format!("Failed to write config file: {}", e))
@@ -319,10 +318,7 @@ impl RunCommandPlugin {
             info!("Removed command '{}'", id);
             Ok(())
         } else {
-            Err(ProtocolError::Plugin(format!(
-                "Command '{}' not found",
-                id
-            )))
+            Err(ProtocolError::Plugin(format!("Command '{}' not found", id)))
         }
     }
 
@@ -362,8 +358,8 @@ impl RunCommandPlugin {
         let config = self.config.read().await;
 
         // Serialize command list as JSON string (as per protocol spec)
-        let command_list_json = serde_json::to_string(&config.commands)
-            .unwrap_or_else(|_| "{}".to_string());
+        let command_list_json =
+            serde_json::to_string(&config.commands).unwrap_or_else(|_| "{}".to_string());
 
         Packet::new(
             "cconnect.runcommand",
@@ -386,9 +382,10 @@ impl RunCommandPlugin {
     ///
     /// `Ok(())` if command executed successfully, `Err` otherwise
     async fn execute_command(&self, id: &str) -> Result<()> {
-        let command = self.get_command(id).await.ok_or_else(|| {
-            ProtocolError::Plugin(format!("Command '{}' not found", id))
-        })?;
+        let command = self
+            .get_command(id)
+            .await
+            .ok_or_else(|| ProtocolError::Plugin(format!("Command '{}' not found", id)))?;
 
         info!("Executing command '{}': {}", id, command.name);
         debug!("Command: {}", command.command);
@@ -533,10 +530,7 @@ impl Plugin for RunCommandPlugin {
 
     async fn stop(&mut self) -> Result<()> {
         let executed = self.commands_executed().await;
-        info!(
-            "RunCommand plugin stopped - {} commands executed",
-            executed
-        );
+        info!("RunCommand plugin stopped - {} commands executed", executed);
         Ok(())
     }
 
@@ -732,7 +726,10 @@ mod tests {
         plugin.init(&device).await.unwrap();
 
         // Add a command
-        plugin.add_command("test", "Test", "echo test").await.unwrap();
+        plugin
+            .add_command("test", "Test", "echo test")
+            .await
+            .unwrap();
 
         // Create request packet
         let packet = Packet::new(

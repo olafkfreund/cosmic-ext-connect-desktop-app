@@ -22,12 +22,13 @@ mod error;
 
 // Re-export from cosmic-connect-core
 pub use cosmic_connect_core::crypto::{
-    CertificateInfo, DeviceInfo as TlsDeviceInfo, TlsConfig, TlsConnection, TlsServer,
-    should_initiate_connection,
+    should_initiate_connection, CertificateInfo, DeviceInfo as TlsDeviceInfo, TlsConfig,
+    TlsConnection, TlsServer,
 };
 pub use cosmic_connect_core::{Packet as CorePacket, ProtocolError as CoreProtocolError};
 
 // Re-export local types
+pub use bluetooth_connection_manager::BluetoothConnectionManager;
 pub use connection::{ConnectionConfig, ConnectionEvent, ConnectionManager};
 pub use device::{ConnectionState, Device, DeviceManager};
 pub use discovery::{
@@ -42,10 +43,9 @@ pub use pairing::{
 };
 pub use payload::{FileTransferInfo, PayloadClient, PayloadServer};
 pub use plugins::{Plugin, PluginManager};
-pub use recovery::{RecoveryManager, ReconnectionStrategy, TransferState};
+pub use recovery::{ReconnectionStrategy, RecoveryManager, TransferState};
 pub use recovery_coordinator::RecoveryCoordinator;
 pub use resource_manager::{MemoryStats, ResourceConfig, ResourceManager, TransferInfo};
-pub use bluetooth_connection_manager::BluetoothConnectionManager;
 pub use transport::{
     BluetoothConnection, BluetoothTransportFactory, LatencyCategory, TcpConnection,
     TcpTransportFactory, Transport, TransportAddress, TransportCapabilities, TransportFactory,

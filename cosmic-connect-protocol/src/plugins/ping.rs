@@ -423,10 +423,7 @@ mod tests {
 
         // Send multiple pings
         for i in 0..5 {
-            let packet = Packet::new(
-                "cconnect.ping",
-                json!({ "message": format!("Ping {}", i) }),
-            );
+            let packet = Packet::new("cconnect.ping", json!({ "message": format!("Ping {}", i) }));
             plugin.handle_packet(&packet, &mut device).await.unwrap();
         }
 

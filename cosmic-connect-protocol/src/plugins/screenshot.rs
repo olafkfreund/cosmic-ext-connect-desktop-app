@@ -269,7 +269,11 @@ impl ScreenshotPlugin {
     }
 
     #[cfg(not(target_os = "linux"))]
-    fn capture_wayland(&self, _output_path: &PathBuf, _capture_type: CaptureType) -> Result<PathBuf> {
+    fn capture_wayland(
+        &self,
+        _output_path: &PathBuf,
+        _capture_type: CaptureType,
+    ) -> Result<PathBuf> {
         Err(ProtocolError::InvalidPacket(
             "Wayland not supported on this platform".to_string(),
         ))
@@ -288,7 +292,12 @@ impl ScreenshotPlugin {
             CaptureType::FullScreen => {
                 // No additional args needed
             }
-            CaptureType::Region { x, y, width, height } => {
+            CaptureType::Region {
+                x,
+                y,
+                width,
+                height,
+            } => {
                 cmd.arg("-a");
                 cmd.arg(format!("{},{},{},{}", x, y, width, height));
             }
@@ -420,10 +429,7 @@ impl ScreenshotPlugin {
 
         let screenshot_path = self.capture_screenshot(capture)?;
 
-        info!(
-            "Region screenshot captured: {}",
-            screenshot_path.display()
-        );
+        info!("Region screenshot captured: {}", screenshot_path.display());
 
         Ok(())
     }

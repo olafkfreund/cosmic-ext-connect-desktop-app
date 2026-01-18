@@ -258,9 +258,20 @@ impl Metrics {
         println!("\n=== CConnect Daemon Metrics ===");
         println!("Uptime: {}h {}m {}s", hours, minutes, seconds);
         println!("\nNetwork:");
-        println!("  Packets: {} sent, {} received", self.packets_sent, self.packets_received);
-        println!("  Bytes: {} sent, {} received", format_bytes(self.bytes_sent), format_bytes(self.bytes_received));
-        println!("  Throughput: {:.2} packets/s, {}/s", self.packets_per_second(), format_bytes(self.bandwidth_bps() as u64));
+        println!(
+            "  Packets: {} sent, {} received",
+            self.packets_sent, self.packets_received
+        );
+        println!(
+            "  Bytes: {} sent, {} received",
+            format_bytes(self.bytes_sent),
+            format_bytes(self.bytes_received)
+        );
+        println!(
+            "  Throughput: {:.2} packets/s, {}/s",
+            self.packets_per_second(),
+            format_bytes(self.bandwidth_bps() as u64)
+        );
         println!("\nDevices:");
         println!("  Active connections: {}", self.active_connections);
         println!("  Paired devices: {}", self.paired_devices);
@@ -268,7 +279,10 @@ impl Metrics {
         println!("  Invocations: {}", self.plugin_invocations);
         println!("  Errors: {}", self.plugin_errors);
         if self.plugin_invocations > 0 {
-            println!("  Error rate: {:.2}%", (self.plugin_errors as f64 / self.plugin_invocations as f64) * 100.0);
+            println!(
+                "  Error rate: {:.2}%",
+                (self.plugin_errors as f64 / self.plugin_invocations as f64) * 100.0
+            );
         }
         println!();
     }

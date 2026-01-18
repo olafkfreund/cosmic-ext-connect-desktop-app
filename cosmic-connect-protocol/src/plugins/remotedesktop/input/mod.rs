@@ -143,7 +143,10 @@ impl InputHandler {
             return Ok(());
         }
 
-        debug!("Pointer event: pos=({}, {}), buttons=0x{:02x}", x, y, button_mask);
+        debug!(
+            "Pointer event: pos=({}, {}), buttons=0x{:02x}",
+            x, y, button_mask
+        );
 
         // Handle mouse movement
         if x != self.mouse_x || y != self.mouse_y {

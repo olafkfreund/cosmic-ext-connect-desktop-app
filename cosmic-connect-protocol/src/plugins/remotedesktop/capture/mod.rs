@@ -170,8 +170,10 @@ impl WaylandCapture {
         // let stream = pipewire::stream::Stream::new(&core, self.pipewire_node.unwrap())?;
         // stream.connect(...)?;
 
-        info!("Mock: Screen capture session started with node {}",
-              self.pipewire_node.unwrap());
+        info!(
+            "Mock: Screen capture session started with node {}",
+            self.pipewire_node.unwrap()
+        );
         Ok(())
     }
 

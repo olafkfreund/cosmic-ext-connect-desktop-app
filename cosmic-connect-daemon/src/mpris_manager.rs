@@ -19,7 +19,7 @@ pub const MPRIS_PLAYER_INTERFACE: &str = "org.mpris.MediaPlayer2.Player";
 pub const MPRIS_BUS_PREFIX: &str = "org.mpris.MediaPlayer2.";
 
 /// Playback status from MPRIS2
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PlaybackStatus {
     Playing,
     Paused,
@@ -41,7 +41,7 @@ impl PlaybackStatus {
 }
 
 /// Loop status from MPRIS2
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LoopStatus {
     None,
     Track,
@@ -67,7 +67,7 @@ impl LoopStatus {
 }
 
 /// Media player metadata
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct PlayerMetadata {
     pub artist: Option<String>,
     pub title: Option<String>,
@@ -77,7 +77,7 @@ pub struct PlayerMetadata {
 }
 
 /// Player state from MPRIS2
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PlayerState {
     pub name: String,
     pub identity: String,
@@ -224,7 +224,10 @@ impl MprisManager {
         let can_play: bool = player_proxy.get_property("CanPlay").await.unwrap_or(true);
         let can_pause: bool = player_proxy.get_property("CanPause").await.unwrap_or(true);
         let can_go_next: bool = player_proxy.get_property("CanGoNext").await.unwrap_or(true);
-        let can_go_previous: bool = player_proxy.get_property("CanGoPrevious").await.unwrap_or(true);
+        let can_go_previous: bool = player_proxy
+            .get_property("CanGoPrevious")
+            .await
+            .unwrap_or(true);
         let can_seek: bool = player_proxy.get_property("CanSeek").await.unwrap_or(true);
 
         // Query metadata (static helper)
@@ -325,12 +328,20 @@ impl MprisManager {
             .await
             .context("Failed to call Seek")?;
 
-        debug!("Seeked {} microseconds on player {}", offset_microseconds, player);
+        debug!(
+            "Seeked {} microseconds on player {}",
+            offset_microseconds, player
+        );
         Ok(())
     }
 
     /// Set absolute position
-    pub async fn set_position(&self, player: &str, track_id: &str, position_microseconds: i64) -> Result<()> {
+    pub async fn set_position(
+        &self,
+        player: &str,
+        track_id: &str,
+        position_microseconds: i64,
+    ) -> Result<()> {
         use zbus::zvariant::ObjectPath;
 
         let bus_name = Self::player_bus_name(player);
@@ -349,7 +360,10 @@ impl MprisManager {
             .await
             .context("Failed to call SetPosition")?;
 
-        debug!("Set position to {} on player {}", position_microseconds, player);
+        debug!(
+            "Set position to {} on player {}",
+            position_microseconds, player
+        );
         Ok(())
     }
 
@@ -412,7 +426,11 @@ impl MprisManager {
             .await
             .context("Failed to set LoopStatus")?;
 
-        debug!("Set loop status to {} on player {}", loop_status.as_str(), player);
+        debug!(
+            "Set loop status to {} on player {}",
+            loop_status.as_str(),
+            player
+        );
         Ok(())
     }
 

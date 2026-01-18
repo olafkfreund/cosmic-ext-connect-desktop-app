@@ -56,7 +56,10 @@ impl std::fmt::Display for TransportAddress {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TransportAddress::Tcp(addr) => write!(f, "tcp://{}", addr),
-            TransportAddress::Bluetooth { address, service_uuid } => {
+            TransportAddress::Bluetooth {
+                address,
+                service_uuid,
+            } => {
                 if let Some(uuid) = service_uuid {
                     write!(f, "bluetooth://{} ({})", address, uuid)
                 } else {
@@ -143,8 +146,7 @@ impl std::fmt::Display for TransportType {
 }
 
 /// Transport selection preference
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TransportPreference {
     /// Prefer TCP if available
     #[default]
@@ -162,7 +164,6 @@ pub enum TransportPreference {
     /// Use the specified transport only
     Only(TransportType),
 }
-
 
 #[cfg(test)]
 mod tests {

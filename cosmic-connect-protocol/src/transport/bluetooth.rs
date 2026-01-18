@@ -9,9 +9,7 @@ use crate::transport::{
 };
 use crate::{Packet, ProtocolError, Result};
 use async_trait::async_trait;
-use btleplug::api::{
-    Central, Manager as _, Peripheral as _, ScanFilter, WriteType,
-};
+use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter, WriteType};
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures::StreamExt;
 use std::sync::Arc;
@@ -78,13 +76,12 @@ impl BluetoothConnection {
             .await
             .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
-        let adapter = adapters
-            .into_iter()
-            .next()
-            .ok_or_else(|| ProtocolError::Io(std::io::Error::new(
+        let adapter = adapters.into_iter().next().ok_or_else(|| {
+            ProtocolError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                "No Bluetooth adapter found"
-            )))?;
+                "No Bluetooth adapter found",
+            ))
+        })?;
 
         // Find the peripheral
         let peripheral = Self::find_peripheral(&adapter, &address, service_uuid).await?;
@@ -159,9 +156,7 @@ impl BluetoothConnection {
                             adapter
                                 .stop_scan()
                                 .await
-                                .map_err(|e| ProtocolError::Io(std::io::Error::other(
-                                    e,
-                                )))?;
+                                .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
                             return Ok(peripheral);
                         }
                     }
@@ -186,9 +181,11 @@ impl BluetoothConnection {
     async fn find_characteristics(
         peripheral: &Peripheral,
         service_uuid: Uuid,
-    ) -> Result<(Option<btleplug::api::Characteristic>, Option<btleplug::api::Characteristic>)> {
-        let characteristics = peripheral
-            .characteristics();
+    ) -> Result<(
+        Option<btleplug::api::Characteristic>,
+        Option<btleplug::api::Characteristic>,
+    )> {
+        let characteristics = peripheral.characteristics();
 
         let mut read_char = None;
         let mut write_char = None;
@@ -297,7 +294,10 @@ impl Transport for BluetoothConnection {
     }
 
     async fn receive_packet(&mut self) -> Result<Packet> {
-        debug!("Waiting for packet from Bluetooth device {}", self.remote_address);
+        debug!(
+            "Waiting for packet from Bluetooth device {}",
+            self.remote_address
+        );
 
         let _read_char = self.read_char.as_ref().ok_or_else(|| {
             ProtocolError::Io(std::io::Error::new(
@@ -307,7 +307,10 @@ impl Transport for BluetoothConnection {
         })?;
 
         // Read notifications from peripheral
-        let mut notification_stream = self.peripheral.notifications().await
+        let mut notification_stream = self
+            .peripheral
+            .notifications()
+            .await
             .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         // Wait for notification with timeout
@@ -373,7 +376,10 @@ impl Transport for BluetoothConnection {
     fn is_connected(&self) -> bool {
         // Check connection state
         // Note: We use try_lock to avoid blocking, if locked assume connected
-        self.connected.try_lock().map(|guard| *guard).unwrap_or(true)
+        self.connected
+            .try_lock()
+            .map(|guard| *guard)
+            .unwrap_or(true)
     }
 }
 
@@ -407,7 +413,10 @@ impl Default for BluetoothTransportFactory {
 impl TransportFactory for BluetoothTransportFactory {
     async fn connect(&self, address: TransportAddress) -> Result<Box<dyn Transport>> {
         match address {
-            TransportAddress::Bluetooth { address, service_uuid } => {
+            TransportAddress::Bluetooth {
+                address,
+                service_uuid,
+            } => {
                 let uuid = service_uuid.unwrap_or(self.service_uuid);
                 let connection = BluetoothConnection::connect(address, uuid).await?;
                 Ok(Box::new(connection))

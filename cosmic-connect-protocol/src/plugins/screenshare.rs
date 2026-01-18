@@ -474,10 +474,16 @@ impl ScreenSharePlugin {
     pub fn add_viewer(&mut self, viewer_id: String) -> Result<()> {
         if let Some(session) = &mut self.active_session {
             session.add_viewer(viewer_id.clone())?;
-            info!("Added viewer: {} (total: {})", viewer_id, session.viewers.len());
+            info!(
+                "Added viewer: {} (total: {})",
+                viewer_id,
+                session.viewers.len()
+            );
             Ok(())
         } else {
-            Err(ProtocolError::Plugin("No active sharing session".to_string()))
+            Err(ProtocolError::Plugin(
+                "No active sharing session".to_string(),
+            ))
         }
     }
 
@@ -485,7 +491,11 @@ impl ScreenSharePlugin {
     pub fn remove_viewer(&mut self, viewer_id: &str) {
         if let Some(session) = &mut self.active_session {
             session.remove_viewer(viewer_id);
-            info!("Removed viewer: {} (remaining: {})", viewer_id, session.viewers.len());
+            info!(
+                "Removed viewer: {} (remaining: {})",
+                viewer_id,
+                session.viewers.len()
+            );
         }
     }
 
@@ -560,7 +570,10 @@ impl Plugin for ScreenSharePlugin {
     }
 
     async fn init(&mut self, device: &Device) -> Result<()> {
-        info!("Initializing ScreenShare plugin for device {}", device.name());
+        info!(
+            "Initializing ScreenShare plugin for device {}",
+            device.name()
+        );
         self.device_id = Some(device.id().to_string());
 
         // TODO: Detect available screen capture methods
@@ -830,7 +843,10 @@ mod tests {
         plugin.start().await.unwrap();
 
         // Start receiving first
-        let screenshare_plugin = plugin.as_any_mut().downcast_mut::<ScreenSharePlugin>().unwrap();
+        let screenshare_plugin = plugin
+            .as_any_mut()
+            .downcast_mut::<ScreenSharePlugin>()
+            .unwrap();
         screenshare_plugin.receiving = true;
 
         let packet = Packet {

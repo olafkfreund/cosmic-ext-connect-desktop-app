@@ -31,8 +31,6 @@ pub async fn check_disk_space(path: impl AsRef<Path>, required_bytes: u64) -> Re
     // Get available space using statvfs (Unix) or GetDiskFreeSpaceEx (Windows)
     #[cfg(unix)]
     {
-        
-
         let _metadata = fs::metadata(path).await.map_err(|e| {
             ProtocolError::from_io_error(e, &format!("checking disk space at {}", path.display()))
         })?;
@@ -207,11 +205,7 @@ pub async fn cleanup_partial_file(path: impl AsRef<Path>) {
 
     if path.exists() {
         if let Err(e) = fs::remove_file(path).await {
-            warn!(
-                "Failed to clean up partial file {}: {}",
-                path.display(),
-                e
-            );
+            warn!("Failed to clean up partial file {}: {}", path.display(), e);
         } else {
             debug!("Cleaned up partial file: {}", path.display());
         }
@@ -240,10 +234,7 @@ pub async fn cleanup_partial_file(path: impl AsRef<Path>) {
 /// // Returns: /home/user/Downloads/file.txt
 /// // or /home/user/Downloads/file (1).txt if file.txt exists
 /// ```
-pub async fn get_unique_download_path(
-    base_dir: impl AsRef<Path>,
-    filename: &str,
-) -> PathBuf {
+pub async fn get_unique_download_path(base_dir: impl AsRef<Path>, filename: &str) -> PathBuf {
     let base_dir = base_dir.as_ref();
     let mut path = base_dir.join(filename);
 
@@ -368,7 +359,10 @@ mod tests {
         let file_path = temp.path().join("partial.txt");
 
         // Create a file
-        std::fs::File::create(&file_path).unwrap().write_all(b"partial").unwrap();
+        std::fs::File::create(&file_path)
+            .unwrap()
+            .write_all(b"partial")
+            .unwrap();
         assert!(file_path.exists());
 
         // Clean it up

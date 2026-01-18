@@ -429,9 +429,7 @@ impl ProtocolError {
         use std::io::ErrorKind;
 
         match error.kind() {
-            ErrorKind::TimedOut => {
-                ProtocolError::Timeout(format!("{}: {}", context, error))
-            }
+            ErrorKind::TimedOut => ProtocolError::Timeout(format!("{}: {}", context, error)),
             ErrorKind::ConnectionRefused => {
                 ProtocolError::ConnectionRefused(format!("{}: {}", context, error))
             }
@@ -442,7 +440,10 @@ impl ProtocolError {
                 ProtocolError::PermissionDenied(format!("{}: {}", context, error))
             }
             ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted | ErrorKind::BrokenPipe => {
-                ProtocolError::NetworkError(format!("{}: connection interrupted ({})", context, error))
+                ProtocolError::NetworkError(format!(
+                    "{}: connection interrupted ({})",
+                    context, error
+                ))
             }
             _ => ProtocolError::Io(error),
         }
@@ -524,7 +525,10 @@ impl ProtocolError {
                 "Device not paired. Please pair the device first.".to_string()
             }
             ProtocolError::DeviceNotFound(id) => {
-                format!("Device '{}' not found. Check if the device is connected.", id)
+                format!(
+                    "Device '{}' not found. Check if the device is connected.",
+                    id
+                )
             }
             ProtocolError::Timeout(msg) => {
                 format!("Connection timeout: {}. Check network connection.", msg)
@@ -539,7 +543,10 @@ impl ProtocolError {
                 format!("Network error: {}. Connection may be unstable.", msg)
             }
             ProtocolError::PermissionDenied(msg) => {
-                format!("Permission denied: {}. Check file and directory permissions.", msg)
+                format!(
+                    "Permission denied: {}. Check file and directory permissions.",
+                    msg
+                )
             }
             ProtocolError::ResourceExhausted(msg) => {
                 format!("Resource exhausted: {}. Free up space and try again.", msg)
@@ -548,13 +555,22 @@ impl ProtocolError {
                 format!("Configuration error: {}. Check your settings.", msg)
             }
             ProtocolError::ProtocolVersionMismatch(msg) => {
-                format!("Incompatible protocol version: {}. Update both applications.", msg)
+                format!(
+                    "Incompatible protocol version: {}. Update both applications.",
+                    msg
+                )
             }
             ProtocolError::CertificateValidation(msg) => {
-                format!("Certificate validation failed: {}. You may need to re-pair.", msg)
+                format!(
+                    "Certificate validation failed: {}. You may need to re-pair.",
+                    msg
+                )
             }
             ProtocolError::PacketSizeExceeded(size, max) => {
-                format!("Packet too large ({} bytes, max {} bytes). Try sending smaller files.", size, max)
+                format!(
+                    "Packet too large ({} bytes, max {} bytes). Try sending smaller files.",
+                    size, max
+                )
             }
             ProtocolError::InvalidPacket(msg) => {
                 format!("Invalid data received: {}.", msg)
@@ -581,7 +597,10 @@ impl ProtocolError {
                 format!("Core protocol error: {}.", e)
             }
             ProtocolError::Transport(msg) => {
-                format!("Transport error: {}. Check network and Bluetooth connections.", msg)
+                format!(
+                    "Transport error: {}. Check network and Bluetooth connections.",
+                    msg
+                )
             }
             ProtocolError::InvalidState(msg) => {
                 format!("Invalid state: {}.", msg)

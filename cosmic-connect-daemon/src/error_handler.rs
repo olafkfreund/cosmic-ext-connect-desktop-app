@@ -140,7 +140,8 @@ impl ErrorHandler {
                     .await?;
             }
 
-            ProtocolError::ResourceExhausted(msg) if msg.contains("disk") || msg.contains("space") =>
+            ProtocolError::ResourceExhausted(msg)
+                if msg.contains("disk") || msg.contains("space") =>
             {
                 notifier
                     .notify_disk_full_error("downloads directory")
@@ -152,30 +153,21 @@ impl ErrorHandler {
             }
 
             ProtocolError::CertificateValidation(msg) => {
-                notifier
-                    .notify_certificate_error(device_name, msg)
-                    .await?;
+                notifier.notify_certificate_error(device_name, msg).await?;
             }
 
             ProtocolError::Certificate(err) => {
                 let msg = format!("{}", err);
-                notifier
-                    .notify_certificate_error(device_name, &msg)
-                    .await?;
+                notifier.notify_certificate_error(device_name, &msg).await?;
             }
 
             ProtocolError::ProtocolVersionMismatch(msg) => {
-                notifier
-                    .notify_protocol_mismatch(device_name, msg)
-                    .await?;
+                notifier.notify_protocol_mismatch(device_name, msg).await?;
             }
 
             ProtocolError::Plugin(msg) => {
                 // Extract plugin name from error message if possible
-                let plugin_name = msg
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or("Unknown plugin");
+                let plugin_name = msg.split_whitespace().next().unwrap_or("Unknown plugin");
                 notifier
                     .notify_plugin_error(plugin_name, device_name, msg)
                     .await?;
@@ -184,11 +176,7 @@ impl ErrorHandler {
             _ => {
                 // Generic error notification
                 notifier
-                    .notify_error_with_recovery(
-                        "Operation Failed",
-                        &error.user_message(),
-                        None,
-                    )
+                    .notify_error_with_recovery("Operation Failed", &error.user_message(), None)
                     .await?;
             }
         }

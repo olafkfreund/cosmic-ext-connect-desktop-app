@@ -8,9 +8,7 @@
 //! ```
 
 #[cfg(feature = "remotedesktop")]
-use cosmic_connect_protocol::plugins::remotedesktop::capture::{
-    QualityPreset, WaylandCapture,
-};
+use cosmic_connect_protocol::plugins::remotedesktop::capture::{QualityPreset, WaylandCapture};
 
 #[cfg(feature = "remotedesktop")]
 #[tokio::main]
@@ -35,12 +33,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let monitors = capture.enumerate_monitors().await?;
     println!("   ✓ Found {} monitor(s):", monitors.len());
     for monitor in &monitors {
-        println!("      - {} ({}x{} @ {}Hz) {}",
-                 monitor.name,
-                 monitor.width,
-                 monitor.height,
-                 monitor.refresh_rate,
-                 if monitor.is_primary { "[PRIMARY]" } else { "" });
+        println!(
+            "      - {} ({}x{} @ {}Hz) {}",
+            monitor.name,
+            monitor.width,
+            monitor.height,
+            monitor.refresh_rate,
+            if monitor.is_primary { "[PRIMARY]" } else { "" }
+        );
     }
     println!();
 
@@ -68,12 +68,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("6. Capturing test frames...");
     for i in 1..=3 {
         let frame = capture.capture_frame().await?;
-        println!("   ✓ Frame {}: {}x{} {} ({} bytes)",
-                 i,
-                 frame.width,
-                 frame.height,
-                 frame.format.as_str(),
-                 frame.size());
+        println!(
+            "   ✓ Frame {}: {}x{} {} ({} bytes)",
+            i,
+            frame.width,
+            frame.height,
+            frame.format.as_str(),
+            frame.size()
+        );
 
         // Convert to image and save first frame
         if i == 1 {
@@ -89,12 +91,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test quality presets
     println!("7. Testing quality presets...");
-    let presets = [QualityPreset::Low, QualityPreset::Medium, QualityPreset::High];
+    let presets = [
+        QualityPreset::Low,
+        QualityPreset::Medium,
+        QualityPreset::High,
+    ];
     for preset in presets {
         let bitrate = preset.target_bitrate(1920, 1080, 30);
-        println!("   - {}: {} Mbps",
-                 preset.as_str(),
-                 bitrate / 1_000_000);
+        println!("   - {}: {} Mbps", preset.as_str(), bitrate / 1_000_000);
     }
     println!();
 

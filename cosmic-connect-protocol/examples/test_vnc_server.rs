@@ -31,10 +31,7 @@
 //! - Keyboard and mouse input (logged, not yet forwarded)
 
 #[cfg(feature = "remotedesktop")]
-use cosmic_connect_protocol::plugins::remotedesktop::{
-    capture::WaylandCapture,
-    vnc::VncServer,
-};
+use cosmic_connect_protocol::plugins::remotedesktop::{capture::WaylandCapture, vnc::VncServer};
 
 #[cfg(feature = "remotedesktop")]
 #[tokio::main]
@@ -59,11 +56,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   ✓ Found {} monitor(s)", monitors.len());
 
     if let Some(monitor) = monitors.first() {
-        println!("     - {} ({}x{} @ {}Hz)",
-            monitor.name,
-            monitor.width,
-            monitor.height,
-            monitor.refresh_rate
+        println!(
+            "     - {} ({}x{} @ {}Hz)",
+            monitor.name, monitor.width, monitor.height, monitor.refresh_rate
         );
         capture.select_monitors(vec![monitor.id.clone()]);
     }

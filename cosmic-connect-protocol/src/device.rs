@@ -273,7 +273,10 @@ impl DeviceManager {
         // Ensure parent directory exists
         if let Some(parent) = registry_path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
-                ProtocolError::from_io_error(e, &format!("creating registry directory {:?}", parent))
+                ProtocolError::from_io_error(
+                    e,
+                    &format!("creating registry directory {:?}", parent),
+                )
             })?;
         }
 
@@ -357,12 +360,16 @@ impl DeviceManager {
     }
 
     /// Update device from discovery info
-    pub fn update_from_discovery(&mut self, info: DeviceInfo) {
+    pub fn update_from_discovery(&mut self, info: DeviceInfo, address: std::net::SocketAddr) {
         let device_id = info.device_id.clone();
+        let host = address.ip().to_string();
+        let port = info.tcp_port;
 
         if let Some(device) = self.devices.get_mut(&device_id) {
             // Update existing device
             device.info = info;
+            device.host = Some(host);
+            device.port = Some(port);
             device.update_last_seen();
             debug!("Updated device from discovery: {}", device_id);
         } else {

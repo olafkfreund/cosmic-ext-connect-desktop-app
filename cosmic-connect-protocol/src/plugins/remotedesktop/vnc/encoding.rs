@@ -146,7 +146,10 @@ impl FrameEncoder {
 
     /// Change quality preset
     pub fn set_quality(&mut self, quality: QualityPreset) {
-        info!("Changing encoder quality from {:?} to {:?}", self.quality, quality);
+        info!(
+            "Changing encoder quality from {:?} to {:?}",
+            self.quality, quality
+        );
         self.quality = quality;
 
         // Update preferred encoding
@@ -322,6 +325,10 @@ mod tests {
         let stats = encoder.stats();
         let ratio = stats.avg_compression_ratio();
         // Solid color should compress well
-        assert!(ratio > 2.0, "Compression ratio should be > 2.0, got {}", ratio);
+        assert!(
+            ratio > 2.0,
+            "Compression ratio should be > 2.0, got {}",
+            ratio
+        );
     }
 }

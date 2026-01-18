@@ -106,7 +106,7 @@ enum Message {
     SendFile(String),
     FileSelected(String, String), // device_id, file_path
     ShareText(String),
-    TextInputOpened(String), // device_id for text sharing
+    TextInputOpened(String),       // device_id for text sharing
     TextSubmitted(String, String), // device_id, text
     // Quick actions
     QuickSendFile(String),      // device_id
@@ -249,10 +249,9 @@ impl Application for CConnectApp {
                     .collect();
 
                 if !connected_device_ids.is_empty() {
-                    Task::perform(
-                        fetch_battery_statuses(connected_device_ids),
-                        |statuses| cosmic::Action::App(Message::BatteryStatusesUpdated(statuses)),
-                    )
+                    Task::perform(fetch_battery_statuses(connected_device_ids), |statuses| {
+                        cosmic::Action::App(Message::BatteryStatusesUpdated(statuses))
+                    })
                 } else {
                     Task::none()
                 }
@@ -322,15 +321,13 @@ impl Application for CConnectApp {
             }
             Message::SendFile(device_id) => {
                 tracing::info!("Opening file picker for device: {}", device_id);
-                Task::perform(open_file_picker(device_id), |result| {
-                    match result {
-                        Some((device_id, path)) => {
-                            cosmic::Action::App(Message::FileSelected(device_id, path))
-                        }
-                        None => {
-                            tracing::debug!("File picker cancelled");
-                            cosmic::Action::App(Message::RefreshDevices)
-                        }
+                Task::perform(open_file_picker(device_id), |result| match result {
+                    Some((device_id, path)) => {
+                        cosmic::Action::App(Message::FileSelected(device_id, path))
+                    }
+                    None => {
+                        tracing::debug!("File picker cancelled");
+                        cosmic::Action::App(Message::RefreshDevices)
                     }
                 })
             }
@@ -370,15 +367,13 @@ impl Application for CConnectApp {
             // Quick actions handlers
             Message::QuickSendFile(device_id) => {
                 tracing::info!("Quick send file to device: {}", device_id);
-                Task::perform(open_file_picker(device_id), |result| {
-                    match result {
-                        Some((device_id, path)) => {
-                            cosmic::Action::App(Message::FileSelected(device_id, path))
-                        }
-                        None => {
-                            tracing::debug!("File picker cancelled");
-                            cosmic::Action::App(Message::RefreshDevices)
-                        }
+                Task::perform(open_file_picker(device_id), |result| match result {
+                    Some((device_id, path)) => {
+                        cosmic::Action::App(Message::FileSelected(device_id, path))
+                    }
+                    None => {
+                        tracing::debug!("File picker cancelled");
+                        cosmic::Action::App(Message::RefreshDevices)
                     }
                 })
             }
@@ -387,14 +382,19 @@ impl Application for CConnectApp {
                 // Send a simple test notification
                 Task::perform(
                     async move {
-                        send_notification(device_id, "Quick Message".to_string(), "Sent from COSMIC Connect".to_string()).await
+                        send_notification(
+                            device_id,
+                            "Quick Message".to_string(),
+                            "Sent from COSMIC Connect".to_string(),
+                        )
+                        .await
                     },
                     |result| {
                         if let Err(e) = result {
                             tracing::error!("Failed to send notification: {}", e);
                         }
                         cosmic::Action::App(Message::RefreshDevices)
-                    }
+                    },
                 )
             }
             Message::QuickScreenshot(device_id) => {
@@ -432,7 +432,7 @@ impl Application for CConnectApp {
                             tracing::error!("Failed to cancel transfer: {}", e);
                         }
                         cosmic::Action::None
-                    }
+                    },
                 )
             }
             Message::MprisPlayersUpdated(players) => {
@@ -505,7 +505,11 @@ impl Application for CConnectApp {
                 })
             }
             Message::SetGlobalPluginEnabled(plugin, enabled) => {
-                tracing::info!("Setting plugin {} to {}", plugin, if enabled { "enabled" } else { "disabled" });
+                tracing::info!(
+                    "Setting plugin {} to {}",
+                    plugin,
+                    if enabled { "enabled" } else { "disabled" }
+                );
 
                 // Update local state immediately for responsiveness
                 if let Some(config) = &mut self.daemon_config {
@@ -517,7 +521,10 @@ impl Application for CConnectApp {
                 })
             }
             Message::SetTcpEnabled(enabled) => {
-                tracing::info!("Setting TCP transport to {}", if enabled { "enabled" } else { "disabled" });
+                tracing::info!(
+                    "Setting TCP transport to {}",
+                    if enabled { "enabled" } else { "disabled" }
+                );
 
                 // Update local state and show restart banner
                 if let Some(config) = &mut self.daemon_config {
@@ -530,7 +537,10 @@ impl Application for CConnectApp {
                 })
             }
             Message::SetBluetoothEnabled(enabled) => {
-                tracing::info!("Setting Bluetooth transport to {}", if enabled { "enabled" } else { "disabled" });
+                tracing::info!(
+                    "Setting Bluetooth transport to {}",
+                    if enabled { "enabled" } else { "disabled" }
+                );
 
                 // Update local state and show restart banner
                 if let Some(config) = &mut self.daemon_config {
@@ -558,7 +568,10 @@ impl Application for CConnectApp {
                 })
             }
             Message::SetAutoFallback(enabled) => {
-                tracing::info!("Setting auto fallback to {}", if enabled { "enabled" } else { "disabled" });
+                tracing::info!(
+                    "Setting auto fallback to {}",
+                    if enabled { "enabled" } else { "disabled" }
+                );
 
                 // Update local state and show restart banner
                 if let Some(config) = &mut self.daemon_config {
@@ -694,7 +707,10 @@ impl Application for CConnectApp {
                             }
                         }
                     }
-                    DaemonEvent::DeviceAdded { device_id, device_info } => {
+                    DaemonEvent::DeviceAdded {
+                        device_id,
+                        device_info,
+                    } => {
                         tracing::info!("Device added: {}", device_id);
 
                         // Show notification
@@ -730,15 +746,25 @@ impl Application for CConnectApp {
                         }
                     }
                     DaemonEvent::PairingStatusChanged { device_id, status } => {
-                        tracing::info!("Device {} pairing status changed to: {}", device_id, status);
+                        tracing::info!(
+                            "Device {} pairing status changed to: {}",
+                            device_id,
+                            status
+                        );
 
                         // Show notification for successful pairing
-                        if status.to_lowercase().contains("paired") || status.to_lowercase().contains("success") {
+                        if status.to_lowercase().contains("paired")
+                            || status.to_lowercase().contains("success")
+                        {
                             if let Some(device) = self.devices.get(&device_id) {
                                 notifications::notify_pairing_success(&device.name);
                             }
-                        } else if status.to_lowercase().contains("failed") || status.to_lowercase().contains("rejected") {
-                            let device_name = self.devices.get(&device_id)
+                        } else if status.to_lowercase().contains("failed")
+                            || status.to_lowercase().contains("rejected")
+                        {
+                            let device_name = self
+                                .devices
+                                .get(&device_id)
                                 .map(|d| d.name.as_str())
                                 .unwrap_or("Unknown Device");
                             notifications::notify_pairing_failed(device_name, Some(&status));
@@ -758,21 +784,30 @@ impl Application for CConnectApp {
                             cosmic::Action::App(Message::DevicesLoaded(devices))
                         });
                     }
-                    DaemonEvent::PluginEvent { device_id, plugin, data } => {
+                    DaemonEvent::PluginEvent {
+                        device_id,
+                        plugin,
+                        data,
+                    } => {
                         tracing::debug!("Plugin event from {}: {} - {}", device_id, plugin, data);
 
                         // Show notification for ping events
                         if plugin == "ping" {
                             if let Some(device) = self.devices.get(&device_id) {
                                 // Try to parse message from data
-                                let message = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) {
+                                let message = if let Ok(json) =
+                                    serde_json::from_str::<serde_json::Value>(&data)
+                                {
                                     json.get("message")
                                         .and_then(|v| v.as_str())
                                         .map(|s| s.to_string())
                                 } else {
                                     None
                                 };
-                                notifications::notify_ping_received(&device.name, message.as_deref());
+                                notifications::notify_ping_received(
+                                    &device.name,
+                                    message.as_deref(),
+                                );
                             }
                         }
                     }
@@ -838,16 +873,12 @@ impl Application for CConnectApp {
     }
 
     fn subscription(&self) -> cosmic::iced::Subscription<Self::Message> {
-        use cosmic::iced::keyboard::{self, Key};
         use cosmic::iced::event;
+        use cosmic::iced::keyboard::{self, Key};
 
         let keyboard_sub = event::listen_with(|event, _status, _id| {
             match event {
-                event::Event::Keyboard(keyboard::Event::KeyPressed {
-                    key,
-                    modifiers,
-                    ..
-                }) => {
+                event::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
                     // Navigation shortcuts (Alt+1, Alt+2, Alt+3)
                     if modifiers.alt() && !modifiers.control() && !modifiers.shift() {
                         match key.as_ref() {
@@ -894,8 +925,7 @@ impl CConnectApp {
         let header = row![
             widget::text::title3("Devices"),
             widget::horizontal_space(),
-            widget::button::standard("Refresh")
-                .on_press(Message::RefreshDevices)
+            widget::button::standard("Refresh").on_press(Message::RefreshDevices)
         ]
         .spacing(spacing.space_xs)
         .align_y(Alignment::Center)
@@ -904,14 +934,15 @@ impl CConnectApp {
         let devices_list: Element<Message> = if self.devices.is_empty() {
             column![
                 widget::text("No devices found"),
-                widget::text("Make sure COSMIC Connect is installed on your devices")
-                    .size(14),
+                widget::text("Make sure COSMIC Connect is installed on your devices").size(14),
             ]
             .spacing(spacing.space_xxs)
             .padding(spacing.space_l)
             .into()
         } else {
-            let mut col = widget::column().spacing(spacing.space_xs).padding(spacing.space_l);
+            let mut col = widget::column()
+                .spacing(spacing.space_xs)
+                .padding(spacing.space_l);
             for device in self.devices.values() {
                 col = col.push(self.device_card(device));
             }
@@ -1000,9 +1031,11 @@ impl CConnectApp {
                 widget::button::icon(widget::icon::from_name("camera-photo-symbolic").size(16))
                     .on_press(Message::QuickScreenshot(id3))
                     .tooltip("Request Screenshot"),
-                widget::button::icon(widget::icon::from_name("utilities-system-monitor-symbolic").size(16))
-                    .on_press(Message::QuickSystemMonitor(id4))
-                    .tooltip("View System Monitor"),
+                widget::button::icon(
+                    widget::icon::from_name("utilities-system-monitor-symbolic").size(16)
+                )
+                .on_press(Message::QuickSystemMonitor(id4))
+                .tooltip("View System Monitor"),
             ]
             .spacing(spacing.space_xxs)
             .align_y(Alignment::Center)
@@ -1022,10 +1055,10 @@ impl CConnectApp {
                 ]
                 .spacing(spacing.space_xs)
                 .align_y(Alignment::Center),]
-                .padding(spacing.space_s)
+                .padding(spacing.space_s),
             )
             .style(card_container_style)
-            .width(Length::Fill)
+            .width(Length::Fill),
         )
         .on_press(Message::SelectDevice(device_id_for_click))
         .width(Length::Fill)
@@ -1038,7 +1071,10 @@ impl CConnectApp {
         let status: (&str, Color) = if device.is_connected {
             ("Connected", theme.cosmic().palette.bright_green.into())
         } else if device.is_paired {
-            ("Paired (Disconnected)", theme.cosmic().palette.neutral_6.into())
+            (
+                "Paired (Disconnected)",
+                theme.cosmic().palette.neutral_6.into(),
+            )
         } else {
             ("Available", theme.cosmic().palette.bright_orange.into())
         };
@@ -1051,8 +1087,7 @@ impl CConnectApp {
             widget::button::icon(widget::icon::from_name("go-previous-symbolic"))
                 .on_press(Message::BackToDeviceList),
             widget::horizontal_space(),
-            widget::button::standard("Refresh")
-                .on_press(Message::RefreshDevices)
+            widget::button::standard("Refresh").on_press(Message::RefreshDevices)
         ]
         .spacing(spacing.space_xs)
         .align_y(Alignment::Center)
@@ -1064,17 +1099,14 @@ impl CConnectApp {
         // Device info section
         let device_info = widget::container(
             column![
-                row![
-                    icon,
-                    widget::horizontal_space(),
-                ]
-                .spacing(spacing.space_s)
-                .align_y(Alignment::Center),
+                row![icon, widget::horizontal_space(),]
+                    .spacing(spacing.space_s)
+                    .align_y(Alignment::Center),
                 widget::text::title2(&device.name),
                 widget::text::body(status.0),
             ]
             .spacing(spacing.space_xs)
-            .padding(spacing.space_l)
+            .padding(spacing.space_l),
         )
         .style(card_container_style);
 
@@ -1084,7 +1116,14 @@ impl CConnectApp {
             widget::divider::horizontal::default(),
             detail_row("Type:", &device.device_type),
             detail_row("ID:", &device.id),
-            detail_row("Status:", if device.is_connected { "Online" } else { "Offline" }),
+            detail_row(
+                "Status:",
+                if device.is_connected {
+                    "Online"
+                } else {
+                    "Offline"
+                }
+            ),
             detail_row("Paired:", if device.is_paired { "Yes" } else { "No" }),
             detail_row("Reachable:", if device.is_reachable { "Yes" } else { "No" }),
         ]
@@ -1116,8 +1155,8 @@ impl CConnectApp {
             );
         }
 
-        let details = widget::container(details_col.padding(spacing.space_s))
-            .style(card_container_style);
+        let details =
+            widget::container(details_col.padding(spacing.space_s)).style(card_container_style);
 
         // Actions section (if device is paired and connected)
         let device_id_for_actions = device.id.clone();
@@ -1132,22 +1171,18 @@ impl CConnectApp {
                     widget::text::title3("Actions"),
                     widget::divider::horizontal::default(),
                     row![
-                        widget::button::standard("Send Ping")
-                            .on_press(Message::SendPing(id1)),
-                        widget::button::standard("Send File")
-                            .on_press(Message::SendFile(id2)),
+                        widget::button::standard("Send Ping").on_press(Message::SendPing(id1)),
+                        widget::button::standard("Send File").on_press(Message::SendFile(id2)),
                     ]
                     .spacing(spacing.space_xxs),
                     row![
-                        widget::button::standard("Find Phone")
-                            .on_press(Message::FindPhone(id3)),
-                        widget::button::standard("Share Text")
-                            .on_press(Message::ShareText(id4)),
+                        widget::button::standard("Find Phone").on_press(Message::FindPhone(id3)),
+                        widget::button::standard("Share Text").on_press(Message::ShareText(id4)),
                     ]
                     .spacing(spacing.space_xxs),
                 ]
                 .spacing(spacing.space_xs)
-                .padding(spacing.space_s)
+                .padding(spacing.space_s),
             )
             .style(card_container_style)
             .into()
@@ -1158,7 +1193,7 @@ impl CConnectApp {
                     widget::text::caption("Device must be paired and connected"),
                 ]
                 .spacing(spacing.space_xxs)
-                .padding(spacing.space_s)
+                .padding(spacing.space_s),
             )
             .into()
         };
@@ -1167,7 +1202,7 @@ impl CConnectApp {
         let content = widget::scrollable(
             column![device_info, details, actions]
                 .spacing(spacing.space_s)
-                .padding(spacing.space_l)
+                .padding(spacing.space_l),
         );
 
         column![header, widget::divider::horizontal::default(), content]
@@ -1199,7 +1234,9 @@ impl CConnectApp {
             .padding(spacing.space_l)
             .into()
         } else {
-            let mut col = widget::column().spacing(spacing.space_xs).padding(spacing.space_l);
+            let mut col = widget::column()
+                .spacing(spacing.space_xs)
+                .padding(spacing.space_l);
 
             // Separate active and completed transfers
             let mut active_transfers: Vec<_> = self
@@ -1236,10 +1273,14 @@ impl CConnectApp {
             col.into()
         };
 
-        column![header, widget::divider::horizontal::default(), transfers_list]
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
+        column![
+            header,
+            widget::divider::horizontal::default(),
+            transfers_list
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
     }
 
     /// Card for individual transfer
@@ -1282,37 +1323,34 @@ impl CConnectApp {
             widget::horizontal_space().into()
         };
 
-        let mut content_col = column![
-            row![
-                widget::icon::from_name(direction_icon).size(24),
-                column![
-                    widget::text::body(&transfer.filename),
-                    widget::text::caption(format!(
-                        "{} {} {}",
-                        if transfer.direction == "sending" {
-                            "Sending to"
-                        } else {
-                            "Receiving from"
-                        },
-                        &transfer.device_name,
-                        format_bytes(transfer.bytes_transferred)
-                    )),
-                ]
-                .spacing(spacing.space_xxs),
-                widget::horizontal_space(),
-                widget::text::body(status_text),
-                cancel_button,
+        let mut content_col = column![row![
+            widget::icon::from_name(direction_icon).size(24),
+            column![
+                widget::text::body(&transfer.filename),
+                widget::text::caption(format!(
+                    "{} {} {}",
+                    if transfer.direction == "sending" {
+                        "Sending to"
+                    } else {
+                        "Receiving from"
+                    },
+                    &transfer.device_name,
+                    format_bytes(transfer.bytes_transferred)
+                )),
             ]
-            .spacing(spacing.space_xs)
-            .align_y(Alignment::Center),
+            .spacing(spacing.space_xxs),
+            widget::horizontal_space(),
+            widget::text::body(status_text),
+            cancel_button,
         ]
+        .spacing(spacing.space_xs)
+        .align_y(Alignment::Center),]
         .spacing(spacing.space_xxs);
 
         // Add progress bar for active transfers
         if transfer.status == TransferStatus::Active && transfer.total_bytes > 0 {
             content_col = content_col.push(
-                widget::progress_bar(0.0..=100.0, progress_percentage as f32)
-                    .width(Length::Fill),
+                widget::progress_bar(0.0..=100.0, progress_percentage as f32).width(Length::Fill),
             );
 
             // Show transfer speed and ETA
@@ -1331,15 +1369,19 @@ impl CConnectApp {
         }
 
         widget::container(content_col.padding(spacing.space_s))
-            .style(move |theme: &cosmic::Theme| cosmic::iced::widget::container::Style {
-                background: Some(cosmic::iced::Background::Color(theme.cosmic().palette.neutral_2.into())),
-                border: cosmic::iced::Border {
-                    color: status_color,
-                    width: 2.0,
-                    radius: theme.cosmic().corner_radii.radius_s.into(),
+            .style(
+                move |theme: &cosmic::Theme| cosmic::iced::widget::container::Style {
+                    background: Some(cosmic::iced::Background::Color(
+                        theme.cosmic().palette.neutral_2.into(),
+                    )),
+                    border: cosmic::iced::Border {
+                        color: status_color,
+                        width: 2.0,
+                        radius: theme.cosmic().corner_radii.radius_s.into(),
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            })
+            )
             .width(Length::Fill)
             .into()
     }
@@ -1349,26 +1391,21 @@ impl CConnectApp {
         let theme = theme::active();
         let spacing = theme.cosmic().spacing;
 
-        let header = row![
-            widget::text::title3("Settings"),
-            widget::horizontal_space(),
-        ]
-        .spacing(spacing.space_xs)
-        .align_y(Alignment::Center)
-        .padding(spacing.space_l);
+        let header = row![widget::text::title3("Settings"), widget::horizontal_space(),]
+            .spacing(spacing.space_xs)
+            .align_y(Alignment::Center)
+            .padding(spacing.space_l);
 
         // Show loading state
         if self.settings_loading {
             return column![
                 header,
                 widget::divider::horizontal::default(),
-                widget::container(
-                    widget::text::body("Loading settings...")
-                )
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .align_x(Alignment::Center)
-                .align_y(Alignment::Center)
+                widget::container(widget::text::body("Loading settings..."))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(Alignment::Center)
+                    .align_y(Alignment::Center)
             ]
             .width(Length::Fill)
             .height(Length::Fill)
@@ -1383,8 +1420,7 @@ impl CConnectApp {
                 widget::container(
                     column![
                         widget::text::body(format!("Error loading settings: {}", error)),
-                        widget::button::standard("Retry")
-                            .on_press(Message::RefreshSettings),
+                        widget::button::standard("Retry").on_press(Message::RefreshSettings),
                     ]
                     .spacing(spacing.space_xs)
                 )
@@ -1407,17 +1443,19 @@ impl CConnectApp {
                 widget::container(
                     row![
                         widget::icon::from_name("dialog-warning-symbolic").size(24),
-                        widget::text::body("Restart required for transport/discovery changes to take effect"),
+                        widget::text::body(
+                            "Restart required for transport/discovery changes to take effect"
+                        ),
                         widget::horizontal_space(),
                         widget::button::suggested("Restart Daemon")
                             .on_press(Message::RestartDaemon),
                     ]
                     .spacing(spacing.space_xs)
                     .align_y(Alignment::Center)
-                    .padding(spacing.space_xs)
+                    .padding(spacing.space_xs),
                 )
                 .style(warning_container_style)
-                .width(Length::Fill)
+                .width(Length::Fill),
             );
         }
 
@@ -1443,7 +1481,11 @@ impl CConnectApp {
     }
 
     /// General settings section
-    fn general_settings_section<'a>(&'a self, theme: &cosmic::Theme, config: &'a settings::DaemonConfig) -> Element<'a, Message> {
+    fn general_settings_section<'a>(
+        &'a self,
+        theme: &cosmic::Theme,
+        config: &'a settings::DaemonConfig,
+    ) -> Element<'a, Message> {
         let spacing = theme.cosmic().spacing;
 
         let mut content_col = column![
@@ -1463,27 +1505,29 @@ impl CConnectApp {
                     .on_press(Message::SetDeviceName(self.pending_device_name.clone())),
             ]
             .spacing(spacing.space_xs)
-            .align_y(Alignment::Center)
+            .align_y(Alignment::Center),
         );
 
         // Device Type
-        content_col = content_col.push(
-            widget::text::body("Device Type:").width(Length::Fixed(150.0))
-        );
+        content_col =
+            content_col.push(widget::text::body("Device Type:").width(Length::Fixed(150.0)));
 
         // Device type selector buttons
         let device_types = ["desktop", "laptop", "tablet"];
         let current_type = &config.device.device_type;
 
-        let type_buttons: Vec<Element<'_, Message>> = device_types.iter().map(|&dt| {
-            let button = if dt == current_type {
-                widget::button::suggested(settings::device_type_name(dt))
-            } else {
-                widget::button::standard(settings::device_type_name(dt))
-                    .on_press(Message::SetDeviceType(dt.to_string()))
-            };
-            button.into()
-        }).collect();
+        let type_buttons: Vec<Element<'_, Message>> = device_types
+            .iter()
+            .map(|&dt| {
+                let button = if dt == current_type {
+                    widget::button::suggested(settings::device_type_name(dt))
+                } else {
+                    widget::button::standard(settings::device_type_name(dt))
+                        .on_press(Message::SetDeviceType(dt.to_string()))
+                };
+                button.into()
+            })
+            .collect();
 
         let mut type_row = row![].spacing(spacing.space_xs);
         for button in type_buttons {
@@ -1499,7 +1543,7 @@ impl CConnectApp {
                     widget::text::caption(device_id),
                 ]
                 .spacing(spacing.space_xs)
-                .align_y(Alignment::Center)
+                .align_y(Alignment::Center),
             );
         }
 
@@ -1510,7 +1554,11 @@ impl CConnectApp {
     }
 
     /// Connectivity settings section
-    fn connectivity_settings_section<'a>(&'a self, theme: &cosmic::Theme, config: &'a settings::DaemonConfig) -> Element<'a, Message> {
+    fn connectivity_settings_section<'a>(
+        &'a self,
+        theme: &cosmic::Theme,
+        config: &'a settings::DaemonConfig,
+    ) -> Element<'a, Message> {
         let spacing = theme.cosmic().spacing;
 
         let mut content_col = column![
@@ -1530,7 +1578,7 @@ impl CConnectApp {
                 widget::text::caption(format!("Timeout: {}s", config.transport.tcp_timeout_secs)),
             ]
             .spacing(spacing.space_xs)
-            .align_y(Alignment::Center)
+            .align_y(Alignment::Center),
         );
 
         // Bluetooth Transport
@@ -1541,28 +1589,31 @@ impl CConnectApp {
                     .on_toggle(Message::SetBluetoothEnabled)
                     .width(Length::Fixed(200.0)),
                 widget::horizontal_space(),
-                widget::text::caption(format!("Timeout: {}s", config.transport.bluetooth_timeout_secs)),
+                widget::text::caption(format!(
+                    "Timeout: {}s",
+                    config.transport.bluetooth_timeout_secs
+                )),
             ]
             .spacing(spacing.space_xs)
-            .align_y(Alignment::Center)
+            .align_y(Alignment::Center),
         );
 
         // Transport Preference
         content_col = content_col.push(widget::text::body("Transport Preference:"));
-        content_col = content_col.push(
-            widget::text::body(config.transport.preference.display_name())
-        );
+        content_col = content_col.push(widget::text::body(
+            config.transport.preference.display_name(),
+        ));
 
         // Auto Fallback
         content_col = content_col.push(
             widget::toggler(config.transport.auto_fallback)
                 .label("Auto Fallback (try alternative transport if connection fails)")
-                .on_toggle(Message::SetAutoFallback)
+                .on_toggle(Message::SetAutoFallback),
         );
 
-        content_col = content_col.push(
-            widget::text::caption("⚠ Changes to transport settings require daemon restart")
-        );
+        content_col = content_col.push(widget::text::caption(
+            "⚠ Changes to transport settings require daemon restart",
+        ));
 
         widget::container(content_col.padding(spacing.space_s))
             .style(card_container_style)
@@ -1571,13 +1622,19 @@ impl CConnectApp {
     }
 
     /// Plugins settings section
-    fn plugins_settings_section<'a>(&'a self, theme: &cosmic::Theme, config: &'a settings::DaemonConfig) -> Element<'a, Message> {
+    fn plugins_settings_section<'a>(
+        &'a self,
+        theme: &cosmic::Theme,
+        config: &'a settings::DaemonConfig,
+    ) -> Element<'a, Message> {
         let spacing = theme.cosmic().spacing;
 
         let mut content_col = column![
             widget::text::title4("Plugins"),
             widget::divider::horizontal::default(),
-            widget::text::caption("Enable or disable plugins globally (can be overridden per-device)"),
+            widget::text::caption(
+                "Enable or disable plugins globally (can be overridden per-device)"
+            ),
         ]
         .spacing(spacing.space_xs);
 
@@ -1585,9 +1642,7 @@ impl CConnectApp {
         let grouped_plugins = settings::plugins_by_category();
 
         for (category, plugins) in grouped_plugins {
-            content_col = content_col.push(
-                widget::text::body(category)
-            );
+            content_col = content_col.push(widget::text::body(category));
 
             for plugin in plugins {
                 if let Some(enabled) = config.plugins.get(plugin) {
@@ -1595,8 +1650,10 @@ impl CConnectApp {
                     content_col = content_col.push(
                         widget::toggler(enabled)
                             .label(format!("{} - {}", plugin, description))
-                            .on_toggle(move |e| Message::SetGlobalPluginEnabled(plugin.to_string(), e))
-                            .width(Length::Fill)
+                            .on_toggle(move |e| {
+                                Message::SetGlobalPluginEnabled(plugin.to_string(), e)
+                            })
+                            .width(Length::Fill),
                     );
                 }
             }
@@ -1609,7 +1666,11 @@ impl CConnectApp {
     }
 
     /// Discovery settings section
-    fn discovery_settings_section<'a>(&'a self, theme: &cosmic::Theme, config: &'a settings::DaemonConfig) -> Element<'a, Message> {
+    fn discovery_settings_section<'a>(
+        &'a self,
+        theme: &cosmic::Theme,
+        config: &'a settings::DaemonConfig,
+    ) -> Element<'a, Message> {
         let spacing = theme.cosmic().spacing;
 
         let mut content_col = column![
@@ -1623,12 +1684,15 @@ impl CConnectApp {
         content_col = content_col.push(
             row![
                 widget::text::body("Broadcast Interval:").width(Length::Fixed(180.0)),
-                widget::text::body(format!("{} seconds", config.discovery.broadcast_interval_secs))
-                    .width(Length::Fixed(100.0)),
+                widget::text::body(format!(
+                    "{} seconds",
+                    config.discovery.broadcast_interval_secs
+                ))
+                .width(Length::Fixed(100.0)),
                 widget::text::caption("(How often to announce presence)"),
             ]
             .spacing(spacing.space_xs)
-            .align_y(Alignment::Center)
+            .align_y(Alignment::Center),
         );
 
         // Device Timeout
@@ -1640,12 +1704,12 @@ impl CConnectApp {
                 widget::text::caption("(How long before device is offline)"),
             ]
             .spacing(spacing.space_xs)
-            .align_y(Alignment::Center)
+            .align_y(Alignment::Center),
         );
 
-        content_col = content_col.push(
-            widget::text::caption("⚠ Changes to discovery settings require daemon restart")
-        );
+        content_col = content_col.push(widget::text::caption(
+            "⚠ Changes to discovery settings require daemon restart",
+        ));
 
         widget::container(content_col.padding(spacing.space_s))
             .style(card_container_style)
@@ -1654,7 +1718,11 @@ impl CConnectApp {
     }
 
     /// Advanced settings section
-    fn advanced_settings_section(&self, theme: &cosmic::Theme, _config: &settings::DaemonConfig) -> Element<'_, Message> {
+    fn advanced_settings_section(
+        &self,
+        theme: &cosmic::Theme,
+        _config: &settings::DaemonConfig,
+    ) -> Element<'_, Message> {
         let spacing = theme.cosmic().spacing;
 
         let mut content_col = column![
@@ -1668,11 +1736,13 @@ impl CConnectApp {
         content_col = content_col.push(
             column![
                 widget::text::body("Reset Configuration"),
-                widget::text::caption("Restore all settings to default values (preserves device ID)"),
+                widget::text::caption(
+                    "Restore all settings to default values (preserves device ID)"
+                ),
                 widget::button::destructive("Reset to Defaults")
                     .on_press(Message::ResetConfigToDefaults),
             ]
-            .spacing(spacing.space_xs)
+            .spacing(spacing.space_xs),
         );
 
         content_col = content_col.push(widget::divider::horizontal::default());
@@ -1682,10 +1752,9 @@ impl CConnectApp {
             column![
                 widget::text::body("Restart Daemon"),
                 widget::text::caption("Restart the background service to apply changes"),
-                widget::button::suggested("Restart Daemon")
-                    .on_press(Message::RestartDaemon),
+                widget::button::suggested("Restart Daemon").on_press(Message::RestartDaemon),
             ]
-            .spacing(spacing.space_xs)
+            .spacing(spacing.space_xs),
         );
 
         widget::container(content_col.padding(spacing.space_s))
@@ -1816,7 +1885,7 @@ impl CConnectApp {
                     widget::button::standard("Refresh Players")
                         .on_press(Message::RefreshMprisPlayers),
                 ]
-                .spacing(spacing.space_xs)
+                .spacing(spacing.space_xs),
             );
         } else {
             // Player selector
@@ -1827,7 +1896,7 @@ impl CConnectApp {
                         widget::horizontal_space(),
                         widget::text::body(selected),
                     ]
-                    .spacing(spacing.space_xs)
+                    .spacing(spacing.space_xs),
                 );
 
                 // Playback controls
@@ -1851,18 +1920,12 @@ impl CConnectApp {
                     widget::button::icon(
                         widget::icon::from_name("media-playback-stop-symbolic").size(20)
                     )
-                    .on_press(Message::MprisControl(
-                        selected.clone(),
-                        "Stop".to_string()
-                    ))
+                    .on_press(Message::MprisControl(selected.clone(), "Stop".to_string()))
                     .padding(spacing.space_s),
                     widget::button::icon(
                         widget::icon::from_name("media-skip-forward-symbolic").size(20)
                     )
-                    .on_press(Message::MprisControl(
-                        selected.clone(),
-                        "Next".to_string()
-                    ))
+                    .on_press(Message::MprisControl(selected.clone(), "Next".to_string()))
                     .padding(spacing.space_s),
                 ]
                 .spacing(spacing.space_xs)
@@ -1873,8 +1936,7 @@ impl CConnectApp {
 
             // Refresh button
             content_col = content_col.push(
-                widget::button::standard("Refresh Players")
-                    .on_press(Message::RefreshMprisPlayers)
+                widget::button::standard("Refresh Players").on_press(Message::RefreshMprisPlayers),
             );
 
             // List all available players
@@ -1883,7 +1945,7 @@ impl CConnectApp {
                 content_col = content_col.push(
                     widget::button::text(player)
                         .on_press(Message::MprisPlayerSelected(player.clone()))
-                        .width(Length::Fill)
+                        .width(Length::Fill),
                 );
             }
         }
@@ -2116,121 +2178,121 @@ async fn mpris_control(player: String, action: String) -> anyhow::Result<()> {
 /// Set device name
 async fn set_device_name(name: String) -> Result<(), String> {
     match DbusClient::connect().await {
-        Ok((client, _)) => {
-            client.set_device_name(&name).await
-                .map_err(|e| format!("Failed to set device name: {}", e))
-        }
-        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+        Ok((client, _)) => client
+            .set_device_name(&name)
+            .await
+            .map_err(|e| format!("Failed to set device name: {}", e)),
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e)),
     }
 }
 
 /// Set device type
 async fn set_device_type(device_type: String) -> Result<(), String> {
     match DbusClient::connect().await {
-        Ok((client, _)) => {
-            client.set_device_type(&device_type).await
-                .map_err(|e| format!("Failed to set device type: {}", e))
-        }
-        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+        Ok((client, _)) => client
+            .set_device_type(&device_type)
+            .await
+            .map_err(|e| format!("Failed to set device type: {}", e)),
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e)),
     }
 }
 
 /// Set global plugin enabled state
 async fn set_global_plugin_enabled(plugin: String, enabled: bool) -> Result<(), String> {
     match DbusClient::connect().await {
-        Ok((client, _)) => {
-            client.set_global_plugin_enabled(&plugin, enabled).await
-                .map_err(|e| format!("Failed to set plugin enabled: {}", e))
-        }
-        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+        Ok((client, _)) => client
+            .set_global_plugin_enabled(&plugin, enabled)
+            .await
+            .map_err(|e| format!("Failed to set plugin enabled: {}", e)),
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e)),
     }
 }
 
 /// Set TCP transport enabled
 async fn set_tcp_enabled(enabled: bool) -> Result<(), String> {
     match DbusClient::connect().await {
-        Ok((client, _)) => {
-            client.set_tcp_enabled(enabled).await
-                .map_err(|e| format!("Failed to set TCP enabled: {}", e))
-        }
-        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+        Ok((client, _)) => client
+            .set_tcp_enabled(enabled)
+            .await
+            .map_err(|e| format!("Failed to set TCP enabled: {}", e)),
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e)),
     }
 }
 
 /// Set Bluetooth transport enabled
 async fn set_bluetooth_enabled(enabled: bool) -> Result<(), String> {
     match DbusClient::connect().await {
-        Ok((client, _)) => {
-            client.set_bluetooth_enabled(enabled).await
-                .map_err(|e| format!("Failed to set Bluetooth enabled: {}", e))
-        }
-        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+        Ok((client, _)) => client
+            .set_bluetooth_enabled(enabled)
+            .await
+            .map_err(|e| format!("Failed to set Bluetooth enabled: {}", e)),
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e)),
     }
 }
 
 /// Set transport preference
 async fn set_transport_preference(preference: String) -> Result<(), String> {
     match DbusClient::connect().await {
-        Ok((client, _)) => {
-            client.set_transport_preference(&preference).await
-                .map_err(|e| format!("Failed to set transport preference: {}", e))
-        }
-        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+        Ok((client, _)) => client
+            .set_transport_preference(&preference)
+            .await
+            .map_err(|e| format!("Failed to set transport preference: {}", e)),
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e)),
     }
 }
 
 /// Set auto fallback enabled
 async fn set_auto_fallback(enabled: bool) -> Result<(), String> {
     match DbusClient::connect().await {
-        Ok((client, _)) => {
-            client.set_auto_fallback(enabled).await
-                .map_err(|e| format!("Failed to set auto fallback: {}", e))
-        }
-        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+        Ok((client, _)) => client
+            .set_auto_fallback(enabled)
+            .await
+            .map_err(|e| format!("Failed to set auto fallback: {}", e)),
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e)),
     }
 }
 
 /// Set discovery interval in seconds
 async fn set_discovery_interval(interval_secs: u64) -> Result<(), String> {
     match DbusClient::connect().await {
-        Ok((client, _)) => {
-            client.set_discovery_interval(interval_secs).await
-                .map_err(|e| format!("Failed to set discovery interval: {}", e))
-        }
-        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+        Ok((client, _)) => client
+            .set_discovery_interval(interval_secs)
+            .await
+            .map_err(|e| format!("Failed to set discovery interval: {}", e)),
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e)),
     }
 }
 
 /// Set device timeout in seconds
 async fn set_device_timeout(timeout_secs: u64) -> Result<(), String> {
     match DbusClient::connect().await {
-        Ok((client, _)) => {
-            client.set_device_timeout(timeout_secs).await
-                .map_err(|e| format!("Failed to set device timeout: {}", e))
-        }
-        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+        Ok((client, _)) => client
+            .set_device_timeout(timeout_secs)
+            .await
+            .map_err(|e| format!("Failed to set device timeout: {}", e)),
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e)),
     }
 }
 
 /// Reset configuration to defaults
 async fn reset_config_to_defaults() -> Result<(), String> {
     match DbusClient::connect().await {
-        Ok((client, _)) => {
-            client.reset_config_to_defaults().await
-                .map_err(|e| format!("Failed to reset config to defaults: {}", e))
-        }
-        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+        Ok((client, _)) => client
+            .reset_config_to_defaults()
+            .await
+            .map_err(|e| format!("Failed to reset config to defaults: {}", e)),
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e)),
     }
 }
 
 /// Restart the daemon
 async fn restart_daemon() -> Result<(), String> {
     match DbusClient::connect().await {
-        Ok((client, _)) => {
-            client.restart_daemon().await
-                .map_err(|e| format!("Failed to restart daemon: {}", e))
-        }
-        Err(e) => Err(format!("Failed to connect to daemon: {}", e))
+        Ok((client, _)) => client
+            .restart_daemon()
+            .await
+            .map_err(|e| format!("Failed to restart daemon: {}", e)),
+        Err(e) => Err(format!("Failed to connect to daemon: {}", e)),
     }
 }
 
@@ -2351,7 +2413,9 @@ fn warning_container_style(theme: &cosmic::Theme) -> cosmic::iced::widget::conta
     let corner_radii = &theme.cosmic().corner_radii;
 
     cosmic::iced::widget::container::Style {
-        background: Some(cosmic::iced::Background::Color(palette.bright_orange.into())),
+        background: Some(cosmic::iced::Background::Color(
+            palette.bright_orange.into(),
+        )),
         border: cosmic::iced::Border {
             radius: corner_radii.radius_s.into(),
             ..Default::default()

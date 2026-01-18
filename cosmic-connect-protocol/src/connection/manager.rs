@@ -183,12 +183,8 @@ impl ConnectionManager {
         info!("Starting TLS server with rustls (TLS 1.2+, TOFU security model)");
 
         // Create TLS server (uses TOFU - Trust-On-First-Use, no pre-trusted certs needed)
-        let server = TlsServer::new(
-            self.config.listen_addr,
-            &self.certificate,
-            tls_device_info,
-        )
-        .await?;
+        let server =
+            TlsServer::new(self.config.listen_addr, &self.certificate, tls_device_info).await?;
         let local_port = server.local_addr().port();
 
         // Emit started event
@@ -211,7 +207,10 @@ impl ConnectionManager {
                         let device_name = core_identity
                             .get_body_field::<String>("deviceName")
                             .unwrap_or_else(|| "Unknown".to_string());
-                        info!("Accepted connection from {} at {}", device_name, remote_addr);
+                        info!(
+                            "Accepted connection from {} at {}",
+                            device_name, remote_addr
+                        );
 
                         // Convert core Packet to local Packet
                         let remote_identity = Packet::from_core_packet(core_identity);
@@ -319,7 +318,10 @@ impl ConnectionManager {
             self.last_connection_time.clone(),
         );
 
-        info!("Connected to device {} at {} with provided certificate", device_id, addr);
+        info!(
+            "Connected to device {} at {} with provided certificate",
+            device_id, addr
+        );
 
         Ok(())
     }
@@ -472,9 +474,12 @@ impl ConnectionManager {
                 if let Some(&last_time) = last_times.get(id) {
                     let elapsed = now.duration_since(last_time);
                     if elapsed < MIN_CONNECTION_DELAY {
-                        warn!("Device {} reconnecting rapidly ({}ms since last connection) - \
+                        warn!(
+                            "Device {} reconnecting rapidly ({}ms since last connection) - \
                                this may indicate client-side connection cycling issues",
-                              id, elapsed.as_millis());
+                            id,
+                            elapsed.as_millis()
+                        );
                     }
                 }
                 last_times.insert(id.to_string(), now);
@@ -486,7 +491,10 @@ impl ConnectionManager {
                 let mut conns = connections.write().await;
 
                 // Debug: Check what's in the connections HashMap
-                debug!("Current connections in HashMap: {:?}", conns.keys().collect::<Vec<_>>());
+                debug!(
+                    "Current connections in HashMap: {:?}",
+                    conns.keys().collect::<Vec<_>>()
+                );
                 debug!("Looking for device {} in connections HashMap", id);
 
                 // Handle existing connection if device reconnects
@@ -494,8 +502,10 @@ impl ConnectionManager {
                 if let Some(old_conn) = conns.remove(id) {
                     // Device trying to reconnect while already connected
                     // Replace the old connection with the new one
-                    info!("Device {} reconnecting from {} (old: {}) - replacing socket",
-                          id, remote_addr, old_conn.remote_addr);
+                    info!(
+                        "Device {} reconnecting from {} (old: {}) - replacing socket",
+                        id, remote_addr, old_conn.remote_addr
+                    );
 
                     // Send close command to old connection task to clean up gracefully
                     let _ = old_conn.command_tx.send(ConnectionCommand::Close);
@@ -534,7 +544,10 @@ impl ConnectionManager {
                     remote_addr,
                 });
             } else {
-                warn!("Identity packet from {} did not contain deviceId", remote_addr);
+                warn!(
+                    "Identity packet from {} did not contain deviceId",
+                    remote_addr
+                );
                 return;
             }
 

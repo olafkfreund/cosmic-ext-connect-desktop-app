@@ -118,8 +118,8 @@ pub mod presenter;
 pub mod remotedesktop;
 pub mod remoteinput;
 pub mod runcommand;
-pub mod screenshot;
 pub mod screenshare;
+pub mod screenshot;
 pub mod share;
 pub mod systemmonitor;
 pub mod telephony;
@@ -508,7 +508,11 @@ impl PluginManager {
     }
 
     /// Get mutable reference to a plugin for a specific device
-    pub fn get_device_plugin_mut(&mut self, device_id: &str, plugin_name: &str) -> Option<&mut dyn Plugin> {
+    pub fn get_device_plugin_mut(
+        &mut self,
+        device_id: &str,
+        plugin_name: &str,
+    ) -> Option<&mut dyn Plugin> {
         self.device_plugins
             .get_mut(device_id)
             .and_then(|plugins| plugins.get_mut(plugin_name))
@@ -676,7 +680,10 @@ impl PluginManager {
                     // User action required - log with appropriate level
                     warn!(
                         "Plugin {} requires user action for packet {} on device {}: {}",
-                        plugin_name, packet_type, device_id, e.user_message()
+                        plugin_name,
+                        packet_type,
+                        device_id,
+                        e.user_message()
                     );
                     // Don't crash the plugin, but return error for UI notification
                     Err(e)

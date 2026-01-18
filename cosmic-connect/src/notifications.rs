@@ -94,11 +94,7 @@ pub fn notify_pairing_failed(device_name: &str, reason: Option<&str>) {
         format!("Failed to pair with {}", device_name)
     };
 
-    show_device_notification(
-        "Pairing Failed",
-        &body,
-        "dialog-error-symbolic",
-    );
+    show_device_notification("Pairing Failed", &body, "dialog-error-symbolic");
 }
 
 /// Show notification for a completed file transfer
@@ -121,11 +117,7 @@ pub fn notify_transfer_complete(filename: &str, success: bool, error_message: Op
             format!("Failed to transfer {}", filename)
         };
 
-        show_device_notification(
-            "Transfer Failed",
-            &body,
-            "dialog-error-symbolic",
-        );
+        show_device_notification("Transfer Failed", &body, "dialog-error-symbolic");
     }
 }
 

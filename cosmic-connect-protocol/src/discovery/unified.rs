@@ -267,7 +267,9 @@ mod tests {
             ..Default::default()
         };
 
-        let service = UnifiedDiscoveryService::new(device_info, config).await.unwrap();
+        let service = UnifiedDiscoveryService::new(device_info, config)
+            .await
+            .unwrap();
         assert!(!service.has_bluetooth());
     }
 }

@@ -182,8 +182,7 @@ impl EncodedFrame {
 }
 
 /// Quality preset for encoding
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum QualityPreset {
     /// Low quality, high compression (bandwidth constrained)
     Low,
@@ -199,9 +198,9 @@ impl QualityPreset {
     pub fn target_bitrate(&self, width: u32, height: u32, fps: u32) -> u32 {
         let pixels = width * height;
         match self {
-            QualityPreset::Low => pixels * fps / 4,      // ~0.25 bits per pixel
-            QualityPreset::Medium => pixels * fps / 2,    // ~0.5 bits per pixel
-            QualityPreset::High => pixels * fps,          // ~1 bit per pixel
+            QualityPreset::Low => pixels * fps / 4, // ~0.25 bits per pixel
+            QualityPreset::Medium => pixels * fps / 2, // ~0.5 bits per pixel
+            QualityPreset::High => pixels * fps,    // ~1 bit per pixel
         }
     }
 
@@ -224,7 +223,6 @@ impl QualityPreset {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -256,7 +254,10 @@ mod tests {
     fn test_quality_preset_from_str() {
         assert_eq!(QualityPreset::from_str("low"), Some(QualityPreset::Low));
         assert_eq!(QualityPreset::from_str("LOW"), Some(QualityPreset::Low));
-        assert_eq!(QualityPreset::from_str("medium"), Some(QualityPreset::Medium));
+        assert_eq!(
+            QualityPreset::from_str("medium"),
+            Some(QualityPreset::Medium)
+        );
         assert_eq!(QualityPreset::from_str("high"), Some(QualityPreset::High));
         assert_eq!(QualityPreset::from_str("invalid"), None);
     }

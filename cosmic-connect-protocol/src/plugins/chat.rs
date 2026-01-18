@@ -283,8 +283,8 @@ impl ChatStorage {
 
     /// Cleanup old messages
     fn cleanup(&mut self) {
-        let cutoff_time = Utc::now().timestamp_millis()
-            - (self.config.retention_days * 24 * 60 * 60 * 1000);
+        let cutoff_time =
+            Utc::now().timestamp_millis() - (self.config.retention_days * 24 * 60 * 60 * 1000);
 
         // Remove old messages
         self.messages.retain(|msg| msg.timestamp > cutoff_time);
@@ -407,10 +407,7 @@ impl ChatPlugin {
 
     /// Create read receipt packet
     pub fn create_read_packet(&self, message_id: &str) -> Packet {
-        Packet::new(
-            "cconnect.chat.read",
-            json!({ "message_id": message_id }),
-        )
+        Packet::new("cconnect.chat.read", json!({ "message_id": message_id }))
     }
 
     /// Create history request packet
@@ -539,10 +536,7 @@ impl ChatPlugin {
             .and_then(|v| v.as_u64())
             .unwrap_or(50) as usize;
 
-        let before_timestamp = packet
-            .body
-            .get("before_timestamp")
-            .and_then(|v| v.as_i64());
+        let before_timestamp = packet.body.get("before_timestamp").and_then(|v| v.as_i64());
 
         info!(
             "Received history request from {} ({}): limit={}",

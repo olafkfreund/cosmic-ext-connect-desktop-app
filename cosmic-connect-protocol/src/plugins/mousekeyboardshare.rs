@@ -440,12 +440,8 @@ impl MouseKeyboardSharePlugin {
         let dz = dead_zone as i32;
 
         match edge {
-            ScreenEdge::Left | ScreenEdge::Right => {
-                y < dz || y > height - dz
-            }
-            ScreenEdge::Top | ScreenEdge::Bottom => {
-                x < dz || x > width - dz
-            }
+            ScreenEdge::Left | ScreenEdge::Right => y < dz || y > height - dz,
+            ScreenEdge::Top | ScreenEdge::Bottom => x < dz || x > width - dz,
         }
     }
 
@@ -501,7 +497,10 @@ impl Plugin for MouseKeyboardSharePlugin {
     }
 
     async fn init(&mut self, device: &Device) -> Result<()> {
-        info!("Initializing MouseKeyboardShare plugin for device {}", device.name());
+        info!(
+            "Initializing MouseKeyboardShare plugin for device {}",
+            device.name()
+        );
         self.device_id = Some(device.id().to_string());
 
         // TODO: Detect screen geometry
@@ -548,7 +547,8 @@ impl Plugin for MouseKeyboardSharePlugin {
                 let remote_config: MkShareConfig = serde_json::from_value(packet.body.clone())
                     .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
 
-                self.remote_configs.insert(device.id().to_string(), remote_config);
+                self.remote_configs
+                    .insert(device.id().to_string(), remote_config);
 
                 info!("Received screen configuration from {}", device.name());
             }
@@ -605,7 +605,10 @@ impl Plugin for MouseKeyboardSharePlugin {
             }
 
             _ => {
-                warn!("Unknown MouseKeyboardShare packet type: {}", packet.packet_type);
+                warn!(
+                    "Unknown MouseKeyboardShare packet type: {}",
+                    packet.packet_type
+                );
             }
         }
 

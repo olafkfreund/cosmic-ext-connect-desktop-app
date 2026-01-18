@@ -211,7 +211,11 @@ impl ResourceManager {
     }
 
     /// Register a new connection
-    pub async fn register_connection(&self, connection_id: String, device_id: String) -> Result<()> {
+    pub async fn register_connection(
+        &self,
+        connection_id: String,
+        device_id: String,
+    ) -> Result<()> {
         self.can_accept_connection(&device_id).await?;
 
         let now = SystemTime::now()

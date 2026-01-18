@@ -21,10 +21,12 @@ pub struct CosmicNotifier {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Urgency {
     /// Low priority notification
+    #[allow(dead_code)]
     Low = 0,
     /// Normal priority notification (default)
     Normal = 1,
     /// Critical notification that requires attention
+    #[allow(dead_code)]
     Critical = 2,
 }
 
@@ -87,11 +89,8 @@ impl NotificationBuilder {
     }
 
     /// Set a custom hint
-    pub fn hint(
-        mut self,
-        key: impl Into<String>,
-        value: zbus::zvariant::Value<'static>,
-    ) -> Self {
+    #[allow(dead_code)]
+    pub fn hint(mut self, key: impl Into<String>, value: zbus::zvariant::Value<'static>) -> Self {
         self.hints.insert(key.into(), value);
         self
     }
@@ -211,11 +210,7 @@ impl CosmicNotifier {
     }
 
     /// Send a ping notification from a device
-    pub async fn notify_ping(
-        &self,
-        device_name: &str,
-        message: Option<&str>,
-    ) -> Result<u32> {
+    pub async fn notify_ping(&self, device_name: &str, message: Option<&str>) -> Result<u32> {
         let body = if let Some(msg) = message {
             format!("\"{}\"", msg)
         } else {
@@ -300,6 +295,7 @@ impl CosmicNotifier {
     }
 
     /// Send a device connected notification
+    #[allow(dead_code)]
     pub async fn notify_device_connected(&self, device_name: &str) -> Result<u32> {
         self.send(
             NotificationBuilder::new("Device Connected")
@@ -311,6 +307,7 @@ impl CosmicNotifier {
     }
 
     /// Send a device disconnected notification
+    #[allow(dead_code)]
     pub async fn notify_device_disconnected(&self, device_name: &str) -> Result<u32> {
         self.send(
             NotificationBuilder::new("Device Disconnected")
@@ -322,6 +319,7 @@ impl CosmicNotifier {
     }
 
     /// Send a pairing timeout notification
+    #[allow(dead_code)]
     pub async fn notify_pairing_timeout(&self, device_name: &str) -> Result<u32> {
         self.send(
             NotificationBuilder::new("Pairing Timeout")
@@ -333,6 +331,7 @@ impl CosmicNotifier {
     }
 
     /// Send a pairing error notification
+    #[allow(dead_code)]
     pub async fn notify_pairing_error(&self, device_name: &str, error: &str) -> Result<u32> {
         self.send(
             NotificationBuilder::new("Pairing Failed")
@@ -344,6 +343,7 @@ impl CosmicNotifier {
     }
 
     /// Send a network error notification
+    #[allow(dead_code)]
     pub async fn notify_network_error(
         &self,
         device_name: &str,
@@ -363,6 +363,7 @@ impl CosmicNotifier {
     }
 
     /// Send a file transfer error notification
+    #[allow(dead_code)]
     pub async fn notify_file_transfer_error(
         &self,
         device_name: &str,
@@ -383,6 +384,7 @@ impl CosmicNotifier {
     }
 
     /// Send a plugin error notification
+    #[allow(dead_code)]
     pub async fn notify_plugin_error(
         &self,
         plugin_name: &str,
@@ -403,6 +405,7 @@ impl CosmicNotifier {
     }
 
     /// Send a permission denied error notification
+    #[allow(dead_code)]
     pub async fn notify_permission_error(&self, operation: &str, details: &str) -> Result<u32> {
         self.send(
             NotificationBuilder::new("Permission Denied")
@@ -419,6 +422,7 @@ impl CosmicNotifier {
     }
 
     /// Send a disk space error notification
+    #[allow(dead_code)]
     pub async fn notify_disk_full_error(&self, path: &str) -> Result<u32> {
         self.send(
             NotificationBuilder::new("Disk Full")
@@ -434,6 +438,7 @@ impl CosmicNotifier {
     }
 
     /// Send a configuration error notification
+    #[allow(dead_code)]
     pub async fn notify_configuration_error(&self, error_message: &str) -> Result<u32> {
         self.send(
             NotificationBuilder::new("Configuration Error")
@@ -450,6 +455,7 @@ impl CosmicNotifier {
     }
 
     /// Send a certificate validation error notification
+    #[allow(dead_code)]
     pub async fn notify_certificate_error(&self, device_name: &str, details: &str) -> Result<u32> {
         self.send(
             NotificationBuilder::new("Security Error")
@@ -466,11 +472,8 @@ impl CosmicNotifier {
     }
 
     /// Send a protocol version mismatch error notification
-    pub async fn notify_protocol_mismatch(
-        &self,
-        device_name: &str,
-        details: &str,
-    ) -> Result<u32> {
+    #[allow(dead_code)]
+    pub async fn notify_protocol_mismatch(&self, device_name: &str, details: &str) -> Result<u32> {
         self.send(
             NotificationBuilder::new("Incompatible Version")
                 .body(format!(
@@ -485,6 +488,7 @@ impl CosmicNotifier {
     }
 
     /// Send a connection timeout error notification
+    #[allow(dead_code)]
     pub async fn notify_connection_timeout(&self, device_name: &str) -> Result<u32> {
         self.send(
             NotificationBuilder::new("Connection Timeout")
@@ -500,6 +504,7 @@ impl CosmicNotifier {
     }
 
     /// Send a generic error notification with recovery action
+    #[allow(dead_code)]
     pub async fn notify_error_with_recovery(
         &self,
         title: &str,
@@ -520,6 +525,7 @@ impl CosmicNotifier {
     }
 
     /// Close a notification by ID
+    #[allow(dead_code)]
     pub async fn close(&self, notification_id: u32) -> Result<()> {
         let proxy = zbus::Proxy::new(
             &self.connection,
@@ -670,8 +676,8 @@ mod tests {
     fn test_notification_hints() {
         use zbus::zvariant::Value;
 
-        let builder = NotificationBuilder::new("Test")
-            .hint("x-custom-hint", Value::Str("test-value".into()));
+        let builder =
+            NotificationBuilder::new("Test").hint("x-custom-hint", Value::Str("test-value".into()));
 
         let params = builder.build();
 
@@ -682,6 +688,7 @@ mod tests {
 
     #[test]
     fn test_critical_urgency_notification() {
+        use zbus::zvariant::Value;
         let builder = NotificationBuilder::new("Critical Error")
             .body("System failure detected")
             .urgency(Urgency::Critical)

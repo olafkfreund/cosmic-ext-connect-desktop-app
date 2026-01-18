@@ -8,7 +8,7 @@
 //! - Memory pressure scenarios
 
 use cosmic_connect_protocol::{
-    ProtocolError, RecoveryManager, ReconnectionStrategy, ResourceConfig, ResourceManager,
+    ProtocolError, ReconnectionStrategy, RecoveryManager, ResourceConfig, ResourceManager,
     TransferState,
 };
 use std::path::PathBuf;
@@ -324,32 +324,17 @@ async fn test_transfer_limit_exhaustion() {
     let resource_manager = ResourceManager::new(config);
 
     // Register two transfers
-    let transfer1 = cosmic_connect_protocol::TransferInfo::new(
-        "t1".to_string(),
-        "device-1".to_string(),
-        500,
-    );
-    resource_manager
-        .register_transfer(transfer1)
-        .await
-        .unwrap();
+    let transfer1 =
+        cosmic_connect_protocol::TransferInfo::new("t1".to_string(), "device-1".to_string(), 500);
+    resource_manager.register_transfer(transfer1).await.unwrap();
 
-    let transfer2 = cosmic_connect_protocol::TransferInfo::new(
-        "t2".to_string(),
-        "device-2".to_string(),
-        500,
-    );
-    resource_manager
-        .register_transfer(transfer2)
-        .await
-        .unwrap();
+    let transfer2 =
+        cosmic_connect_protocol::TransferInfo::new("t2".to_string(), "device-2".to_string(), 500);
+    resource_manager.register_transfer(transfer2).await.unwrap();
 
     // Third transfer should fail (max concurrent reached)
-    let transfer3 = cosmic_connect_protocol::TransferInfo::new(
-        "t3".to_string(),
-        "device-3".to_string(),
-        500,
-    );
+    let transfer3 =
+        cosmic_connect_protocol::TransferInfo::new("t3".to_string(), "device-3".to_string(), 500);
     let result = resource_manager.register_transfer(transfer3).await;
     assert!(result.is_err());
     assert!(matches!(
@@ -377,15 +362,9 @@ async fn test_transfer_size_limit_exhaustion() {
     assert!(result.is_err());
 
     // Register transfer at limit
-    let transfer2 = cosmic_connect_protocol::TransferInfo::new(
-        "t2".to_string(),
-        "device-1".to_string(),
-        1000,
-    );
-    resource_manager
-        .register_transfer(transfer2)
-        .await
-        .unwrap();
+    let transfer2 =
+        cosmic_connect_protocol::TransferInfo::new("t2".to_string(), "device-1".to_string(), 1000);
+    resource_manager.register_transfer(transfer2).await.unwrap();
 
     // Another transfer that would exceed total should fail
     let transfer3 = cosmic_connect_protocol::TransferInfo::new(
@@ -393,17 +372,11 @@ async fn test_transfer_size_limit_exhaustion() {
         "device-2".to_string(),
         1000, // Total: 1000 + 1000 = 2000 (at limit)
     );
-    resource_manager
-        .register_transfer(transfer3)
-        .await
-        .unwrap();
+    resource_manager.register_transfer(transfer3).await.unwrap();
 
     // One more should fail
-    let transfer4 = cosmic_connect_protocol::TransferInfo::new(
-        "t4".to_string(),
-        "device-3".to_string(),
-        100,
-    );
+    let transfer4 =
+        cosmic_connect_protocol::TransferInfo::new("t4".to_string(), "device-3".to_string(), 100);
     let result = resource_manager.register_transfer(transfer4).await;
     assert!(result.is_err());
 }
@@ -476,10 +449,8 @@ async fn test_packet_retry_queue() {
     recovery_manager.init().await.unwrap();
 
     // Queue packets
-    let packet1 =
-        cosmic_connect_protocol::Packet::new("cconnect.ping", serde_json::json!({}));
-    let packet2 =
-        cosmic_connect_protocol::Packet::new("cconnect.share", serde_json::json!({}));
+    let packet1 = cosmic_connect_protocol::Packet::new("cconnect.ping", serde_json::json!({}));
+    let packet2 = cosmic_connect_protocol::Packet::new("cconnect.share", serde_json::json!({}));
 
     recovery_manager
         .queue_packet_retry("device-1".to_string(), packet1.clone())
@@ -519,7 +490,11 @@ async fn test_packet_retry_exhaustion() {
 
     // Fourth attempt: packet should be dropped
     let to_retry = recovery_manager.process_retry_queue().await;
-    assert_eq!(to_retry.len(), 0, "Packet should be dropped after max retries");
+    assert_eq!(
+        to_retry.len(),
+        0,
+        "Packet should be dropped after max retries"
+    );
 }
 
 /// Test stale connection cleanup
@@ -567,11 +542,8 @@ async fn test_resource_summary() {
         .await
         .unwrap();
 
-    let transfer = cosmic_connect_protocol::TransferInfo::new(
-        "t1".to_string(),
-        "device-1".to_string(),
-        1000,
-    );
+    let transfer =
+        cosmic_connect_protocol::TransferInfo::new("t1".to_string(), "device-1".to_string(), 1000);
     resource_manager.register_transfer(transfer).await.unwrap();
 
     // Get summary
@@ -617,47 +589,25 @@ async fn test_device_specific_tracking() {
     assert_eq!(resource_manager.get_connection_count().await, 3);
 
     // Register transfers for different devices
-    let transfer1 = cosmic_connect_protocol::TransferInfo::new(
-        "t1".to_string(),
-        "device-1".to_string(),
-        1000,
-    );
-    resource_manager
-        .register_transfer(transfer1)
-        .await
-        .unwrap();
+    let transfer1 =
+        cosmic_connect_protocol::TransferInfo::new("t1".to_string(), "device-1".to_string(), 1000);
+    resource_manager.register_transfer(transfer1).await.unwrap();
 
-    let transfer2 = cosmic_connect_protocol::TransferInfo::new(
-        "t2".to_string(),
-        "device-1".to_string(),
-        1000,
-    );
-    resource_manager
-        .register_transfer(transfer2)
-        .await
-        .unwrap();
+    let transfer2 =
+        cosmic_connect_protocol::TransferInfo::new("t2".to_string(), "device-1".to_string(), 1000);
+    resource_manager.register_transfer(transfer2).await.unwrap();
 
-    let transfer3 = cosmic_connect_protocol::TransferInfo::new(
-        "t3".to_string(),
-        "device-2".to_string(),
-        1000,
-    );
-    resource_manager
-        .register_transfer(transfer3)
-        .await
-        .unwrap();
+    let transfer3 =
+        cosmic_connect_protocol::TransferInfo::new("t3".to_string(), "device-2".to_string(), 1000);
+    resource_manager.register_transfer(transfer3).await.unwrap();
 
     // Check device-specific transfer counts
     assert_eq!(
-        resource_manager
-            .get_device_transfer_count("device-1")
-            .await,
+        resource_manager.get_device_transfer_count("device-1").await,
         2
     );
     assert_eq!(
-        resource_manager
-            .get_device_transfer_count("device-2")
-            .await,
+        resource_manager.get_device_transfer_count("device-2").await,
         1
     );
 }

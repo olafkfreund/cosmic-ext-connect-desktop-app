@@ -646,8 +646,9 @@ impl SharePlugin {
                         tokio::spawn(async move {
                             // Create downloads directory
                             let downloads_dir = std::path::PathBuf::from(
-                                std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())
-                            ).join("Downloads");
+                                std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()),
+                            )
+                            .join("Downloads");
 
                             if let Err(e) = tokio::fs::create_dir_all(&downloads_dir).await {
                                 warn!("Failed to create downloads directory: {}", e);
@@ -663,8 +664,8 @@ impl SharePlugin {
 
                             // Connect to payload server and download file with progress tracking
                             use crate::PayloadClient;
-                            use std::sync::Arc;
                             use std::sync::atomic::{AtomicU64, Ordering};
+                            use std::sync::Arc;
                             use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
                             match PayloadClient::new(&host_clone, port).await {
@@ -711,7 +712,10 @@ impl SharePlugin {
                                         true // Continue transfer
                                     }));
 
-                                    match client_with_progress.receive_file(&file_path, size as u64).await {
+                                    match client_with_progress
+                                        .receive_file(&file_path, size as u64)
+                                        .await
+                                    {
                                         Ok(()) => {
                                             info!(
                                                 "Successfully downloaded file '{}' from {}",
@@ -1067,10 +1071,7 @@ mod tests {
         plugin.init(&device).await.unwrap();
 
         let mut device = create_test_device();
-        let packet = Packet::new(
-            "cconnect.share.request",
-            json!({ "text": "Test message" }),
-        );
+        let packet = Packet::new("cconnect.share.request", json!({ "text": "Test message" }));
 
         plugin.handle_packet(&packet, &mut device).await.unwrap();
 
@@ -1195,11 +1196,8 @@ mod tests {
         let mut device = create_test_device();
 
         // Share file
-        let packet1 = Packet::new(
-            "cconnect.share.request",
-            json!({ "filename": "file1.txt" }),
-        )
-        .with_payload_size(100);
+        let packet1 = Packet::new("cconnect.share.request", json!({ "filename": "file1.txt" }))
+            .with_payload_size(100);
         plugin.handle_packet(&packet1, &mut device).await.unwrap();
 
         // Share text
@@ -1230,10 +1228,7 @@ mod tests {
         let mut device = create_test_device();
 
         // Packet with no recognizable content
-        let packet = Packet::new(
-            "cconnect.share.request",
-            json!({ "invalidField": "value" }),
-        );
+        let packet = Packet::new("cconnect.share.request", json!({ "invalidField": "value" }));
 
         plugin.handle_packet(&packet, &mut device).await.unwrap();
 

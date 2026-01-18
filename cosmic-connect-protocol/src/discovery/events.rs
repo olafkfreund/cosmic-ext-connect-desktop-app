@@ -136,12 +136,8 @@ impl DiscoveryEvent {
     /// Get transport type if this is a device event
     pub fn transport_type(&self) -> Option<TransportType> {
         match self {
-            DiscoveryEvent::DeviceDiscovered {
-                transport_type, ..
-            } => Some(*transport_type),
-            DiscoveryEvent::DeviceUpdated {
-                transport_type, ..
-            } => Some(*transport_type),
+            DiscoveryEvent::DeviceDiscovered { transport_type, .. } => Some(*transport_type),
+            DiscoveryEvent::DeviceUpdated { transport_type, .. } => Some(*transport_type),
             _ => None,
         }
     }
@@ -225,7 +221,10 @@ mod tests {
         assert_eq!(event.transport_type(), Some(TransportType::Bluetooth));
 
         match event.transport_address() {
-            Some(TransportAddress::Bluetooth { address, service_uuid }) => {
+            Some(TransportAddress::Bluetooth {
+                address,
+                service_uuid,
+            }) => {
                 assert_eq!(address, &bt_addr);
                 assert_eq!(*service_uuid, Some(crate::transport::CCONNECT_SERVICE_UUID));
             }

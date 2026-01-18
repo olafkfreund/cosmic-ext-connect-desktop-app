@@ -329,7 +329,10 @@ mod tests {
         );
 
         let mut device_mut = create_test_device();
-        plugin.handle_packet(&packet1, &mut device_mut).await.unwrap();
+        plugin
+            .handle_packet(&packet1, &mut device_mut)
+            .await
+            .unwrap();
         assert!(plugin.presentation_active);
         assert!(plugin.laser_pointer().is_active());
         assert_eq!(plugin.laser_pointer().position(), (5.0, 10.0));
@@ -344,7 +347,10 @@ mod tests {
         );
 
         let mut device_mut2 = create_test_device();
-        plugin.handle_packet(&packet2, &mut device_mut2).await.unwrap();
+        plugin
+            .handle_packet(&packet2, &mut device_mut2)
+            .await
+            .unwrap();
         assert_eq!(plugin.laser_pointer().position(), (3.0, 13.0));
     }
 }

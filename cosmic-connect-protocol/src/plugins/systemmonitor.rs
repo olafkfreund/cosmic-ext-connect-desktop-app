@@ -390,7 +390,9 @@ impl SystemMonitorPlugin {
             processes.sort_by(|a, b| {
                 let cpu_a = a["cpu"].as_f64().unwrap_or(0.0);
                 let cpu_b = b["cpu"].as_f64().unwrap_or(0.0);
-                cpu_b.partial_cmp(&cpu_a).unwrap_or(std::cmp::Ordering::Equal)
+                cpu_b
+                    .partial_cmp(&cpu_a)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             });
 
             processes.truncate(limit);
@@ -460,26 +462,27 @@ impl SystemMonitorPlugin {
 
                 // Create response packet
                 let response = Packet::new("cconnect.systemmonitor.stats", stats);
-                debug!("System stats collected for {}: {:?}", device.name(), response.body);
+                debug!(
+                    "System stats collected for {}: {:?}",
+                    device.name(),
+                    response.body
+                );
 
                 // In a real implementation, send the response packet through the device connection
                 // device.send_packet(response).await?;
             }
             "processes" => {
-                let limit = body
-                    .get("limit")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(10) as usize;
+                let limit = body.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
-                info!(
-                    "Collecting top {} processes for {}",
-                    limit,
-                    device.name()
-                );
+                info!("Collecting top {} processes for {}", limit, device.name());
                 let process_list = self.collect_process_list(limit);
 
                 let response = Packet::new("cconnect.systemmonitor.processes", process_list);
-                debug!("Process list collected for {}: {:?}", device.name(), response.body);
+                debug!(
+                    "Process list collected for {}: {:?}",
+                    device.name(),
+                    response.body
+                );
 
                 // device.send_packet(response).await?;
             }
@@ -525,7 +528,10 @@ impl Plugin for SystemMonitorPlugin {
 
     async fn init(&mut self, device: &Device) -> Result<()> {
         self.device_id = Some(device.id().to_string());
-        info!("SystemMonitor plugin initialized for device {}", device.name());
+        info!(
+            "SystemMonitor plugin initialized for device {}",
+            device.name()
+        );
         Ok(())
     }
 
