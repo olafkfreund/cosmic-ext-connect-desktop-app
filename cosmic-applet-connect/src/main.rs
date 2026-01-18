@@ -1513,26 +1513,35 @@ impl CConnectApplet {
         // MPRIS media controls section
         let mpris_section = self.mpris_controls_view();
 
-        let content = if self.devices.is_empty() {
-            column![
-                container(icon::from_name("phone-disconnected-symbolic").size(ICON_XL))
-                    .padding(Padding::from([SPACE_S, 0.0, SPACE_M, 0.0])),
-                cosmic::widget::text::heading("No Devices Found"),
-                cosmic::widget::text::body("Make sure:"),
-                cosmic::widget::text::caption("• CConnect app is installed on your devices"),
-                cosmic::widget::text::caption("• Devices are on the same network"),
-                cosmic::widget::text::caption("• Firewall ports 1814-1864 are open"),
-                container(
-                    button::text("Refresh")
-                        .on_press(Message::RefreshDevices)
-                        .padding(SPACE_S)
-                )
-                .padding(Padding::from([SPACE_M, 0.0, 0.0, 0.0])),
-            ]
-            .spacing(SPACE_S)
+        let content: Element<'_, Message> = if self.devices.is_empty() {
+            container(
+                column![
+                    container(icon::from_name("phone-disconnected-symbolic").size(ICON_XL))
+                        .padding(Padding::new(0.0).bottom(SPACE_M)),
+                    cosmic::widget::text::heading("No Devices Connected"),
+                    column![
+                        cosmic::widget::text::body("Make sure your devices are:"),
+                        cosmic::widget::text::caption("• On the same network"),
+                        cosmic::widget::text::caption("• Running the CConnect app"),
+                    ]
+                    .spacing(SPACE_XS)
+                    .align_x(Horizontal::Center),
+                    container(
+                        button::text("Refresh Devices")
+                            .on_press(Message::RefreshDevices)
+                            .padding(SPACE_S)
+                    )
+                    .padding(Padding::new(0.0).top(SPACE_M)),
+                ]
+                .spacing(SPACE_S)
+                .align_x(Horizontal::Center),
+            )
             .padding(SPACE_XXL)
             .width(Length::Fill)
+            .height(Length::Fill)
             .align_x(Horizontal::Center)
+            .align_y(cosmic::iced::Alignment::Center)
+            .into()
         } else {
             // Group devices by category
             let mut connected = Vec::new();
@@ -1607,7 +1616,7 @@ impl CConnectApplet {
                 }
             }
 
-            device_groups
+            device_groups.into()
         };
 
         let popup_content = column![
