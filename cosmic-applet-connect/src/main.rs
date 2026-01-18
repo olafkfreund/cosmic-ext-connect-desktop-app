@@ -1378,7 +1378,7 @@ impl CConnectApplet {
 
         if self.history.is_empty() {
             history_list = history_list.push(
-                container(text("No history events").size(14))
+                container(cosmic::widget::text::body("No history events"))
                     .width(Length::Fill)
                     .align_x(cosmic::iced::Alignment::Center)
                     .padding(20),
@@ -1388,11 +1388,11 @@ impl CConnectApplet {
             for event in self.history.iter().rev() {
                 let row = row![
                     column![
-                        text(&event.event_type).size(14),
-                        text(&event.device_name).size(12),
+                        cosmic::widget::text::body(&event.event_type),
+                        cosmic::widget::text::caption(&event.device_name),
                     ],
                     horizontal_space(),
-                    text(&event.details).size(12).width(Length::Fixed(150.0)),
+                    cosmic::widget::text::caption(&event.details).width(Length::Fixed(150.0)),
                 ]
                 .width(Length::Fill)
                 .align_y(cosmic::iced::Alignment::Center);
@@ -1471,11 +1471,11 @@ impl CConnectApplet {
             column![
                 container(icon::from_name("phone-disconnected-symbolic").size(48))
                     .padding(Padding::from([8, 0, 12, 0])),
-                text("No Devices Found").size(18),
-                text("Make sure:").size(13),
-                text("• CConnect app is installed on your devices").size(12),
-                text("• Devices are on the same network").size(12),
-                text("• Firewall ports 1814-1864 are open").size(12),
+                cosmic::widget::text::heading("No Devices Found"),
+                cosmic::widget::text::body("Make sure:"),
+                cosmic::widget::text::caption("• CConnect app is installed on your devices"),
+                cosmic::widget::text::caption("• Devices are on the same network"),
+                cosmic::widget::text::caption("• Firewall ports 1814-1864 are open"),
                 container(
                     button::text("Refresh")
                         .on_press(Message::RefreshDevices)
@@ -1522,7 +1522,7 @@ impl CConnectApplet {
             // Connected devices section
             if !connected.is_empty() {
                 device_groups = device_groups.push(
-                    container(text("Connected").size(12))
+                    container(cosmic::widget::text::caption("Connected"))
                         .padding(Padding::from([8.0, 12.0, 4.0, 12.0]))
                         .width(Length::Fill),
                 );
@@ -1537,7 +1537,7 @@ impl CConnectApplet {
                     device_groups = device_groups.push(divider::horizontal::default());
                 }
                 device_groups = device_groups.push(
-                    container(text("Available").size(12))
+                    container(cosmic::widget::text::caption("Available"))
                         .padding(Padding::from([8.0, 12.0, 4.0, 12.0]))
                         .width(Length::Fill),
                 );
@@ -1552,7 +1552,7 @@ impl CConnectApplet {
                     device_groups = device_groups.push(divider::horizontal::default());
                 }
                 device_groups = device_groups.push(
-                    container(text("Offline").size(12))
+                    container(cosmic::widget::text::caption("Offline"))
                         .padding(Padding::from([8.0, 12.0, 4.0, 12.0]))
                         .width(Length::Fill),
                 );
@@ -1599,7 +1599,7 @@ impl CConnectApplet {
         // Player name/label
         let player_name = row![
             icon::from_name("multimedia-player-symbolic").size(16),
-            text(selected_player).size(13),
+            cosmic::widget::text::body(selected_player),
         ]
         .spacing(6)
         .align_y(cosmic::iced::Alignment::Center);
@@ -1611,18 +1611,18 @@ impl CConnectApplet {
 
         if let Some(state) = state {
             if let Some(title) = &state.metadata.title {
-                metadata_col = metadata_col.push(text(title).size(14));
+                metadata_col = metadata_col.push(cosmic::widget::text::body(title));
             }
             if let Some(artist) = &state.metadata.artist {
-                metadata_col = metadata_col.push(text(artist).size(13));
+                metadata_col = metadata_col.push(cosmic::widget::text::body(artist));
             }
             if let Some(album) = &state.metadata.album {
-                metadata_col = metadata_col.push(text(album).size(12));
+                metadata_col = metadata_col.push(cosmic::widget::text::caption(album));
             }
             // Use album art if available (placeholder for now/Url later)
             // If using libcosmic image support
         } else {
-            metadata_col = metadata_col.push(text("Unknown").size(14));
+            metadata_col = metadata_col.push(cosmic::widget::text::body("Unknown"));
         }
 
         // Playback controls
@@ -1719,7 +1719,7 @@ impl CConnectApplet {
         let display_name = nickname.unwrap_or(&device.info.device_name);
 
         let mut name_status_col = column![
-            text(display_name).size(16),
+            cosmic::widget::text::heading(display_name),
             connection_status_styled_text(device.connection_state, device.pairing_status),
         ]
         .spacing(2);
@@ -1727,8 +1727,10 @@ impl CConnectApplet {
         // Add last seen timestamp for disconnected devices
         if !device.is_connected() && device.last_seen > 0 {
             let last_seen_text = format_last_seen(device.last_seen);
-            name_status_col =
-                name_status_col.push(text(format!("Last seen: {}", last_seen_text)).size(10));
+            name_status_col = name_status_col.push(cosmic::widget::text::caption(format!(
+                "Last seen: {}",
+                last_seen_text
+            )));
         }
 
         // Info row with optional battery indicator
@@ -1739,7 +1741,7 @@ impl CConnectApplet {
                     name_status_col,
                     row![
                         icon::from_name(battery_icon).size(14),
-                        text(format!("{}%", level)).size(11),
+                        cosmic::widget::text::caption(format!("{}%", level)),
                     ]
                     .spacing(4)
                     .align_y(cosmic::iced::Alignment::Center),
@@ -1901,7 +1903,7 @@ impl CConnectApplet {
         let override_count = config.count_plugin_overrides();
 
         // Header with close button
-        let mut header_row = row![text("Plugin Settings").size(14),]
+        let mut header_row = row![cosmic::widget::text::body("Plugin Settings"),]
             .spacing(8)
             .align_y(cosmic::iced::Alignment::Center);
 
@@ -1975,7 +1977,7 @@ impl CConnectApplet {
             // Build plugin row
             let mut plugin_row = row![
                 icon::from_name(plugin_meta.icon).size(16),
-                text(plugin_meta.name).size(12).width(Length::Fill),
+                cosmic::widget::text::caption(plugin_meta.name).width(Length::Fill),
             ]
             .spacing(8)
             .align_y(cosmic::iced::Alignment::Center);
@@ -1985,20 +1987,20 @@ impl CConnectApplet {
                 plugin_row = plugin_row.push(if plugin_enabled {
                     row![
                         icon::from_name("emblem-ok-symbolic").size(12),
-                        text("Override: On").size(10)
+                        cosmic::widget::text::caption("Override: On")
                     ]
                     .spacing(4)
                     .align_y(cosmic::iced::Alignment::Center)
                 } else {
                     row![
                         icon::from_name("emblem-important-symbolic").size(12),
-                        text("Override: Off").size(10)
+                        cosmic::widget::text::caption("Override: Off")
                     ]
                     .spacing(4)
                     .align_y(cosmic::iced::Alignment::Center)
                 });
             } else {
-                plugin_row = plugin_row.push(text("").size(10));
+                plugin_row = plugin_row.push(cosmic::widget::text::caption(""));
             }
 
             // Toggle switch (only enabled for supported plugins)
@@ -2089,7 +2091,7 @@ impl CConnectApplet {
 
         // Header with close button
         let header = row![
-            text("Remote Desktop Settings").size(14),
+            cosmic::widget::text::body("Remote Desktop Settings"),
             horizontal_space(),
             button::icon(icon::from_name("window-close-symbolic").size(14))
                 .on_press(Message::CloseRemoteDesktopSettings)
@@ -2219,10 +2221,10 @@ impl CConnectApplet {
                     });
 
             let inputs_row = row![
-                column![text("Width").size(12), width_input]
+                column![cosmic::widget::text::caption("Width"), width_input]
                     .spacing(4)
                     .width(Length::FillPortion(1)),
-                column![text("Height").size(12), height_input]
+                column![cosmic::widget::text::caption("Height"), height_input]
                     .spacing(4)
                     .width(Length::FillPortion(1)),
             ]
@@ -2284,7 +2286,7 @@ impl CConnectApplet {
 
             transfers_col = transfers_col.push(
                 column![
-                    text(label).size(12),
+                    cosmic::widget::text::caption(label),
                     progress_bar(0.0..=100.0, progress).height(Length::Fixed(6.0))
                 ]
                 .spacing(4),
