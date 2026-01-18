@@ -6,8 +6,9 @@ use cosmic::{
     app::{Core, Task},
     iced::{
         alignment::Horizontal,
+        keyboard,
         widget::{column, container, row, scrollable, text},
-        window, Color, Length, Padding, Rectangle,
+        window, Color, Length, Padding, Rectangle, Subscription,
     },
     iced_runtime::core::layout::Limits,
     surface::action::{app_popup, destroy_popup},
@@ -254,6 +255,7 @@ enum Message {
         String,
     ), // id, device, file, cur, tot, dir
     TransferComplete(String, String, String, bool, String), // id, device, file, success, error
+    KeyPress(keyboard::Key, keyboard::Modifiers),
 }
 
 /// Fetches device list from the daemon via D-Bus
@@ -1235,13 +1237,31 @@ impl cosmic::Application for CConnectApplet {
                 }
                 Task::none()
             }
+
+            Message::KeyPress(key, modifiers) => {
+                use cosmic::iced::keyboard::key::Named;
+
+                if let keyboard::Key::Named(Named::Escape) = key {
+                    if let Some(id) = self.popup {
+                        return cosmic::task::message(cosmic::Action::Cosmic(
+                            cosmic::app::Action::Surface(destroy_popup(id)),
+                        ));
+                    }
+                }
+
+                if key == keyboard::Key::Character("r".into()) && modifiers.control() {
+                    return cosmic::task::message(cosmic::Action::App(Message::RefreshDevices));
+                }
+
+                Task::none()
+            }
         }
     }
 
     fn subscription(&self) -> cosmic::iced::Subscription<Self::Message> {
         struct DbusSubscription;
 
-        cosmic::iced::Subscription::run_with_id(
+        let dbus_sub = cosmic::iced::Subscription::run_with_id(
             std::any::TypeId::of::<DbusSubscription>(),
             cosmic::iced::futures::stream::unfold(
                 None,
@@ -1310,7 +1330,12 @@ impl cosmic::Application for CConnectApplet {
                     }
                 },
             ),
-        )
+        );
+
+        let keyboard_sub =
+            keyboard::on_key_press(|key, modifiers| Some(Message::KeyPress(key, modifiers)));
+
+        Subscription::batch(vec![dbus_sub, keyboard_sub])
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
