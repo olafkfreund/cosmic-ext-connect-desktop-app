@@ -103,9 +103,7 @@ impl FileTransferInfo {
     /// Returns error if file doesn't exist or metadata cannot be read.
     pub async fn from_path(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
-        let metadata = tokio::fs::metadata(path)
-            .await
-            .map_err(ProtocolError::Io)?;
+        let metadata = tokio::fs::metadata(path).await.map_err(ProtocolError::Io)?;
 
         let filename = path
             .file_name()
@@ -224,9 +222,7 @@ impl PayloadServer {
 
     /// Get the socket address this server is bound to
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        self.listener
-            .local_addr()
-            .map_err(ProtocolError::Io)
+        self.listener.local_addr().map_err(ProtocolError::Io)
     }
 
     /// Accept a connection and send a file
@@ -276,9 +272,7 @@ impl PayloadServer {
         info!("Accepted connection from {} for file transfer", remote_addr);
 
         // Open file
-        let mut file = File::open(file_path)
-            .await
-            .map_err(ProtocolError::Io)?;
+        let mut file = File::open(file_path).await.map_err(ProtocolError::Io)?;
 
         // Stream file data
         let mut buffer = vec![0u8; BUFFER_SIZE];
@@ -301,18 +295,15 @@ impl PayloadServer {
             }
 
             // Write to stream
-            timeout(
-                TRANSFER_TIMEOUT,
-                stream.write_all(&buffer[..bytes_read]),
-            )
-            .await
-            .map_err(|_| {
-                ProtocolError::Io(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "Stream write timeout",
-                ))
-            })?
-            .map_err(ProtocolError::Io)?;
+            timeout(TRANSFER_TIMEOUT, stream.write_all(&buffer[..bytes_read]))
+                .await
+                .map_err(|_| {
+                    ProtocolError::Io(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "Stream write timeout",
+                    ))
+                })?
+                .map_err(ProtocolError::Io)?;
 
             total_bytes += bytes_read as u64;
 
@@ -365,10 +356,7 @@ impl PayloadClient {
     ///
     /// Returns error if connection fails or times out.
     pub async fn new(host: impl ToSocketAddrs, port: u16) -> Result<Self> {
-        let addrs: Vec<SocketAddr> = host
-            .to_socket_addrs()
-            .map_err(ProtocolError::Io)?
-            .collect();
+        let addrs: Vec<SocketAddr> = host.to_socket_addrs().map_err(ProtocolError::Io)?.collect();
 
         if addrs.is_empty() {
             return Err(ProtocolError::Io(std::io::Error::new(
@@ -471,12 +459,15 @@ impl PayloadClient {
                 let to_read = std::cmp::min(remaining, BUFFER_SIZE as u64) as usize;
 
                 // Read from stream
-                let bytes_read = timeout(TRANSFER_TIMEOUT, self.stream.read(&mut buffer[..to_read]))
-                    .await
-                    .map_err(|_| {
-                        ProtocolError::Timeout("Stream read timeout during file transfer".to_string())
-                    })?
-                    .map_err(ProtocolError::Io)?;
+                let bytes_read =
+                    timeout(TRANSFER_TIMEOUT, self.stream.read(&mut buffer[..to_read]))
+                        .await
+                        .map_err(|_| {
+                            ProtocolError::Timeout(
+                                "Stream read timeout during file transfer".to_string(),
+                            )
+                        })?
+                        .map_err(ProtocolError::Io)?;
 
                 if bytes_read == 0 {
                     return Err(ProtocolError::Io(std::io::Error::new(
@@ -524,10 +515,7 @@ impl PayloadClient {
 
         // Clean up partial file on error
         if result.is_err() {
-            warn!(
-                "Transfer failed, cleaning up partial file: {:?}",
-                save_path
-            );
+            warn!("Transfer failed, cleaning up partial file: {:?}", save_path);
             cleanup_partial_file(save_path).await;
         }
 
@@ -548,9 +536,7 @@ mod tests {
         temp_file.write_all(b"test content").unwrap();
         temp_file.flush().unwrap();
 
-        let info = FileTransferInfo::from_path(temp_file.path())
-            .await
-            .unwrap();
+        let info = FileTransferInfo::from_path(temp_file.path()).await.unwrap();
 
         assert_eq!(info.size, 12);
         assert!(info.filename.len() > 0);
@@ -585,9 +571,7 @@ mod tests {
 
         // Spawn server task
         let source_path_clone = source_path.clone();
-        let server_task = tokio::spawn(async move {
-            server.send_file(source_path_clone).await
-        });
+        let server_task = tokio::spawn(async move { server.send_file(source_path_clone).await });
 
         // Give server time to start listening
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -631,10 +615,8 @@ mod tests {
         let server = PayloadServer::new().await.unwrap();
 
         // Don't connect - should timeout
-        let result = tokio::time::timeout(
-            Duration::from_secs(2),
-            server.send_file("/dev/null")
-        ).await;
+        let result =
+            tokio::time::timeout(Duration::from_secs(2), server.send_file("/dev/null")).await;
 
         assert!(result.is_err() || result.unwrap().is_err());
     }
@@ -645,9 +627,8 @@ mod tests {
         let port = server.port();
 
         // Start server with invalid file path
-        let server_task = tokio::spawn(async move {
-            server.send_file("/nonexistent/file.txt").await
-        });
+        let server_task =
+            tokio::spawn(async move { server.send_file("/nonexistent/file.txt").await });
 
         // Connect client
         tokio::time::sleep(Duration::from_millis(100)).await;

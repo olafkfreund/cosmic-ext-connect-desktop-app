@@ -121,7 +121,6 @@ pub enum TransportPreferenceConfig {
     OnlyBluetooth,
 }
 
-
 impl From<TransportPreferenceConfig> for TransportPreference {
     fn from(config: TransportPreferenceConfig) -> Self {
         use cosmic_connect_protocol::TransportType;
@@ -362,24 +361,24 @@ impl Default for PluginConfig {
 
             // Advanced plugins - disabled by default to reduce discovery packet size
             // These can be enabled in config if needed
-            enable_runcommand: false,     // Security: command execution should be opt-in
-            enable_remoteinput: true,     // Keep enabled - useful for presentations
-            enable_findmyphone: true,     // Keep enabled - emergency feature
-            enable_lock: true,            // Desktop lock/unlock control
-            enable_telephony: true,       // Enabled - SMS and call notifications
-            enable_presenter: false,      // Specialized use case - reduce packet size
-            enable_contacts: false,       // Reduce packet size - can be enabled if needed
-            enable_systemmonitor: true,   // Desktop-to-desktop system monitoring
-            enable_wol: true,             // Desktop-to-desktop Wake-on-LAN
-            enable_screenshot: true,      // Desktop-to-desktop screenshot capture
-            enable_remotedesktop: false,  // Security: disabled by default, requires explicit opt-in
-            enable_power: false,          // Security: power control disabled by default
+            enable_runcommand: false, // Security: command execution should be opt-in
+            enable_remoteinput: true, // Keep enabled - useful for presentations
+            enable_findmyphone: true, // Keep enabled - emergency feature
+            enable_lock: true,        // Desktop lock/unlock control
+            enable_telephony: true,   // Enabled - SMS and call notifications
+            enable_presenter: false,  // Specialized use case - reduce packet size
+            enable_contacts: false,   // Reduce packet size - can be enabled if needed
+            enable_systemmonitor: true, // Desktop-to-desktop system monitoring
+            enable_wol: true,         // Desktop-to-desktop Wake-on-LAN
+            enable_screenshot: true,  // Desktop-to-desktop screenshot capture
+            enable_remotedesktop: false, // Security: disabled by default, requires explicit opt-in
+            enable_power: false,      // Security: power control disabled by default
             enable_clipboardhistory: true, // Clipboard history with sync
-            enable_macro: false,          // Security: automation disabled by default
-            enable_chat: true,            // Instant messaging enabled by default
-            enable_audiostream: false,    // Audio streaming disabled by default (requires audio backend)
-            enable_filesync: false,       // File sync disabled by default (requires file system integration)
-            enable_screenshare: false,    // Screen share disabled by default (requires screen capture)
+            enable_macro: false,      // Security: automation disabled by default
+            enable_chat: true,        // Instant messaging enabled by default
+            enable_audiostream: false, // Audio streaming disabled by default (requires audio backend)
+            enable_filesync: false, // File sync disabled by default (requires file system integration)
+            enable_screenshare: false, // Screen share disabled by default (requires screen capture)
             enable_mousekeyboardshare: false, // Mouse/keyboard share disabled by default (requires input capture)
         }
     }

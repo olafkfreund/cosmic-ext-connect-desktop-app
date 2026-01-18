@@ -551,8 +551,14 @@ mod tests {
 
     #[test]
     fn test_client_message_parsing() {
-        assert_eq!(ClientMessage::from_u8(0), Some(ClientMessage::SetPixelFormat));
-        assert_eq!(ClientMessage::from_u8(3), Some(ClientMessage::FramebufferUpdateRequest));
+        assert_eq!(
+            ClientMessage::from_u8(0),
+            Some(ClientMessage::SetPixelFormat)
+        );
+        assert_eq!(
+            ClientMessage::from_u8(3),
+            Some(ClientMessage::FramebufferUpdateRequest)
+        );
         assert_eq!(ClientMessage::from_u8(4), Some(ClientMessage::KeyEvent));
         assert_eq!(ClientMessage::from_u8(5), Some(ClientMessage::PointerEvent));
         assert_eq!(ClientMessage::from_u8(99), None);

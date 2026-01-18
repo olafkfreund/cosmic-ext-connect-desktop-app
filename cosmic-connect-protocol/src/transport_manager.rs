@@ -23,8 +23,8 @@
 //! - Auto-fallback settings
 
 use crate::{
-    connection::{ConnectionEvent, ConnectionManager},
     bluetooth_connection_manager::BluetoothConnectionManager,
+    connection::{ConnectionEvent, ConnectionManager},
     transport::{TransportAddress, TransportPreference, TransportType},
     Packet, Result,
 };
@@ -312,10 +312,7 @@ impl TransportManager {
             .await
         {
             Ok(()) => {
-                info!(
-                    "Connected to {} via {:?}",
-                    device_id, primary_transport
-                );
+                info!("Connected to {} via {:?}", device_id, primary_transport);
                 Ok(())
             }
             Err(e) => {
@@ -428,9 +425,7 @@ impl TransportManager {
                 }
 
                 let bt_mgr = self.bluetooth_manager.as_ref().ok_or_else(|| {
-                    crate::ProtocolError::Transport(
-                        "Bluetooth manager not available".to_string(),
-                    )
+                    crate::ProtocolError::Transport("Bluetooth manager not available".to_string())
                 })?;
 
                 let (bt_address, service_uuid) = match address {

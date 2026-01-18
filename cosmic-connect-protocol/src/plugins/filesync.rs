@@ -425,9 +425,8 @@ impl FileSyncPlugin {
         }
 
         // Remove from pending conflicts
-        self.pending_conflicts.retain(|c| {
-            c.folder_id != conflict.folder_id || c.path != conflict.path
-        });
+        self.pending_conflicts
+            .retain(|c| c.folder_id != conflict.folder_id || c.path != conflict.path);
 
         Ok(())
     }
@@ -526,12 +525,11 @@ impl Plugin for FileSyncPlugin {
                     .ok_or_else(|| ProtocolError::InvalidPacket("Missing folder_id".to_string()))?
                     .to_string();
 
-                let config: SyncFolder = serde_json::from_value(
-                    packet.body.get("config").cloned().ok_or_else(|| {
-                        ProtocolError::InvalidPacket("Missing config".to_string())
-                    })?,
-                )
-                .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
+                let config: SyncFolder =
+                    serde_json::from_value(packet.body.get("config").cloned().ok_or_else(
+                        || ProtocolError::InvalidPacket("Missing config".to_string()),
+                    )?)
+                    .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
 
                 self.configure_folder(folder_id, config)?;
 
@@ -550,7 +548,11 @@ impl Plugin for FileSyncPlugin {
                     let conflicts = self.compare_indexes(&local_index, &index);
 
                     if !conflicts.is_empty() {
-                        info!("Detected {} conflicts in folder '{}'", conflicts.len(), folder_id);
+                        info!(
+                            "Detected {} conflicts in folder '{}'",
+                            conflicts.len(),
+                            folder_id
+                        );
                         self.pending_conflicts.extend(conflicts);
                     }
 
@@ -685,7 +687,9 @@ mod tests {
             bandwidth_limit_kbps: 0,
         };
 
-        assert!(plugin.configure_folder("test_folder".to_string(), config).is_ok());
+        assert!(plugin
+            .configure_folder("test_folder".to_string(), config)
+            .is_ok());
         assert!(plugin.get_folder_config("test_folder").is_some());
     }
 
@@ -707,14 +711,19 @@ mod tests {
             bandwidth_limit_kbps: 0,
         };
 
-        plugin.configure_folder("test_folder".to_string(), config).unwrap();
+        plugin
+            .configure_folder("test_folder".to_string(), config)
+            .unwrap();
         assert!(plugin.remove_folder("test_folder").is_ok());
         assert!(plugin.get_folder_config("test_folder").is_none());
     }
 
     #[tokio::test]
     async fn test_conflict_strategies() {
-        assert_eq!(ConflictStrategy::LastModifiedWins.as_str(), "last_modified_wins");
+        assert_eq!(
+            ConflictStrategy::LastModifiedWins.as_str(),
+            "last_modified_wins"
+        );
         assert_eq!(ConflictStrategy::KeepBoth.as_str(), "keep_both");
         assert_eq!(ConflictStrategy::Manual.as_str(), "manual");
         assert_eq!(ConflictStrategy::SizeBased.as_str(), "size_based");
@@ -787,7 +796,10 @@ mod tests {
         };
 
         let mut body = serde_json::Map::new();
-        body.insert("folder_id".to_string(), serde_json::Value::String("test".to_string()));
+        body.insert(
+            "folder_id".to_string(),
+            serde_json::Value::String("test".to_string()),
+        );
         body.insert("config".to_string(), serde_json::to_value(&config).unwrap());
 
         let packet = Packet {

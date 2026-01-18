@@ -262,10 +262,7 @@ impl TelephonyPlugin {
         start_timestamp: Option<i64>,
         count: Option<i32>,
     ) -> Packet {
-        debug!(
-            "Creating conversation request for thread {}",
-            thread_id
-        );
+        debug!("Creating conversation request for thread {}", thread_id);
 
         let mut body = json!({
             "threadID": thread_id,
@@ -364,7 +361,10 @@ impl TelephonyPlugin {
         let messages: SmsMessages = serde_json::from_value(packet.body.clone())
             .map_err(|e| ProtocolError::InvalidPacket(format!("Failed to parse SMS: {}", e)))?;
 
-        info!("Received {} SMS conversations", messages.conversations.len());
+        info!(
+            "Received {} SMS conversations",
+            messages.conversations.len()
+        );
 
         for conversation in &messages.conversations {
             debug!(
@@ -548,7 +548,8 @@ mod tests {
     #[test]
     fn test_create_send_sms_request() {
         let plugin = TelephonyPlugin::new();
-        let packet = plugin.create_send_sms_request("+1234567890".to_string(), "Hello!".to_string());
+        let packet =
+            plugin.create_send_sms_request("+1234567890".to_string(), "Hello!".to_string());
 
         assert_eq!(packet.packet_type, "cconnect.sms.request");
         assert_eq!(packet.body["phoneNumber"], "+1234567890");

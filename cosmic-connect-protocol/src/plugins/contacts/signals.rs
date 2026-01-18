@@ -266,7 +266,11 @@ impl ContactEvent {
                 total,
                 added,
                 updated,
-            } => signals.sync_completed(device_id, *total, *added, *updated).await,
+            } => {
+                signals
+                    .sync_completed(device_id, *total, *added, *updated)
+                    .await
+            }
         }
     }
 }

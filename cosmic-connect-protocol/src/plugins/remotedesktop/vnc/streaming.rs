@@ -13,7 +13,9 @@
 //!      30 FPS            Async encoding          To VNC
 //! ```
 
-use crate::plugins::remotedesktop::capture::{EncodedFrame, QualityPreset, RawFrame, WaylandCapture};
+use crate::plugins::remotedesktop::capture::{
+    EncodedFrame, QualityPreset, RawFrame, WaylandCapture,
+};
 use crate::plugins::remotedesktop::vnc::encoding::FrameEncoder;
 use crate::Result;
 use std::sync::Arc;
@@ -128,7 +130,10 @@ impl StreamingSession {
             ));
         }
 
-        info!("Starting streaming session at {} FPS", self.config.target_fps);
+        info!(
+            "Starting streaming session at {} FPS",
+            self.config.target_fps
+        );
 
         // Create channels
         let (raw_tx, raw_rx) = mpsc::channel::<RawFrame>(self.config.buffer_size);
@@ -144,7 +149,15 @@ impl StreamingSession {
         let allow_skip = self.config.allow_frame_skip;
 
         self.capture_handle = Some(tokio::spawn(async move {
-            Self::capture_loop(capture, raw_tx, capture_state, capture_stats, target_fps, allow_skip).await;
+            Self::capture_loop(
+                capture,
+                raw_tx,
+                capture_state,
+                capture_stats,
+                target_fps,
+                allow_skip,
+            )
+            .await;
         }));
 
         // Spawn encoding task
@@ -212,7 +225,14 @@ impl StreamingSession {
                     match if allow_skip {
                         tx.try_send(frame)
                     } else {
-                        tx.send(frame).await.map_err(|_| mpsc::error::TrySendError::Closed(RawFrame::new(0, 0, crate::plugins::remotedesktop::capture::PixelFormat::RGBA, vec![])))
+                        tx.send(frame).await.map_err(|_| {
+                            mpsc::error::TrySendError::Closed(RawFrame::new(
+                                0,
+                                0,
+                                crate::plugins::remotedesktop::capture::PixelFormat::RGBA,
+                                vec![],
+                            ))
+                        })
                     } {
                         Ok(_) => {}
                         Err(mpsc::error::TrySendError::Full(_)) => {
@@ -261,7 +281,8 @@ impl StreamingSession {
             let result = tokio::task::spawn_blocking(move || {
                 let mut encoder = encoder_clone.lock().unwrap();
                 encoder.encode(&raw_frame)
-            }).await;
+            })
+            .await;
 
             match result {
                 Ok(Ok(encoded)) => {
@@ -275,7 +296,8 @@ impl StreamingSession {
                     {
                         let mut stats = stats.write().await;
                         stats.frames_encoded += 1;
-                        stats.avg_frame_time = frame_times.iter().sum::<Duration>() / frame_times.len() as u32;
+                        stats.avg_frame_time =
+                            frame_times.iter().sum::<Duration>() / frame_times.len() as u32;
                     }
 
                     // Send to output

@@ -588,7 +588,10 @@ impl DbusClient {
     /// * `player` - Player name
     /// * `offset_microseconds` - Seek offset in microseconds (can be negative)
     pub async fn mpris_seek(&self, player: &str, offset_microseconds: i64) -> Result<()> {
-        info!("Seeking MPRIS player {} by {}μs", player, offset_microseconds);
+        info!(
+            "Seeking MPRIS player {} by {}μs",
+            player, offset_microseconds
+        );
         self.proxy
             .mpris_seek(player, offset_microseconds)
             .await
@@ -644,7 +647,11 @@ impl DbusClient {
     /// * `plugin` - Plugin name (e.g., "ping", "battery", "share")
     /// * `enabled` - Whether to enable the plugin
     pub async fn set_global_plugin_enabled(&self, plugin: &str, enabled: bool) -> Result<()> {
-        info!("Setting plugin {} to {}", plugin, if enabled { "enabled" } else { "disabled" });
+        info!(
+            "Setting plugin {} to {}",
+            plugin,
+            if enabled { "enabled" } else { "disabled" }
+        );
         self.proxy
             .set_global_plugin_enabled(plugin, enabled)
             .await
@@ -655,7 +662,10 @@ impl DbusClient {
     ///
     /// Note: Requires daemon restart to take effect
     pub async fn set_tcp_enabled(&self, enabled: bool) -> Result<()> {
-        info!("Setting TCP transport to {}", if enabled { "enabled" } else { "disabled" });
+        info!(
+            "Setting TCP transport to {}",
+            if enabled { "enabled" } else { "disabled" }
+        );
         self.proxy
             .set_tcp_enabled(enabled)
             .await
@@ -666,7 +676,10 @@ impl DbusClient {
     ///
     /// Note: Requires daemon restart to take effect
     pub async fn set_bluetooth_enabled(&self, enabled: bool) -> Result<()> {
-        info!("Setting Bluetooth transport to {}", if enabled { "enabled" } else { "disabled" });
+        info!(
+            "Setting Bluetooth transport to {}",
+            if enabled { "enabled" } else { "disabled" }
+        );
         self.proxy
             .set_bluetooth_enabled(enabled)
             .await
@@ -694,7 +707,10 @@ impl DbusClient {
     ///
     /// Note: Requires daemon restart to take effect
     pub async fn set_auto_fallback(&self, enabled: bool) -> Result<()> {
-        info!("Setting auto fallback to {}", if enabled { "enabled" } else { "disabled" });
+        info!(
+            "Setting auto fallback to {}",
+            if enabled { "enabled" } else { "disabled" }
+        );
         self.proxy
             .set_auto_fallback(enabled)
             .await

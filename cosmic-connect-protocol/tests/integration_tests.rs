@@ -167,10 +167,8 @@ async fn test_device_info_with_capabilities() {
     let mut device_info = DeviceInfo::new("Test Device", DeviceType::Phone, 1716);
 
     // Add some capabilities
-    device_info.incoming_capabilities = vec![
-        "cconnect.battery".to_string(),
-        "cconnect.ping".to_string(),
-    ];
+    device_info.incoming_capabilities =
+        vec!["cconnect.battery".to_string(), "cconnect.ping".to_string()];
     device_info.outgoing_capabilities = vec![
         "cconnect.notification".to_string(),
         "cconnect.share".to_string(),

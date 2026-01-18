@@ -87,11 +87,7 @@ impl NotificationBuilder {
     }
 
     /// Set a custom hint
-    pub fn hint(
-        mut self,
-        key: impl Into<String>,
-        value: zbus::zvariant::Value<'static>,
-    ) -> Self {
+    pub fn hint(mut self, key: impl Into<String>, value: zbus::zvariant::Value<'static>) -> Self {
         self.hints.insert(key.into(), value);
         self
     }
@@ -211,11 +207,7 @@ impl CosmicNotifier {
     }
 
     /// Send a ping notification from a device
-    pub async fn notify_ping(
-        &self,
-        device_name: &str,
-        message: Option<&str>,
-    ) -> Result<u32> {
+    pub async fn notify_ping(&self, device_name: &str, message: Option<&str>) -> Result<u32> {
         let body = if let Some(msg) = message {
             format!("\"{}\"", msg)
         } else {
@@ -466,11 +458,7 @@ impl CosmicNotifier {
     }
 
     /// Send a protocol version mismatch error notification
-    pub async fn notify_protocol_mismatch(
-        &self,
-        device_name: &str,
-        details: &str,
-    ) -> Result<u32> {
+    pub async fn notify_protocol_mismatch(&self, device_name: &str, details: &str) -> Result<u32> {
         self.send(
             NotificationBuilder::new("Incompatible Version")
                 .body(format!(
@@ -670,8 +658,8 @@ mod tests {
     fn test_notification_hints() {
         use zbus::zvariant::Value;
 
-        let builder = NotificationBuilder::new("Test")
-            .hint("x-custom-hint", Value::Str("test-value".into()));
+        let builder =
+            NotificationBuilder::new("Test").hint("x-custom-hint", Value::Str("test-value".into()));
 
         let params = builder.build();
 

@@ -438,20 +438,18 @@ impl AudioStreamPlugin {
     /// Get stream statistics
     pub async fn get_stats(&self, direction: StreamDirection) -> Option<StreamStats> {
         match direction {
-            StreamDirection::Output => {
-                self.outgoing_stream
-                    .read()
-                    .await
-                    .as_ref()
-                    .map(|s| s.get_stats())
-            }
-            StreamDirection::Input => {
-                self.incoming_stream
-                    .read()
-                    .await
-                    .as_ref()
-                    .map(|s| s.get_stats())
-            }
+            StreamDirection::Output => self
+                .outgoing_stream
+                .read()
+                .await
+                .as_ref()
+                .map(|s| s.get_stats()),
+            StreamDirection::Input => self
+                .incoming_stream
+                .read()
+                .await
+                .as_ref()
+                .map(|s| s.get_stats()),
         }
     }
 
@@ -495,7 +493,10 @@ impl Plugin for AudioStreamPlugin {
     }
 
     async fn init(&mut self, device: &Device) -> Result<()> {
-        info!("Initializing AudioStream plugin for device {}", device.name());
+        info!(
+            "Initializing AudioStream plugin for device {}",
+            device.name()
+        );
         self.device_id = Some(device.id().to_string());
 
         // TODO: Detect available audio backends
@@ -779,7 +780,10 @@ mod tests {
         };
 
         // Need to downcast to access start_stream
-        let audio_plugin = plugin.as_any_mut().downcast_mut::<AudioStreamPlugin>().unwrap();
+        let audio_plugin = plugin
+            .as_any_mut()
+            .downcast_mut::<AudioStreamPlugin>()
+            .unwrap();
         audio_plugin.start_stream(config).await.unwrap();
 
         // Now stop it
@@ -798,10 +802,7 @@ mod tests {
         assert!(plugin.handle_packet(&packet, &mut device).await.is_ok());
 
         // Verify stream is stopped
-        let outgoing_plugin = plugin
-            .as_any()
-            .downcast_ref::<AudioStreamPlugin>()
-            .unwrap();
+        let outgoing_plugin = plugin.as_any().downcast_ref::<AudioStreamPlugin>().unwrap();
         assert!(outgoing_plugin.outgoing_stream.read().await.is_none());
     }
 }

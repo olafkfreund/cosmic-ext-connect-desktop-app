@@ -57,9 +57,7 @@ impl Transport for MockTransport {
 
     fn remote_address(&self) -> TransportAddress {
         match self.transport_type {
-            TransportType::Tcp => {
-                TransportAddress::Tcp("127.0.0.1:1716".parse().unwrap())
-            }
+            TransportType::Tcp => TransportAddress::Tcp("127.0.0.1:1716".parse().unwrap()),
             TransportType::Bluetooth => TransportAddress::Bluetooth {
                 address: "00:11:22:33:44:55".to_string(),
                 service_uuid: Some(uuid::uuid!("185f3df4-3268-4e3f-9fca-d4d5059915bd")),
@@ -197,7 +195,10 @@ async fn test_transport_address_bluetooth() {
     let addr = transport.remote_address();
 
     match addr {
-        TransportAddress::Bluetooth { address, service_uuid } => {
+        TransportAddress::Bluetooth {
+            address,
+            service_uuid,
+        } => {
             assert_eq!(address, "00:11:22:33:44:55");
             assert!(service_uuid.is_some());
         }
@@ -211,10 +212,7 @@ async fn test_multiple_packets_over_bluetooth() {
 
     // Send multiple small packets
     for i in 0..5 {
-        let packet = Packet::new(
-            "cconnect.ping",
-            json!({ "message": format!("Ping {}", i) }),
-        );
+        let packet = Packet::new("cconnect.ping", json!({ "message": format!("Ping {}", i) }));
 
         let result = transport.send_packet(&packet).await;
         assert!(result.is_ok());
@@ -343,10 +341,7 @@ async fn test_packet_roundtrip() {
     let mut transport = MockTransport::new(TransportType::Tcp, 1_048_576);
 
     // Create and send packet
-    let original = Packet::new(
-        "cconnect.ping",
-        json!({ "message": "Test" }),
-    );
+    let original = Packet::new("cconnect.ping", json!({ "message": "Test" }));
 
     transport.send_packet(&original).await.unwrap();
 

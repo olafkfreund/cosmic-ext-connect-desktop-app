@@ -93,7 +93,10 @@ impl Plugin for FindMyPhonePlugin {
 
     async fn init(&mut self, device: &Device) -> Result<()> {
         self.device_id = Some(device.id().to_string());
-        info!("Find My Phone plugin initialized for device {}", device.name());
+        info!(
+            "Find My Phone plugin initialized for device {}",
+            device.name()
+        );
         Ok(())
     }
 

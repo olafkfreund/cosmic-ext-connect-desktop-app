@@ -7,14 +7,17 @@ use cosmic::{
     iced::{
         alignment::Horizontal,
         widget::{column, container, row, scrollable, text},
-        window, Length, Padding, Rectangle,
+        window, Color, Length, Padding, Rectangle,
     },
     iced_runtime::core::layout::Limits,
     surface::action::{app_popup, destroy_popup},
+    theme,
     widget::{button, divider, icon},
     Element,
 };
-use cosmic_connect_protocol::{ConnectionState, Device, DeviceInfo as ProtocolDeviceInfo, DeviceType, PairingStatus};
+use cosmic_connect_protocol::{
+    ConnectionState, Device, DeviceInfo as ProtocolDeviceInfo, DeviceType, PairingStatus,
+};
 
 use dbus_client::DbusClient;
 
@@ -124,10 +127,10 @@ struct CConnectApplet {
     mpris_players: Vec<String>,
     selected_player: Option<String>,
     // Settings UI state
-    expanded_device_settings: Option<String>,                  // Currently expanded device_id
+    expanded_device_settings: Option<String>, // Currently expanded device_id
     device_configs: HashMap<String, dbus_client::DeviceConfig>, // Device-specific configs
     // RemoteDesktop settings UI state
-    remotedesktop_settings_device: Option<String>,             // device_id showing RemoteDesktop settings
+    remotedesktop_settings_device: Option<String>, // device_id showing RemoteDesktop settings
     remotedesktop_settings: HashMap<String, dbus_client::RemoteDesktopSettings>, // In-progress settings
 }
 
@@ -156,20 +159,20 @@ enum Message {
     MprisSetVolume(String, f64),  // player, volume
     MprisSeek(String, i64),       // player, offset_microseconds
     // Settings UI
-    ToggleDeviceSettings(String),                    // device_id
-    SetDevicePluginEnabled(String, String, bool),   // device_id, plugin, enabled
-    ClearDevicePluginOverride(String, String),      // device_id, plugin
-    ResetAllPluginOverrides(String),                // device_id
+    ToggleDeviceSettings(String),                          // device_id
+    SetDevicePluginEnabled(String, String, bool),          // device_id, plugin, enabled
+    ClearDevicePluginOverride(String, String),             // device_id, plugin
+    ResetAllPluginOverrides(String),                       // device_id
     DeviceConfigLoaded(String, dbus_client::DeviceConfig), // device_id, config
     // RemoteDesktop settings
-    ShowRemoteDesktopSettings(String),              // device_id
+    ShowRemoteDesktopSettings(String), // device_id
     CloseRemoteDesktopSettings,
-    UpdateRemoteDesktopQuality(String, String),      // device_id, quality
-    UpdateRemoteDesktopFps(String, u8),              // device_id, fps
-    UpdateRemoteDesktopResolution(String, String),   // device_id, mode ("native" or "custom")
-    UpdateRemoteDesktopCustomWidth(String, String),  // device_id, width_str
+    UpdateRemoteDesktopQuality(String, String), // device_id, quality
+    UpdateRemoteDesktopFps(String, u8),         // device_id, fps
+    UpdateRemoteDesktopResolution(String, String), // device_id, mode ("native" or "custom")
+    UpdateRemoteDesktopCustomWidth(String, String), // device_id, width_str
     UpdateRemoteDesktopCustomHeight(String, String), // device_id, height_str
-    SaveRemoteDesktopSettings(String),               // device_id
+    SaveRemoteDesktopSettings(String),          // device_id
     RemoteDesktopSettingsLoaded(String, dbus_client::RemoteDesktopSettings), // device_id, settings
 }
 
@@ -219,7 +222,9 @@ fn fetch_devices_task() -> Task<Message> {
 }
 
 /// Fetches battery status for a list of device IDs
-async fn fetch_battery_statuses(device_ids: Vec<String>) -> HashMap<String, dbus_client::BatteryStatus> {
+async fn fetch_battery_statuses(
+    device_ids: Vec<String>,
+) -> HashMap<String, dbus_client::BatteryStatus> {
     let mut statuses = HashMap::new();
     let Ok((client, _)) = DbusClient::connect().await else {
         return statuses;
@@ -325,7 +330,11 @@ fn convert_device_info(info: &dbus_client::DeviceInfo) -> DeviceState {
         pairing_status,
         is_trusted: info.is_paired,
         last_seen: info.last_seen as u64,
-        last_connected: if info.is_connected { Some(info.last_seen as u64) } else { None },
+        last_connected: if info.is_connected {
+            Some(info.last_seen as u64)
+        } else {
+            None
+        },
         host: None,
         port: None,
         certificate_fingerprint: None,
@@ -402,7 +411,10 @@ impl cosmic::Application for CConnectApplet {
                     return Task::none();
                 }
 
-                tracing::debug!("Fetching battery status for {} connected devices", connected_ids.len());
+                tracing::debug!(
+                    "Fetching battery status for {} connected devices",
+                    connected_ids.len()
+                );
                 Task::perform(fetch_battery_statuses(connected_ids), |statuses| {
                     cosmic::Action::App(Message::BatteryStatusesUpdated(statuses))
                 })
@@ -443,15 +455,13 @@ impl cosmic::Application for CConnectApplet {
             }
             Message::SendFile(device_id) => {
                 tracing::info!("Opening file picker for device: {}", device_id);
-                Task::perform(open_file_picker(device_id), |result| {
-                    match result {
-                        Some((device_id, path)) => {
-                            cosmic::Action::App(Message::FileSelected(device_id, path))
-                        }
-                        None => {
-                            tracing::debug!("File picker cancelled or no file selected");
-                            cosmic::Action::App(Message::RefreshDevices)
-                        }
+                Task::perform(open_file_picker(device_id), |result| match result {
+                    Some((device_id, path)) => {
+                        cosmic::Action::App(Message::FileSelected(device_id, path))
+                    }
+                    None => {
+                        tracing::debug!("File picker cancelled or no file selected");
+                        cosmic::Action::App(Message::RefreshDevices)
                     }
                 })
             }
@@ -470,9 +480,11 @@ impl cosmic::Application for CConnectApplet {
             Message::ShareText(device_id) => {
                 tracing::info!("Share text to device: {}", device_id);
                 match get_clipboard_text() {
-                    Some(text) => device_operation_task(device_id, "share text", move |client, id| {
-                        async move { client.share_text(&id, &text).await }
-                    }),
+                    Some(text) => device_operation_task(
+                        device_id,
+                        "share text",
+                        move |client, id| async move { client.share_text(&id, &text).await },
+                    ),
                     None => {
                         tracing::warn!("No text in clipboard to share");
                         Task::none()
@@ -487,9 +499,11 @@ impl cosmic::Application for CConnectApplet {
                             || text.starts_with("https://")
                             || text.starts_with("www.") =>
                     {
-                        device_operation_task(device_id, "share URL", move |client, id| {
-                            async move { client.share_url(&id, &text).await }
-                        })
+                        device_operation_task(
+                            device_id,
+                            "share URL",
+                            move |client, id| async move { client.share_url(&id, &text).await },
+                        )
                     }
                     Some(_) => {
                         tracing::warn!("Clipboard text is not a valid URL");
@@ -573,7 +587,9 @@ impl cosmic::Application for CConnectApplet {
                     Task::perform(
                         async move {
                             match DbusClient::connect().await {
-                                Ok((client, _)) => client.get_device_config(&device_id_for_async).await,
+                                Ok((client, _)) => {
+                                    client.get_device_config(&device_id_for_async).await
+                                }
                                 Err(e) => {
                                     tracing::error!("Failed to connect to daemon: {}", e);
                                     Err(e)
@@ -583,7 +599,9 @@ impl cosmic::Application for CConnectApplet {
                         move |result| {
                             let device_id = (*device_id_for_msg).clone();
                             match result {
-                                Ok(config) => cosmic::Action::App(Message::DeviceConfigLoaded(device_id, config)),
+                                Ok(config) => cosmic::Action::App(Message::DeviceConfigLoaded(
+                                    device_id, config,
+                                )),
                                 Err(e) => {
                                     tracing::error!("Failed to load device config: {}", e);
                                     cosmic::Action::App(Message::RefreshDevices)
@@ -594,13 +612,20 @@ impl cosmic::Application for CConnectApplet {
                 }
             }
             Message::SetDevicePluginEnabled(device_id, plugin, enabled) => {
-                tracing::info!("Setting plugin {} to {} for device {}", plugin, if enabled { "enabled" } else { "disabled" }, device_id);
+                tracing::info!(
+                    "Setting plugin {} to {} for device {}",
+                    plugin,
+                    if enabled { "enabled" } else { "disabled" },
+                    device_id
+                );
                 let device_id_for_async = device_id.clone();
                 let device_id_for_msg = std::sync::Arc::new(device_id.clone());
                 device_operation_task(device_id, "set plugin enabled", move |client, id| {
                     let plugin_clone = plugin.clone();
                     async move {
-                        client.set_device_plugin_enabled(&id, &plugin_clone, enabled).await
+                        client
+                            .set_device_plugin_enabled(&id, &plugin_clone, enabled)
+                            .await
                     }
                 })
                 .chain(Task::perform(
@@ -613,20 +638,28 @@ impl cosmic::Application for CConnectApplet {
                     move |result| {
                         let device_id = (*device_id_for_msg).clone();
                         match result {
-                            Ok(config) => cosmic::Action::App(Message::DeviceConfigLoaded(device_id, config)),
+                            Ok(config) => {
+                                cosmic::Action::App(Message::DeviceConfigLoaded(device_id, config))
+                            }
                             Err(_) => cosmic::Action::App(Message::RefreshDevices),
                         }
                     },
                 ))
             }
             Message::ClearDevicePluginOverride(device_id, plugin) => {
-                tracing::info!("Clearing plugin override for {} on device {}", plugin, device_id);
+                tracing::info!(
+                    "Clearing plugin override for {} on device {}",
+                    plugin,
+                    device_id
+                );
                 let device_id_for_async = device_id.clone();
                 let device_id_for_msg = std::sync::Arc::new(device_id.clone());
                 device_operation_task(device_id, "clear plugin override", move |client, id| {
                     let plugin_clone = plugin.clone();
                     async move {
-                        client.clear_device_plugin_override(&id, &plugin_clone).await
+                        client
+                            .clear_device_plugin_override(&id, &plugin_clone)
+                            .await
                     }
                 })
                 .chain(Task::perform(
@@ -639,7 +672,9 @@ impl cosmic::Application for CConnectApplet {
                     move |result| {
                         let device_id = (*device_id_for_msg).clone();
                         match result {
-                            Ok(config) => cosmic::Action::App(Message::DeviceConfigLoaded(device_id, config)),
+                            Ok(config) => {
+                                cosmic::Action::App(Message::DeviceConfigLoaded(device_id, config))
+                            }
                             Err(_) => cosmic::Action::App(Message::RefreshDevices),
                         }
                     },
@@ -649,11 +684,11 @@ impl cosmic::Application for CConnectApplet {
                 tracing::info!("Resetting all plugin overrides for device {}", device_id);
                 let device_id_for_async = device_id.clone();
                 let device_id_for_msg = std::sync::Arc::new(device_id.clone());
-                device_operation_task(device_id, "reset all plugin overrides", move |client, id| {
-                    async move {
-                        client.reset_all_plugin_overrides(&id).await
-                    }
-                })
+                device_operation_task(
+                    device_id,
+                    "reset all plugin overrides",
+                    move |client, id| async move { client.reset_all_plugin_overrides(&id).await },
+                )
                 .chain(Task::perform(
                     async move {
                         match DbusClient::connect().await {
@@ -664,7 +699,9 @@ impl cosmic::Application for CConnectApplet {
                     move |result| {
                         let device_id = (*device_id_for_msg).clone();
                         match result {
-                            Ok(config) => cosmic::Action::App(Message::DeviceConfigLoaded(device_id, config)),
+                            Ok(config) => {
+                                cosmic::Action::App(Message::DeviceConfigLoaded(device_id, config))
+                            }
                             Err(_) => cosmic::Action::App(Message::RefreshDevices),
                         }
                     },
@@ -687,14 +724,20 @@ impl cosmic::Application for CConnectApplet {
                 Task::perform(
                     async move {
                         match DbusClient::connect().await {
-                            Ok((client, _)) => client.get_remotedesktop_settings(&device_id_for_async).await,
+                            Ok((client, _)) => {
+                                client
+                                    .get_remotedesktop_settings(&device_id_for_async)
+                                    .await
+                            }
                             Err(e) => Err(e),
                         }
                     },
                     move |result| {
                         let device_id = (*device_id_for_msg).clone();
                         match result {
-                            Ok(settings) => cosmic::Action::App(Message::RemoteDesktopSettingsLoaded(device_id, settings)),
+                            Ok(settings) => cosmic::Action::App(
+                                Message::RemoteDesktopSettingsLoaded(device_id, settings),
+                            ),
                             Err(e) => {
                                 tracing::error!("Failed to load RemoteDesktop settings: {}", e);
                                 cosmic::Action::App(Message::RefreshDevices)
@@ -751,7 +794,9 @@ impl cosmic::Application for CConnectApplet {
                         async move {
                             match DbusClient::connect().await {
                                 Ok((client, _)) => {
-                                    client.set_remotedesktop_settings(&device_id, &settings).await
+                                    client
+                                        .set_remotedesktop_settings(&device_id, &settings)
+                                        .await
                                 }
                                 Err(e) => Err(e),
                             }
@@ -866,8 +911,7 @@ impl CConnectApplet {
             column![
                 container(icon::from_name("phone-disconnected-symbolic").size(48))
                     .padding(Padding::from([8, 0, 12, 0])),
-                text("No Devices Found")
-                    .size(18),
+                text("No Devices Found").size(18),
                 text("Make sure:").size(13),
                 text("• CConnect app is installed on your devices").size(12),
                 text("• Devices are on the same network").size(12),
@@ -904,7 +948,7 @@ impl CConnectApplet {
                 device_groups = device_groups.push(
                     container(text("Connected").size(12))
                         .padding(Padding::from([8.0, 12.0, 4.0, 12.0]))
-                        .width(Length::Fill)
+                        .width(Length::Fill),
                 );
                 for device_state in &connected {
                     device_groups = device_groups.push(self.device_row(device_state));
@@ -919,7 +963,7 @@ impl CConnectApplet {
                 device_groups = device_groups.push(
                     container(text("Available").size(12))
                         .padding(Padding::from([8.0, 12.0, 4.0, 12.0]))
-                        .width(Length::Fill)
+                        .width(Length::Fill),
                 );
                 for device_state in &available {
                     device_groups = device_groups.push(self.device_row(device_state));
@@ -934,7 +978,7 @@ impl CConnectApplet {
                 device_groups = device_groups.push(
                     container(text("Offline").size(12))
                         .padding(Padding::from([8.0, 12.0, 4.0, 12.0]))
-                        .width(Length::Fill)
+                        .width(Length::Fill),
                 );
                 for device_state in &offline {
                     device_groups = device_groups.push(self.device_row(device_state));
@@ -995,10 +1039,16 @@ impl CConnectApplet {
                 ))
                 .padding(6),
             button::icon(icon::from_name("media-playback-stop-symbolic").size(16))
-                .on_press(Message::MprisControl(selected_player.clone(), "Stop".to_string()))
+                .on_press(Message::MprisControl(
+                    selected_player.clone(),
+                    "Stop".to_string()
+                ))
                 .padding(6),
             button::icon(icon::from_name("media-skip-forward-symbolic").size(16))
-                .on_press(Message::MprisControl(selected_player.clone(), "Next".to_string()))
+                .on_press(Message::MprisControl(
+                    selected_player.clone(),
+                    "Next".to_string()
+                ))
                 .padding(6),
         ]
         .spacing(4)
@@ -1017,24 +1067,20 @@ impl CConnectApplet {
 
         let device_icon = device_type_icon(device.info.device_type);
         let status_icon = connection_status_icon(device.connection_state, device.pairing_status);
-        let status_text = connection_status_text(device.connection_state, device.pairing_status);
         let quality_icon = connection_quality_icon(device.connection_state);
 
         // Device name and status column with last seen for disconnected devices
         let mut name_status_col = column![
-            text(&device.info.device_name)
-                .size(16),
-            text(status_text).size(12),
+            text(&device.info.device_name).size(16),
+            connection_status_styled_text(device.connection_state, device.pairing_status),
         ]
         .spacing(2);
 
         // Add last seen timestamp for disconnected devices
         if !device.is_connected() && device.last_seen > 0 {
             let last_seen_text = format_last_seen(device.last_seen);
-            name_status_col = name_status_col.push(
-                text(format!("Last seen: {}", last_seen_text))
-                    .size(10)
-            );
+            name_status_col =
+                name_status_col.push(text(format!("Last seen: {}", last_seen_text)).size(10));
         }
 
         // Info row with optional battery indicator
@@ -1097,7 +1143,7 @@ impl CConnectApplet {
             if let Some(config) = self.device_configs.get(device_id) {
                 content = content.push(
                     container(self.device_settings_panel(device_id, device, config))
-                        .padding(Padding::from([8, 0, 0, 66])) // Indent under device name
+                        .padding(Padding::from([8, 0, 0, 66])), // Indent under device name
                 );
             }
         }
@@ -1107,7 +1153,7 @@ impl CConnectApplet {
             if let Some(settings) = self.remotedesktop_settings.get(device_id) {
                 content = content.push(
                     container(self.remotedesktop_settings_view(device_id, settings))
-                        .padding(Padding::from([8, 0, 0, 66])) // Indent under device name
+                        .padding(Padding::from([8, 0, 0, 66])), // Indent under device name
                 );
             }
         }
@@ -1194,17 +1240,19 @@ impl CConnectApplet {
         let override_count = config.count_plugin_overrides();
 
         // Header with close button
-        let mut header_row = row![
-            text("Plugin Settings").size(14),
-        ]
-        .spacing(8)
-        .align_y(cosmic::iced::Alignment::Center);
+        let mut header_row = row![text("Plugin Settings").size(14),]
+            .spacing(8)
+            .align_y(cosmic::iced::Alignment::Center);
 
         // Add override count badge if any overrides exist
         if override_count > 0 {
             header_row = header_row.push(
-                text(format!("({} override{})", override_count, if override_count == 1 { "" } else { "s" }))
-                    .size(12)
+                text(format!(
+                    "({} override{})",
+                    override_count,
+                    if override_count == 1 { "" } else { "s" }
+                ))
+                .size(12),
             );
         }
 
@@ -1255,7 +1303,11 @@ impl CConnectApplet {
                     let device_id = device_id.to_string();
                     let plugin_id = plugin_meta.id.to_string();
                     move |enabled| {
-                        Message::SetDevicePluginEnabled(device_id.clone(), plugin_id.clone(), enabled)
+                        Message::SetDevicePluginEnabled(
+                            device_id.clone(),
+                            plugin_id.clone(),
+                            enabled,
+                        )
                     }
                 }));
             } else {
@@ -1276,8 +1328,7 @@ impl CConnectApplet {
                 );
             } else {
                 plugin_row = plugin_row.push(
-                    button::icon(icon::from_name("view-refresh-symbolic").size(12))
-                        .padding(4),
+                    button::icon(icon::from_name("view-refresh-symbolic").size(12)).padding(4),
                 );
             }
 
@@ -1305,8 +1356,7 @@ impl CConnectApplet {
                 .on_press(Message::ResetAllPluginOverrides(device_id.to_string()))
                 .padding(8)
         } else {
-            button::text("Reset All Overrides")
-                .padding(8)
+            button::text("Reset All Overrides").padding(8)
         };
 
         // Combine everything
@@ -1353,22 +1403,19 @@ impl CConnectApplet {
 
         let quality_row = row![
             text("Quality:").width(Length::Fixed(120.0)),
-            cosmic::widget::dropdown(
-                &["Low", "Medium", "High"],
-                Some(quality_idx),
-                {
-                    let device_id = device_id.to_string();
-                    move |idx| {
-                        let quality = match idx {
-                            0 => "low",
-                            1 => "medium",
-                            2 => "high",
-                            _ => "medium",
-                        }.to_string();
-                        Message::UpdateRemoteDesktopQuality(device_id.clone(), quality)
+            cosmic::widget::dropdown(&["Low", "Medium", "High"], Some(quality_idx), {
+                let device_id = device_id.to_string();
+                move |idx| {
+                    let quality = match idx {
+                        0 => "low",
+                        1 => "medium",
+                        2 => "high",
+                        _ => "medium",
                     }
+                    .to_string();
+                    Message::UpdateRemoteDesktopQuality(device_id.clone(), quality)
                 }
-            )
+            })
         ]
         .spacing(8)
         .align_y(cosmic::iced::Alignment::Center);
@@ -1383,22 +1430,18 @@ impl CConnectApplet {
 
         let fps_row = row![
             text("Frame Rate:").width(Length::Fixed(120.0)),
-            cosmic::widget::dropdown(
-                &["15 FPS", "30 FPS", "60 FPS"],
-                Some(fps_idx),
-                {
-                    let device_id = device_id.to_string();
-                    move |idx| {
-                        let fps = match idx {
-                            0 => 15,
-                            1 => 30,
-                            2 => 60,
-                            _ => 30,
-                        };
-                        Message::UpdateRemoteDesktopFps(device_id.clone(), fps)
-                    }
+            cosmic::widget::dropdown(&["15 FPS", "30 FPS", "60 FPS"], Some(fps_idx), {
+                let device_id = device_id.to_string();
+                move |idx| {
+                    let fps = match idx {
+                        0 => 15,
+                        1 => 30,
+                        2 => 60,
+                        _ => 30,
+                    };
+                    Message::UpdateRemoteDesktopFps(device_id.clone(), fps)
                 }
-            )
+            })
         ]
         .spacing(8)
         .align_y(cosmic::iced::Alignment::Center);
@@ -1412,7 +1455,12 @@ impl CConnectApplet {
                 Some(settings.resolution_mode.as_str()).filter(|_| is_native),
                 {
                     let device_id = device_id.to_string();
-                    move |_| Message::UpdateRemoteDesktopResolution(device_id.clone(), "native".to_string())
+                    move |_| {
+                        Message::UpdateRemoteDesktopResolution(
+                            device_id.clone(),
+                            "native".to_string(),
+                        )
+                    }
                 }
             ),
             radio(
@@ -1421,7 +1469,12 @@ impl CConnectApplet {
                 Some(settings.resolution_mode.as_str()).filter(|_| !is_native),
                 {
                     let device_id = device_id.to_string();
-                    move |_| Message::UpdateRemoteDesktopResolution(device_id.clone(), "custom".to_string())
+                    move |_| {
+                        Message::UpdateRemoteDesktopResolution(
+                            device_id.clone(),
+                            "custom".to_string(),
+                        )
+                    }
                 }
             ),
         ]
@@ -1448,9 +1501,7 @@ impl CConnectApplet {
         ]
         .spacing(12);
 
-        container(content)
-            .padding(12)
-            .into()
+        container(content).padding(12).into()
     }
 }
 
@@ -1519,6 +1570,26 @@ fn connection_status_text(
     }
 }
 
+/// Returns a styled text element with color-coded status text
+fn connection_status_styled_text<'a>(
+    connection_state: ConnectionState,
+    pairing_status: PairingStatus,
+) -> Element<'a, Message> {
+    let status_text = connection_status_text(connection_state, pairing_status);
+
+    // Apply color based on connection state using theme-aware colors
+    let color = match connection_state {
+        ConnectionState::Connected => Color::from_rgb(0.2, 0.8, 0.2), // Green - Success
+        ConnectionState::Failed => Color::from_rgb(0.9, 0.2, 0.2),    // Red - Danger
+        ConnectionState::Connecting => Color::from_rgb(0.9, 0.7, 0.2), // Yellow/Orange - Warning
+        ConnectionState::Disconnected => Color::from_rgb(0.5, 0.5, 0.5), // Gray - Muted
+    };
+
+    cosmic::widget::text::caption(status_text)
+        .class(theme::Text::Color(color))
+        .into()
+}
+
 /// Returns the appropriate battery icon name based on charge level and charging state
 fn battery_icon_name(level: u8, is_charging: bool) -> &'static str {
     if is_charging {
@@ -1565,7 +1636,11 @@ fn categorize_device(device_state: &DeviceState) -> DeviceCategory {
 
 /// Helper function for pluralization
 fn pluralize(count: u64) -> &'static str {
-    if count == 1 { "" } else { "s" }
+    if count == 1 {
+        ""
+    } else {
+        "s"
+    }
 }
 
 /// Format last seen timestamp to human-readable string

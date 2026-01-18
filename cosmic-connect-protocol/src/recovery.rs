@@ -361,10 +361,7 @@ impl RecoveryManager {
             if entry.attempt <= entry.max_attempts {
                 debug!(
                     "Retrying packet '{}' to device {} (attempt {}/{})",
-                    entry.packet.packet_type,
-                    entry.device_id,
-                    entry.attempt,
-                    entry.max_attempts
+                    entry.packet.packet_type, entry.device_id, entry.attempt, entry.max_attempts
                 );
                 to_retry.push((entry.device_id.clone(), entry.packet.clone()));
                 remaining.push(entry);
@@ -405,19 +402,17 @@ impl RecoveryManager {
             })?;
         }
 
-        fs::write(&self.state_file_path, json)
-            .await
-            .map_err(|e| {
-                ProtocolError::from_io_error(
-                    e,
-                    &format!("writing recovery state file {}", self.state_file_path.display()),
-                )
-            })?;
+        fs::write(&self.state_file_path, json).await.map_err(|e| {
+            ProtocolError::from_io_error(
+                e,
+                &format!(
+                    "writing recovery state file {}",
+                    self.state_file_path.display()
+                ),
+            )
+        })?;
 
-        debug!(
-            "Persisted {} transfer states to disk",
-            states_vec.len()
-        );
+        debug!("Persisted {} transfer states to disk", states_vec.len());
         Ok(())
     }
 
@@ -433,12 +428,15 @@ impl RecoveryManager {
             .map_err(|e| {
                 ProtocolError::from_io_error(
                     e,
-                    &format!("reading recovery state file {}", self.state_file_path.display()),
+                    &format!(
+                        "reading recovery state file {}",
+                        self.state_file_path.display()
+                    ),
                 )
             })?;
 
-        let states_vec: Vec<TransferState> = serde_json::from_str(&json)
-            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
+        let states_vec: Vec<TransferState> =
+            serde_json::from_str(&json).map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
         let mut states = self.transfer_states.write().await;
         for state in states_vec {

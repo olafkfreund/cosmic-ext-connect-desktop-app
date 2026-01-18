@@ -38,7 +38,7 @@ use openssl::hash::MessageDigest;
 use openssl::pkey::PKey;
 use openssl::rsa::Rsa;
 use openssl::x509::extension::{BasicConstraints, KeyUsage};
-use openssl::x509::{X509, X509Name};
+use openssl::x509::{X509Name, X509};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -308,10 +308,13 @@ impl PairingPacket {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        Packet::new("cconnect.pair", json!({
-            "pair": true,
-            "timestamp": timestamp
-        }))
+        Packet::new(
+            "cconnect.pair",
+            json!({
+                "pair": true,
+                "timestamp": timestamp
+            }),
+        )
     }
 
     /// Create a pairing accept response packet
@@ -321,10 +324,13 @@ impl PairingPacket {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        Packet::new("cconnect.pair", json!({
-            "pair": true,
-            "timestamp": timestamp
-        }))
+        Packet::new(
+            "cconnect.pair",
+            json!({
+                "pair": true,
+                "timestamp": timestamp
+            }),
+        )
     }
 
     /// Create a pairing reject response packet
@@ -461,7 +467,10 @@ impl PairingHandler {
                     // Received pairing accept - send confirmation response
                     self.store_device_certificate(device_id, device_cert)?;
                     self.status = PairingStatus::Paired;
-                    info!("Pairing accepted by device {} - sending confirmation", device_id);
+                    info!(
+                        "Pairing accepted by device {} - sending confirmation",
+                        device_id
+                    );
                     Ok((true, Some(PairingPacket::accept())))
                 }
                 PairingStatus::RequestedByPeer => {
@@ -574,8 +583,7 @@ impl PairingHandler {
                     match X509::from_pem(&cert_data) {
                         Ok(cert) => {
                             let cert_der = cert.to_der()?;
-                            self.paired_devices
-                                .insert(device_id.to_string(), cert_der);
+                            self.paired_devices.insert(device_id.to_string(), cert_der);
                             debug!("Loaded paired device certificate: {}", device_id);
                         }
                         Err(e) => {

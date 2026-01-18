@@ -44,8 +44,7 @@ pub struct DeviceConfig {
 }
 
 /// Per-device plugin configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DevicePluginConfig {
     /// Enable ping plugin for this device (None = use global config)
     #[serde(default)]
@@ -132,7 +131,6 @@ impl Default for RemoteDesktopSettings {
     }
 }
 
-
 fn default_true() -> bool {
     true
 }
@@ -185,10 +183,7 @@ impl DeviceConfig {
                 .plugins
                 .enable_mpris
                 .unwrap_or(global_config.enable_mpris),
-            "remotedesktop" => self
-                .plugins
-                .enable_remotedesktop
-                .unwrap_or(false), // Default to false for security
+            "remotedesktop" => self.plugins.enable_remotedesktop.unwrap_or(false), // Default to false for security
             "findmyphone" => self
                 .plugins
                 .enable_findmyphone
@@ -238,9 +233,7 @@ impl DeviceConfig {
 
     /// Get RemoteDesktop settings for this device
     pub fn get_remotedesktop_settings(&self) -> RemoteDesktopSettings {
-        self.remotedesktop_settings
-            .clone()
-            .unwrap_or_default()
+        self.remotedesktop_settings.clone().unwrap_or_default()
     }
 
     /// Set RemoteDesktop settings for this device

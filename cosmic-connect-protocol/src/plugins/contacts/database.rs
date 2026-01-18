@@ -119,9 +119,7 @@ impl ContactsDatabase {
         // TODO: Create tables if not exist
         // TODO: Run migrations if needed
 
-        Ok(Self {
-            db_path: path_str,
-        })
+        Ok(Self { db_path: path_str })
     }
 
     /// Insert or update a contact

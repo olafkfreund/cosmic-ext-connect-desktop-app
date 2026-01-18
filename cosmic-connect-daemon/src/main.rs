@@ -8,8 +8,6 @@ mod mpris_manager;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use dbus::DbusServer;
-use diagnostics::{BuildInfo, Cli, DiagnosticCommand, Metrics};
 use cosmic_connect_protocol::{
     connection::{ConnectionConfig, ConnectionEvent, ConnectionManager},
     discovery::{DiscoveryConfig, DiscoveryEvent, DiscoveryService},
@@ -20,18 +18,19 @@ use cosmic_connect_protocol::{
         clipboardhistory::ClipboardHistoryPluginFactory, contacts::ContactsPluginFactory,
         filesync::FileSyncPluginFactory, findmyphone::FindMyPhonePluginFactory,
         lock::LockPluginFactory, mousekeyboardshare::MouseKeyboardSharePluginFactory,
-        mpris::MprisPluginFactory,
-        notification::NotificationPluginFactory, ping::PingPluginFactory,
-        power::PowerPluginFactory, presenter::PresenterPluginFactory,
+        mpris::MprisPluginFactory, notification::NotificationPluginFactory,
+        ping::PingPluginFactory, power::PowerPluginFactory, presenter::PresenterPluginFactory,
         r#macro::MacroPluginFactory, remoteinput::RemoteInputPluginFactory,
-        runcommand::RunCommandPluginFactory, screenshot::ScreenshotPluginFactory,
-        screenshare::ScreenSharePluginFactory, share::SharePluginFactory,
+        runcommand::RunCommandPluginFactory, screenshare::ScreenSharePluginFactory,
+        screenshot::ScreenshotPluginFactory, share::SharePluginFactory,
         systemmonitor::SystemMonitorPluginFactory, telephony::TelephonyPluginFactory,
         wol::WolPluginFactory, PluginManager,
     },
     CertificateInfo, DeviceInfo, DeviceManager, DeviceType, TransportManager,
     TransportManagerConfig, TransportManagerEvent,
 };
+use dbus::DbusServer;
+use diagnostics::{BuildInfo, Cli, DiagnosticCommand, Metrics};
 
 use cosmic_connect_protocol::plugins::remotedesktop::RemoteDesktopPluginFactory;
 use std::sync::Arc;
@@ -582,15 +581,15 @@ impl Daemon {
         let pending_pairing_requests = self.pending_pairing_requests.clone();
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
-                if let Err(e) =
-                    Self::handle_pairing_event(
-                        event,
-                        &device_manager,
-                        &dbus_server,
-                        &cosmic_notifier,
-                        &pairing_notifications,
-                        &pending_pairing_requests,
-                    ).await
+                if let Err(e) = Self::handle_pairing_event(
+                    event,
+                    &device_manager,
+                    &dbus_server,
+                    &cosmic_notifier,
+                    &pairing_notifications,
+                    &pending_pairing_requests,
+                )
+                .await
                 {
                     error!("Error handling pairing event: {}", e);
                 }
@@ -634,7 +633,10 @@ impl Daemon {
                 info!("User should verify fingerprints match on both devices");
 
                 // Track pending pairing request
-                pending_pairing_requests.write().await.insert(device_id.clone(), true);
+                pending_pairing_requests
+                    .write()
+                    .await
+                    .insert(device_id.clone(), true);
                 info!("Added {} to pending pairing requests", device_id);
 
                 // Emit DBus signal for pairing request
@@ -649,7 +651,10 @@ impl Daemon {
                     info!("Sending pairing request notification for {}", device_name);
                     match notifier.notify_pairing_request(&device_name).await {
                         Ok(notification_id) => {
-                            info!("Pairing request notification sent successfully (ID: {})", notification_id);
+                            info!(
+                                "Pairing request notification sent successfully (ID: {})",
+                                notification_id
+                            );
                             // Store notification ID so we can handle clicks
                             let mut notifications = pairing_notifications.write().await;
                             notifications.insert(notification_id, device_id.clone());
@@ -778,7 +783,12 @@ impl Daemon {
         pending_pairing_requests: &Arc<RwLock<std::collections::HashMap<String, bool>>>,
         device_id: &str,
     ) {
-        if pending_pairing_requests.write().await.remove(device_id).is_some() {
+        if pending_pairing_requests
+            .write()
+            .await
+            .remove(device_id)
+            .is_some()
+        {
             info!("Removed {} from pending pairing requests", device_id);
         }
     }
@@ -1028,7 +1038,10 @@ impl Daemon {
             let mut last_content = String::new();
             let poll_interval = Duration::from_millis(500);
 
-            info!("Clipboard monitor started (polling every {:?})", poll_interval);
+            info!(
+                "Clipboard monitor started (polling every {:?})",
+                poll_interval
+            );
 
             loop {
                 tokio::time::sleep(poll_interval).await;
@@ -1056,19 +1069,34 @@ impl Daemon {
                         let plug_manager = plugin_manager.read().await;
 
                         for device_id in &connected_devices {
-                            if let Some(plugin) = plug_manager.get_device_plugin(device_id, "clipboard") {
+                            if let Some(plugin) =
+                                plug_manager.get_device_plugin(device_id, "clipboard")
+                            {
                                 // Downcast to ClipboardPlugin
                                 use cosmic_connect_protocol::plugins::clipboard::ClipboardPlugin;
-                                if let Some(clipboard_plugin) = plugin.as_any().downcast_ref::<ClipboardPlugin>() {
+                                if let Some(clipboard_plugin) =
+                                    plugin.as_any().downcast_ref::<ClipboardPlugin>()
+                                {
                                     // Create clipboard packet
-                                    let packet = clipboard_plugin.create_clipboard_packet(current_content.clone()).await;
+                                    let packet = clipboard_plugin
+                                        .create_clipboard_packet(current_content.clone())
+                                        .await;
 
                                     // Send packet via connection manager
                                     let conn_manager = connection_manager.read().await;
-                                    if let Err(e) = conn_manager.send_packet(device_id, &packet).await {
-                                        warn!("Failed to send clipboard update to {}: {}", device_id, e);
+                                    if let Err(e) =
+                                        conn_manager.send_packet(device_id, &packet).await
+                                    {
+                                        warn!(
+                                            "Failed to send clipboard update to {}: {}",
+                                            device_id, e
+                                        );
                                     } else {
-                                        debug!("Sent clipboard update to {} ({} chars)", device_id, current_content.len());
+                                        debug!(
+                                            "Sent clipboard update to {} ({} chars)",
+                                            device_id,
+                                            current_content.len()
+                                        );
                                     }
                                 }
                             }
@@ -1100,7 +1128,10 @@ impl Daemon {
                         info!("Notification action listener started");
 
                         while let Some((notification_id, action_key)) = action_stream.next().await {
-                            debug!("Received notification action: id={}, action={}", notification_id, action_key);
+                            debug!(
+                                "Received notification action: id={}, action={}",
+                                notification_id, action_key
+                            );
 
                             // Check if this is a pairing notification
                             let device_id = {
@@ -1109,7 +1140,10 @@ impl Daemon {
                             };
 
                             if let Some(device_id) = device_id {
-                                info!("Handling pairing action '{}' for device {}", action_key, device_id);
+                                info!(
+                                    "Handling pairing action '{}' for device {}",
+                                    action_key, device_id
+                                );
 
                                 if let Some(pairing_svc) = &pairing_service {
                                     let pairing = pairing_svc.read().await;
@@ -1117,13 +1151,15 @@ impl Daemon {
                                     match action_key.as_str() {
                                         "accept" => {
                                             info!("User accepted pairing for {}", device_id);
-                                            if let Err(e) = pairing.accept_pairing(&device_id).await {
+                                            if let Err(e) = pairing.accept_pairing(&device_id).await
+                                            {
                                                 error!("Failed to accept pairing: {}", e);
                                             }
                                         }
                                         "reject" => {
                                             info!("User rejected pairing for {}", device_id);
-                                            if let Err(e) = pairing.reject_pairing(&device_id).await {
+                                            if let Err(e) = pairing.reject_pairing(&device_id).await
+                                            {
                                                 error!("Failed to reject pairing: {}", e);
                                             }
                                         }
@@ -1172,7 +1208,9 @@ impl Daemon {
                 // Get device name for notifications
                 let _device_name = {
                     let dev_manager = device_manager.read().await;
-                    dev_manager.get_device(&device_id).map(|d| d.name().to_string())
+                    dev_manager
+                        .get_device(&device_id)
+                        .map(|d| d.name().to_string())
                 };
 
                 // Initialize per-device plugins (only for paired devices)
@@ -1182,7 +1220,9 @@ impl Daemon {
                         // Only initialize plugins for paired/trusted devices
                         if device.is_paired() {
                             let mut plug_manager = plugin_manager.write().await;
-                            if let Err(e) = plug_manager.init_device_plugins(&device_id, device).await {
+                            if let Err(e) =
+                                plug_manager.init_device_plugins(&device_id, device).await
+                            {
                                 error!(
                                     "Failed to initialize plugins for device {}: {}",
                                     device_id, e
@@ -1195,9 +1235,16 @@ impl Daemon {
                                 if let Some(device_config) = config_registry.get(&device_id) {
                                     if let Some(mac_address) = device_config.get_mac_address() {
                                         use cosmic_connect_protocol::plugins::wol::WolPlugin;
-                                        if let Some(wol_plugin) = plug_manager.get_device_plugin_mut(&device_id, "wol") {
-                                            if let Some(wol) = wol_plugin.as_any_mut().downcast_mut::<WolPlugin>() {
-                                                info!("Loading saved MAC address {} for device {}", mac_address, device_id);
+                                        if let Some(wol_plugin) =
+                                            plug_manager.get_device_plugin_mut(&device_id, "wol")
+                                        {
+                                            if let Some(wol) =
+                                                wol_plugin.as_any_mut().downcast_mut::<WolPlugin>()
+                                            {
+                                                info!(
+                                                    "Loading saved MAC address {} for device {}",
+                                                    mac_address, device_id
+                                                );
                                                 wol.set_mac_address(mac_address);
                                             }
                                         }
@@ -1244,7 +1291,9 @@ impl Daemon {
                 // Get device name for notifications
                 let _device_name = {
                     let dev_manager = device_manager.read().await;
-                    dev_manager.get_device(&device_id).map(|d| d.name().to_string())
+                    dev_manager
+                        .get_device(&device_id)
+                        .map(|d| d.name().to_string())
                 };
 
                 // Cleanup per-device plugins
@@ -1274,7 +1323,11 @@ impl Daemon {
                 //     }
                 // }
             }
-            ConnectionEvent::PacketReceived { device_id, packet, remote_addr } => {
+            ConnectionEvent::PacketReceived {
+                device_id,
+                packet,
+                remote_addr,
+            } => {
                 debug!(
                     "Received packet '{}' from device {} at {}",
                     packet.packet_type, device_id, remote_addr
@@ -1286,7 +1339,10 @@ impl Daemon {
                         Ok(json) => {
                             debug!(
                                 "📨 PACKET DUMP (RX) - Type: {}, Device: {}, Size: {} bytes\n{}",
-                                packet.packet_type, device_id, json.len(), json
+                                packet.packet_type,
+                                device_id,
+                                json.len(),
+                                json
                             );
                         }
                         Err(e) => {
@@ -1301,11 +1357,17 @@ impl Daemon {
                         // Protocol v8: Post-TLS identity exchange - ignore for now
                         // This is the second identity packet sent after TLS encryption
                         // In protocol v8, devices exchange identity packets again after TLS
-                        debug!("Received post-TLS identity packet from {} (protocol v8)", device_id);
+                        debug!(
+                            "Received post-TLS identity packet from {} (protocol v8)",
+                            device_id
+                        );
                         return Ok(());
                     }
                     "cconnect.pair" => {
-                        info!("Received pairing packet from {} at {}", device_id, remote_addr);
+                        info!(
+                            "Received pairing packet from {} at {}",
+                            device_id, remote_addr
+                        );
 
                         let Some(pairing_svc) = pairing_service else {
                             warn!("Received pairing packet but pairing service is not available");
@@ -1316,9 +1378,15 @@ impl Daemon {
                         let (device_info, device_cert) = {
                             let dev_manager = device_manager.read().await;
                             match dev_manager.get_device(&device_id) {
-                                Some(device) => (device.info.clone(), device.certificate_data.clone().unwrap_or_default()),
+                                Some(device) => (
+                                    device.info.clone(),
+                                    device.certificate_data.clone().unwrap_or_default(),
+                                ),
                                 None => {
-                                    warn!("Cannot handle pairing packet - device {} not found", device_id);
+                                    warn!(
+                                        "Cannot handle pairing packet - device {} not found",
+                                        device_id
+                                    );
                                     return Ok(());
                                 }
                             }
@@ -1326,12 +1394,22 @@ impl Daemon {
 
                         // Forward to pairing service and send response if needed
                         let pairing = pairing_svc.read().await;
-                        match pairing.handle_pairing_packet(&packet, &device_info, &device_cert, remote_addr).await {
+                        match pairing
+                            .handle_pairing_packet(&packet, &device_info, &device_cert, remote_addr)
+                            .await
+                        {
                             Ok(Some(response_packet)) => {
-                                info!("Sending pairing response to {} through existing connection", device_id);
+                                info!(
+                                    "Sending pairing response to {} through existing connection",
+                                    device_id
+                                );
                                 let mgr = connection_mgr.read().await;
-                                if let Err(e) = mgr.send_packet(&device_id, &response_packet).await {
-                                    error!("Failed to send pairing response to {}: {}", device_id, e);
+                                if let Err(e) = mgr.send_packet(&device_id, &response_packet).await
+                                {
+                                    error!(
+                                        "Failed to send pairing response to {}: {}",
+                                        device_id, e
+                                    );
                                 }
                             }
                             Ok(None) => {
@@ -1366,10 +1444,15 @@ impl Daemon {
                     if packet.packet_type == "cconnect.wol.config" {
                         use cosmic_connect_protocol::plugins::wol::WolPlugin;
 
-                        if let Some(wol_plugin) = plug_manager.get_device_plugin_mut(&device_id, "wol") {
+                        if let Some(wol_plugin) =
+                            plug_manager.get_device_plugin_mut(&device_id, "wol")
+                        {
                             if let Some(wol) = wol_plugin.as_any_mut().downcast_mut::<WolPlugin>() {
                                 if let Some(mac_address) = wol.get_mac_address() {
-                                    info!("Persisting MAC address {} for device {}", mac_address, device_id);
+                                    info!(
+                                        "Persisting MAC address {} for device {}",
+                                        mac_address, device_id
+                                    );
 
                                     let mut config_registry = device_config_registry.write().await;
                                     let device_config = config_registry.get_or_create(&device_id);
@@ -1397,10 +1480,7 @@ impl Daemon {
                         match packet.packet_type.as_str() {
                             "cconnect.ping" => {
                                 // Show notification for ping
-                                let message = packet
-                                    .body
-                                    .get("message")
-                                    .and_then(|v| v.as_str());
+                                let message = packet.body.get("message").and_then(|v| v.as_str());
 
                                 if let Err(e) = notifier.notify_ping(&device_name, message).await {
                                     warn!("Failed to send ping notification: {}", e);
@@ -1408,35 +1488,43 @@ impl Daemon {
                             }
                             "cconnect.notification" => {
                                 // Check if it's a cancel notification
-                                let is_cancel = packet.body.get("isCancel")
+                                let is_cancel = packet
+                                    .body
+                                    .get("isCancel")
                                     .and_then(|v| v.as_bool())
                                     .unwrap_or(false);
 
                                 if !is_cancel {
                                     // Check if notification is silent (preexisting)
-                                    let is_silent = packet.body.get("silent")
+                                    let is_silent = packet
+                                        .body
+                                        .get("silent")
                                         .and_then(|v| v.as_str())
                                         .map(|s| s == "true")
                                         .unwrap_or(false);
 
                                     // Only show COSMIC notification for new notifications
                                     if !is_silent {
-                                        let app_name = packet.body.get("appName")
+                                        let app_name = packet
+                                            .body
+                                            .get("appName")
                                             .and_then(|v| v.as_str())
                                             .unwrap_or("");
-                                        let title = packet.body.get("title")
+                                        let title = packet
+                                            .body
+                                            .get("title")
                                             .and_then(|v| v.as_str())
                                             .unwrap_or("Notification");
-                                        let text = packet.body.get("text")
+                                        let text = packet
+                                            .body
+                                            .get("text")
                                             .and_then(|v| v.as_str())
                                             .unwrap_or("");
 
-                                        if let Err(e) = notifier.notify_from_device(
-                                            &device_name,
-                                            app_name,
-                                            title,
-                                            text
-                                        ).await {
+                                        if let Err(e) = notifier
+                                            .notify_from_device(&device_name, app_name, title, text)
+                                            .await
+                                        {
                                             warn!("Failed to send device notification: {}", e);
                                         }
                                     }
@@ -1444,23 +1532,33 @@ impl Daemon {
                             }
                             "cconnect.share.request" => {
                                 // Handle different share types: file, URL, or text
-                                if let Some(filename) = packet.body.get("filename").and_then(|v| v.as_str()) {
+                                if let Some(filename) =
+                                    packet.body.get("filename").and_then(|v| v.as_str())
+                                {
                                     if packet.payload_size.is_some() {
                                         // This is a file transfer, show notification
                                         let file_size = packet.payload_size.unwrap_or(0);
 
                                         // Construct download path
                                         let downloads_dir = std::path::PathBuf::from(
-                                            std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())
-                                        ).join("Downloads");
+                                            std::env::var("HOME")
+                                                .unwrap_or_else(|_| "/tmp".to_string()),
+                                        )
+                                        .join("Downloads");
                                         let file_path = downloads_dir.join(filename);
 
-                                        if let Err(e) = notifier.notify_file_received(
-                                            &device_name,
-                                            filename,
-                                            &file_path.to_string_lossy()
-                                        ).await {
-                                            warn!("Failed to send file received notification: {}", e);
+                                        if let Err(e) = notifier
+                                            .notify_file_received(
+                                                &device_name,
+                                                filename,
+                                                &file_path.to_string_lossy(),
+                                            )
+                                            .await
+                                        {
+                                            warn!(
+                                                "Failed to send file received notification: {}",
+                                                e
+                                            );
                                         } else {
                                             info!(
                                                 "Sent file received notification for '{}' ({} bytes) from {}",
@@ -1468,7 +1566,9 @@ impl Daemon {
                                             );
                                         }
                                     }
-                                } else if let Some(url) = packet.body.get("url").and_then(|v| v.as_str()) {
+                                } else if let Some(url) =
+                                    packet.body.get("url").and_then(|v| v.as_str())
+                                {
                                     // URL share - open in default browser
                                     info!("Received URL share from {}: {}", device_name, url);
 
@@ -1481,44 +1581,65 @@ impl Daemon {
                                             .spawn()
                                         {
                                             Ok(_) => {
-                                                info!("Opened URL from {} in default browser: {}",
-                                                    device_name_clone, url_clone);
+                                                info!(
+                                                    "Opened URL from {} in default browser: {}",
+                                                    device_name_clone, url_clone
+                                                );
                                             }
                                             Err(e) => {
-                                                warn!("Failed to open URL from {}: {}",
-                                                    device_name_clone, e);
+                                                warn!(
+                                                    "Failed to open URL from {}: {}",
+                                                    device_name_clone, e
+                                                );
                                             }
                                         }
                                     });
-                                } else if let Some(text) = packet.body.get("text").and_then(|v| v.as_str()) {
+                                } else if let Some(text) =
+                                    packet.body.get("text").and_then(|v| v.as_str())
+                                {
                                     // Text share - copy to clipboard
-                                    info!("Received text share from {} ({} chars)", device_name, text.len());
+                                    info!(
+                                        "Received text share from {} ({} chars)",
+                                        device_name,
+                                        text.len()
+                                    );
 
                                     use arboard::Clipboard;
                                     match Clipboard::new() {
                                         Ok(mut clipboard) => {
                                             if let Err(e) = clipboard.set_text(text) {
-                                                warn!("Failed to copy shared text to clipboard: {}", e);
+                                                warn!(
+                                                    "Failed to copy shared text to clipboard: {}",
+                                                    e
+                                                );
                                             } else {
                                                 info!("Copied shared text from {} to clipboard ({} chars)",
                                                     device_name, text.len());
                                             }
                                         }
                                         Err(e) => {
-                                            warn!("Failed to initialize clipboard for text share: {}", e);
+                                            warn!(
+                                                "Failed to initialize clipboard for text share: {}",
+                                                e
+                                            );
                                         }
                                     }
                                 }
                             }
                             "cconnect.clipboard" | "kdeconnect.clipboard.connect" => {
                                 // Update system clipboard with received content
-                                if let Some(content) = packet.body.get("content").and_then(|v| v.as_str()) {
+                                if let Some(content) =
+                                    packet.body.get("content").and_then(|v| v.as_str())
+                                {
                                     if !content.is_empty() {
                                         use arboard::Clipboard;
                                         match Clipboard::new() {
                                             Ok(mut clipboard) => {
                                                 if let Err(e) = clipboard.set_text(content) {
-                                                    warn!("Failed to update system clipboard: {}", e);
+                                                    warn!(
+                                                        "Failed to update system clipboard: {}",
+                                                        e
+                                                    );
                                                 } else {
                                                     info!("Updated system clipboard from {} ({} chars)",
                                                         device_name, content.len());
@@ -1533,30 +1654,46 @@ impl Daemon {
                             }
                             "cconnect.battery" => {
                                 // Handle battery status updates - show notification for low battery
-                                if let Some(charge) = packet.body.get("currentCharge").and_then(|v| v.as_i64()) {
-                                    let is_charging = packet.body.get("isCharging")
+                                if let Some(charge) =
+                                    packet.body.get("currentCharge").and_then(|v| v.as_i64())
+                                {
+                                    let is_charging = packet
+                                        .body
+                                        .get("isCharging")
                                         .and_then(|v| v.as_bool())
                                         .unwrap_or(false);
-                                    let threshold_event = packet.body.get("thresholdEvent")
+                                    let threshold_event = packet
+                                        .body
+                                        .get("thresholdEvent")
                                         .and_then(|v| v.as_i64())
                                         .unwrap_or(0);
 
                                     // threshold_event == 1 means low battery
                                     if threshold_event == 1 && !is_charging {
-                                        info!("Low battery detected on {} ({}%)", device_name, charge);
+                                        info!(
+                                            "Low battery detected on {} ({}%)",
+                                            device_name, charge
+                                        );
 
-                                        if let Err(e) = notifier.notify_battery_low(
-                                            &device_name,
-                                            charge.max(0).min(100) as u8
-                                        ).await {
+                                        if let Err(e) = notifier
+                                            .notify_battery_low(
+                                                &device_name,
+                                                charge.max(0).min(100) as u8,
+                                            )
+                                            .await
+                                        {
                                             warn!("Failed to send low battery notification: {}", e);
                                         } else {
-                                            info!("Sent low battery notification for {} ({}%)",
-                                                device_name, charge);
+                                            info!(
+                                                "Sent low battery notification for {} ({}%)",
+                                                device_name, charge
+                                            );
                                         }
                                     } else {
-                                        debug!("Battery status from {}: {}% (charging: {})",
-                                            device_name, charge, is_charging);
+                                        debug!(
+                                            "Battery status from {}: {}% (charging: {})",
+                                            device_name, charge, is_charging
+                                        );
                                     }
                                 }
                             }
@@ -1569,7 +1706,8 @@ impl Daemon {
                                         &device_name,
                                         connection_mgr,
                                         plugin_manager,
-                                    ).await;
+                                    )
+                                    .await;
                                 }
                             }
                             _ => {
@@ -1654,10 +1792,7 @@ impl Daemon {
     ) {
         use cosmic_connect_protocol::plugins::mpris::MprisPlugin;
 
-        let player = body
-            .get("player")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let player = body.get("player").and_then(|v| v.as_str()).unwrap_or("");
 
         // Helper to send MPRIS packets via the plugin
         let send_mpris_packet = |packet: cosmic_connect_protocol::Packet| async move {
@@ -1702,7 +1837,10 @@ impl Daemon {
         // Playback control action (Play, Pause, PlayPause, Stop, Next, Previous)
         if let Some(action) = body.get("action").and_then(|v| v.as_str()) {
             match mpris_manager.call_player_method(player, action).await {
-                Ok(()) => info!("Executed MPRIS action '{}' on {} from {}", action, player, device_name),
+                Ok(()) => info!(
+                    "Executed MPRIS action '{}' on {} from {}",
+                    action, player, device_name
+                ),
                 Err(e) => warn!("Failed MPRIS action '{}' on {}: {}", action, player, e),
             }
             return;
@@ -1722,9 +1860,18 @@ impl Daemon {
             let position_us = position_ms * 1000;
             // TODO: Get track ID from current player state
             let track_id = "/org/mpris/MediaPlayer2/TrackList/NoTrack";
-            match mpris_manager.set_position(player, track_id, position_us).await {
-                Ok(()) => info!("Set position to {}ms on {} from {}", position_ms, player, device_name),
-                Err(e) => warn!("Failed to set position to {}ms on {}: {}", position_ms, player, e),
+            match mpris_manager
+                .set_position(player, track_id, position_us)
+                .await
+            {
+                Ok(()) => info!(
+                    "Set position to {}ms on {} from {}",
+                    position_ms, player, device_name
+                ),
+                Err(e) => warn!(
+                    "Failed to set position to {}ms on {}: {}",
+                    position_ms, player, e
+                ),
             }
             return;
         }
@@ -1733,7 +1880,10 @@ impl Daemon {
         if let Some(volume) = body.get("setVolume").and_then(|v| v.as_i64()) {
             let volume_normalized = (volume as f64) / 100.0;
             match mpris_manager.set_volume(player, volume_normalized).await {
-                Ok(()) => info!("Set volume to {}% on {} from {}", volume, player, device_name),
+                Ok(()) => info!(
+                    "Set volume to {}% on {} from {}",
+                    volume, player, device_name
+                ),
                 Err(e) => warn!("Failed to set volume to {}% on {}: {}", volume, player, e),
             }
             return;
@@ -1743,8 +1893,14 @@ impl Daemon {
         if let Some(loop_str) = body.get("setLoopStatus").and_then(|v| v.as_str()) {
             let loop_status = mpris_manager::LoopStatus::from_str(loop_str);
             match mpris_manager.set_loop_status(player, loop_status).await {
-                Ok(()) => info!("Set loop status to {} on {} from {}", loop_str, player, device_name),
-                Err(e) => warn!("Failed to set loop status to {} on {}: {}", loop_str, player, e),
+                Ok(()) => info!(
+                    "Set loop status to {} on {} from {}",
+                    loop_str, player, device_name
+                ),
+                Err(e) => warn!(
+                    "Failed to set loop status to {} on {}: {}",
+                    loop_str, player, e
+                ),
             }
             return;
         }
@@ -1752,7 +1908,10 @@ impl Daemon {
         // Set shuffle
         if let Some(shuffle) = body.get("setShuffle").and_then(|v| v.as_bool()) {
             match mpris_manager.set_shuffle(player, shuffle).await {
-                Ok(()) => info!("Set shuffle to {} on {} from {}", shuffle, player, device_name),
+                Ok(()) => info!(
+                    "Set shuffle to {} on {} from {}",
+                    shuffle, player, device_name
+                ),
                 Err(e) => warn!("Failed to set shuffle to {} on {}: {}", shuffle, player, e),
             }
             return;
@@ -1760,7 +1919,10 @@ impl Daemon {
 
         // Request for now playing state
         if body.get("requestNowPlaying").is_some() {
-            info!("Received now playing request for {} from {}", player, device_name);
+            info!(
+                "Received now playing request for {} from {}",
+                player, device_name
+            );
 
             let state = match mpris_manager.query_player_state(player).await {
                 Ok(s) => s,
@@ -1777,7 +1939,8 @@ impl Daemon {
                 .get_device_plugin(device_id, "mpris")
                 .and_then(|p| p.as_any().downcast_ref::<MprisPlugin>())
             {
-                let packet = mpris_plugin.create_status_packet(player.to_string(), status, metadata);
+                let packet =
+                    mpris_plugin.create_status_packet(player.to_string(), status, metadata);
                 drop(plug_manager);
                 send_mpris_packet(packet).await;
                 info!("Sent player state for {} to {}", player, device_name);
@@ -1971,8 +2134,8 @@ async fn handle_diagnostic_command(command: &DiagnosticCommand) -> Result<()> {
         DiagnosticCommand::ListDevices { verbose } => {
             // Load configuration to get device registry path
             let config = Config::load().context("Failed to load configuration")?;
-            let device_manager =
-                DeviceManager::new(config.device_registry_path()).context("Failed to load device registry")?;
+            let device_manager = DeviceManager::new(config.device_registry_path())
+                .context("Failed to load device registry")?;
 
             println!("\n=== Known Devices ===");
             let device_count = device_manager.device_count();
@@ -1995,7 +2158,10 @@ async fn handle_diagnostic_command(command: &DiagnosticCommand) -> Result<()> {
 
                     if *verbose {
                         println!("  Type: {:?}", device.info.device_type);
-                        println!("  Last seen: {} seconds ago", device.seconds_since_last_seen());
+                        println!(
+                            "  Last seen: {} seconds ago",
+                            device.seconds_since_last_seen()
+                        );
                         if let Some(host) = &device.host {
                             println!("  Host: {}:{}", host, device.port.unwrap_or(0));
                         }
@@ -2008,8 +2174,8 @@ async fn handle_diagnostic_command(command: &DiagnosticCommand) -> Result<()> {
         }
         DiagnosticCommand::DeviceInfo { device_id } => {
             let config = Config::load().context("Failed to load configuration")?;
-            let device_manager =
-                DeviceManager::new(config.device_registry_path()).context("Failed to load device registry")?;
+            let device_manager = DeviceManager::new(config.device_registry_path())
+                .context("Failed to load device registry")?;
 
             match device_manager.get_device(device_id) {
                 Some(device) => {
@@ -2020,7 +2186,10 @@ async fn handle_diagnostic_command(command: &DiagnosticCommand) -> Result<()> {
                     println!("Connection: {:?}", device.connection_state);
                     println!("Pairing: {:?}", device.pairing_status);
                     println!("Trusted: {}", device.is_trusted);
-                    println!("Last seen: {} seconds ago", device.seconds_since_last_seen());
+                    println!(
+                        "Last seen: {} seconds ago",
+                        device.seconds_since_last_seen()
+                    );
 
                     if let Some(host) = &device.host {
                         println!("Host: {}:{}", host, device.port.unwrap_or(0));
@@ -2055,8 +2224,8 @@ async fn handle_diagnostic_command(command: &DiagnosticCommand) -> Result<()> {
             println!("This command currently only checks device registry.");
 
             let config = Config::load().context("Failed to load configuration")?;
-            let device_manager =
-                DeviceManager::new(config.device_registry_path()).context("Failed to load device registry")?;
+            let device_manager = DeviceManager::new(config.device_registry_path())
+                .context("Failed to load device registry")?;
 
             match device_manager.get_device(device_id) {
                 Some(device) => {
@@ -2065,7 +2234,10 @@ async fn handle_diagnostic_command(command: &DiagnosticCommand) -> Result<()> {
                     } else if device.seen_recently(60) {
                         println!("⚠ Device was seen recently but not connected");
                     } else {
-                        println!("✗ Device not seen recently (last seen {} seconds ago)", device.seconds_since_last_seen());
+                        println!(
+                            "✗ Device not seen recently (last seen {} seconds ago)",
+                            device.seconds_since_last_seen()
+                        );
                     }
                     Ok(())
                 }
@@ -2088,8 +2260,14 @@ async fn handle_diagnostic_command(command: &DiagnosticCommand) -> Result<()> {
 
             println!("\n[Network]");
             println!("Discovery port: {}", config.network.discovery_port);
-            println!("Transfer port range: {}-{}", config.network.transfer_port_start, config.network.transfer_port_end);
-            println!("Discovery interval: {} seconds", config.network.discovery_interval);
+            println!(
+                "Transfer port range: {}-{}",
+                config.network.transfer_port_start, config.network.transfer_port_end
+            );
+            println!(
+                "Discovery interval: {} seconds",
+                config.network.discovery_interval
+            );
             println!("Device timeout: {} seconds", config.network.device_timeout);
 
             println!("\n[Plugins]");
@@ -2120,13 +2298,23 @@ async fn handle_diagnostic_command(command: &DiagnosticCommand) -> Result<()> {
         DiagnosticCommand::ExportLogs { output, lines } => {
             println!("Exporting last {} lines of logs to: {}", lines, output);
             println!("\nNote: Log export currently requires manual journal extraction.");
-            println!("Run: journalctl -u cconnect-daemon -n {} > {}", lines, output);
+            println!(
+                "Run: journalctl -u cconnect-daemon -n {} > {}",
+                lines, output
+            );
             Ok(())
         }
         DiagnosticCommand::Metrics { interval, count } => {
             println!("Performance metrics display");
             println!("Update interval: {} seconds", interval);
-            println!("Updates: {}", if *count == 0 { "infinite".to_string() } else { count.to_string() });
+            println!(
+                "Updates: {}",
+                if *count == 0 {
+                    "infinite".to_string()
+                } else {
+                    count.to_string()
+                }
+            );
             println!("\nNote: Metrics require running daemon with --metrics flag.");
             println!("Start daemon with: cconnect-daemon --metrics");
             Ok(())

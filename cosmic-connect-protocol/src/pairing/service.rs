@@ -94,7 +94,10 @@ impl PairingService {
     }
 
     /// Set the connection manager (called after initialization to avoid circular dependencies)
-    pub fn set_connection_manager(&mut self, connection_manager: Arc<RwLock<crate::connection::ConnectionManager>>) {
+    pub fn set_connection_manager(
+        &mut self,
+        connection_manager: Arc<RwLock<crate::connection::ConnectionManager>>,
+    ) {
         self.connection_manager = Some(connection_manager);
     }
 
@@ -172,7 +175,10 @@ impl PairingService {
                 // Reconnect using TOFU (Trust On First Use) with empty certificate
                 // The connection manager accepts any certificate for unpaired devices
                 let conn_mgr = self.connection_manager.as_ref().unwrap().read().await;
-                if let Err(e) = conn_mgr.connect_with_cert(&device_id, remote_addr, Vec::new()).await {
+                if let Err(e) = conn_mgr
+                    .connect_with_cert(&device_id, remote_addr, Vec::new())
+                    .await
+                {
                     error!("Failed to establish connection for pairing: {}", e);
                     let _ = self.event_tx.send(PairingEvent::Error {
                         device_id: Some(device_id.clone()),
@@ -311,7 +317,11 @@ impl PairingService {
         }
 
         // Return response packet if needed (caller sends it through existing connection)
-        Ok(if should_respond { response_packet } else { None })
+        Ok(if should_respond {
+            response_packet
+        } else {
+            None
+        })
     }
 
     /// Accept a pairing request (user confirmed)
@@ -319,7 +329,10 @@ impl PairingService {
         info!("Accepting pairing with device {}", device_id);
 
         // Get the stored pairing request with certificate and address
-        debug!("Step 1: Retrieving stored pairing request data for {}", device_id);
+        debug!(
+            "Step 1: Retrieving stored pairing request data for {}",
+            device_id
+        );
         let request_data = {
             let requests = self.active_requests.read().await;
             let data = requests
@@ -337,7 +350,10 @@ impl PairingService {
                 device_id
             ))
         })?;
-        debug!("Device info: name={}, addr={}", device_info.device_name, remote_addr);
+        debug!(
+            "Device info: name={}, addr={}",
+            device_info.device_name, remote_addr
+        );
 
         debug!("Step 3: Creating pairing acceptance response packet");
         let response = {
@@ -367,11 +383,17 @@ impl PairingService {
                 );
                 drop(conn_mgr_ref); // Release the read lock before connecting
 
-                debug!("Step 6: Establishing new TLS connection to {} at {} with pairing certificate", device_id, remote_addr);
+                debug!(
+                    "Step 6: Establishing new TLS connection to {} at {} with pairing certificate",
+                    device_id, remote_addr
+                );
                 // Establish a new TLS connection using the certificate from the pairing request
                 // (certificate isn't in DeviceManager yet since we haven't completed pairing)
                 let conn_mgr = conn_mgr.read().await;
-                match conn_mgr.connect_with_cert(device_id, remote_addr, device_cert.clone()).await {
+                match conn_mgr
+                    .connect_with_cert(device_id, remote_addr, device_cert.clone())
+                    .await
+                {
                     Ok(_) => debug!("Connection established successfully"),
                     Err(e) => {
                         error!("Failed to establish connection: {}", e);
@@ -390,7 +412,7 @@ impl PairingService {
         } else {
             error!("Connection manager is not set - cannot send pairing acceptance");
             return Err(crate::ProtocolError::Configuration(
-                "Connection manager not set".to_string()
+                "Connection manager not set".to_string(),
             ));
         }
 
@@ -476,7 +498,10 @@ impl PairingService {
 
     /// Send a pairing packet to a device over the TLS connection (Protocol v8)
     async fn send_pairing_packet(&self, packet: &Packet, device_id: &str) -> Result<()> {
-        debug!("Sending pairing packet '{}' to device {}", packet.packet_type, device_id);
+        debug!(
+            "Sending pairing packet '{}' to device {}",
+            packet.packet_type, device_id
+        );
 
         // Protocol v8: Send pairing packets over the established TLS connection
         if let Some(conn_mgr) = &self.connection_manager {
@@ -485,7 +510,8 @@ impl PairingService {
             Ok(())
         } else {
             Err(crate::ProtocolError::Configuration(
-                "Connection manager not set - cannot send pairing packets in Protocol v8".to_string()
+                "Connection manager not set - cannot send pairing packets in Protocol v8"
+                    .to_string(),
             ))
         }
     }

@@ -345,13 +345,12 @@ impl ClipboardHistoryStorage {
 
     /// Cleanup old and excess items
     fn cleanup(&mut self) {
-        let cutoff_time = Utc::now().timestamp_millis()
-            - (self.config.retention_days * 24 * 60 * 60 * 1000);
+        let cutoff_time =
+            Utc::now().timestamp_millis() - (self.config.retention_days * 24 * 60 * 60 * 1000);
 
         // Remove old unpinned items
-        self.items.retain(|item| {
-            item.pinned || item.timestamp > cutoff_time
-        });
+        self.items
+            .retain(|item| item.pinned || item.timestamp > cutoff_time);
 
         // Count pinned items
         let pinned_count = self.items.iter().filter(|i| i.pinned).count();

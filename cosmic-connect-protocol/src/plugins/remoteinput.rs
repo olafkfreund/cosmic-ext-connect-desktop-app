@@ -335,31 +335,31 @@ impl RemoteInputPlugin {
     fn special_key_to_keycode(special: i32) -> Option<u16> {
         use mouse_keyboard_input::*;
         match special {
-            1 => Some(KEY_BACKSPACE),    // Backspace
-            2 => Some(KEY_TAB),           // Tab
-            12 => Some(KEY_ENTER),        // Enter
-            27 => Some(KEY_ESC),          // Escape
-            21 => Some(KEY_LEFT),         // Left
-            22 => Some(KEY_UP),           // Up
-            23 => Some(KEY_RIGHT),        // Right
-            24 => Some(KEY_DOWN),         // Down
-            25 => Some(KEY_PAGEUP),       // PageUp
-            26 => Some(KEY_PAGEDOWN),     // PageDown
-            28 => Some(KEY_HOME),         // Home
-            29 => Some(KEY_END),          // End
-            30 => Some(KEY_DELETE),       // Delete
-            31 => Some(KEY_F1),           // F1
-            32 => Some(KEY_F2),           // F2
-            33 => Some(KEY_F3),           // F3
-            34 => Some(KEY_F4),           // F4
-            35 => Some(KEY_F5),           // F5
-            36 => Some(KEY_F6),           // F6
-            37 => Some(KEY_F7),           // F7
-            38 => Some(KEY_F8),           // F8
-            39 => Some(KEY_F9),           // F9
-            40 => Some(KEY_F10),          // F10
-            41 => Some(KEY_F11),          // F11
-            42 => Some(KEY_F12),          // F12
+            1 => Some(KEY_BACKSPACE), // Backspace
+            2 => Some(KEY_TAB),       // Tab
+            12 => Some(KEY_ENTER),    // Enter
+            27 => Some(KEY_ESC),      // Escape
+            21 => Some(KEY_LEFT),     // Left
+            22 => Some(KEY_UP),       // Up
+            23 => Some(KEY_RIGHT),    // Right
+            24 => Some(KEY_DOWN),     // Down
+            25 => Some(KEY_PAGEUP),   // PageUp
+            26 => Some(KEY_PAGEDOWN), // PageDown
+            28 => Some(KEY_HOME),     // Home
+            29 => Some(KEY_END),      // End
+            30 => Some(KEY_DELETE),   // Delete
+            31 => Some(KEY_F1),       // F1
+            32 => Some(KEY_F2),       // F2
+            33 => Some(KEY_F3),       // F3
+            34 => Some(KEY_F4),       // F4
+            35 => Some(KEY_F5),       // F5
+            36 => Some(KEY_F6),       // F6
+            37 => Some(KEY_F7),       // F7
+            38 => Some(KEY_F8),       // F8
+            39 => Some(KEY_F9),       // F9
+            40 => Some(KEY_F10),      // F10
+            41 => Some(KEY_F11),      // F11
+            42 => Some(KEY_F12),      // F12
             _ => None,
         }
     }
@@ -395,7 +395,10 @@ impl Plugin for RemoteInputPlugin {
 
     async fn init(&mut self, device: &Device) -> Result<()> {
         self.device_id = Some(device.id().to_string());
-        info!("Remote Input plugin initialized for device {}", device.name());
+        info!(
+            "Remote Input plugin initialized for device {}",
+            device.name()
+        );
         Ok(())
     }
 

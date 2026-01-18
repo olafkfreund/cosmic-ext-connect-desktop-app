@@ -4,9 +4,7 @@
 //! This module acts as a bridge between the ConnectionManager and RecoveryManager,
 //! listening for connection failures and triggering appropriate recovery actions.
 
-use crate::{
-    ConnectionEvent, ConnectionManager, DeviceManager, RecoveryManager, Result,
-};
+use crate::{ConnectionEvent, ConnectionManager, DeviceManager, RecoveryManager, Result};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -114,39 +112,39 @@ impl RecoveryCoordinator {
                                 };
 
                                 if let (Some(host), Some(port)) = (host_opt, port_opt) {
-                                        info!(
-                                            "Attempting reconnection to device {} at {}:{}",
-                                            device_id_clone, host, port
-                                        );
+                                    info!(
+                                        "Attempting reconnection to device {} at {}:{}",
+                                        device_id_clone, host, port
+                                    );
 
-                                        // Parse socket address
-                                        let addr_str = format!("{}:{}", host, port);
-                                        if let Ok(addr) = addr_str.parse::<SocketAddr>() {
-                                            // Attempt reconnection
-                                            match connection_manager_clone
-                                                .connect(&device_id_clone, addr)
-                                                .await
-                                            {
-                                                Ok(_) => {
-                                                    info!(
-                                                        "Successfully reconnected to device {}",
-                                                        device_id_clone
-                                                    );
-                                                }
-                                                Err(e) => {
-                                                    warn!(
-                                                        "Failed to reconnect to device {}: {}",
-                                                        device_id_clone, e
-                                                    );
-                                                    // The next disconnection event will trigger another attempt
-                                                }
+                                    // Parse socket address
+                                    let addr_str = format!("{}:{}", host, port);
+                                    if let Ok(addr) = addr_str.parse::<SocketAddr>() {
+                                        // Attempt reconnection
+                                        match connection_manager_clone
+                                            .connect(&device_id_clone, addr)
+                                            .await
+                                        {
+                                            Ok(_) => {
+                                                info!(
+                                                    "Successfully reconnected to device {}",
+                                                    device_id_clone
+                                                );
                                             }
-                                        } else {
-                                            warn!(
-                                                "Invalid address {}:{} for device {}",
-                                                host, port, device_id_clone
-                                            );
+                                            Err(e) => {
+                                                warn!(
+                                                    "Failed to reconnect to device {}: {}",
+                                                    device_id_clone, e
+                                                );
+                                                // The next disconnection event will trigger another attempt
+                                            }
                                         }
+                                    } else {
+                                        warn!(
+                                            "Invalid address {}:{} for device {}",
+                                            host, port, device_id_clone
+                                        );
+                                    }
                                 } else {
                                     debug!(
                                         "Device {} has no host/port info, cannot reconnect",
@@ -192,7 +190,10 @@ impl RecoveryCoordinator {
         let to_retry = self.recovery_manager.process_retry_queue().await;
 
         for (device_id, packet) in to_retry {
-            debug!("Retrying packet '{}' to device {}", packet.packet_type, device_id);
+            debug!(
+                "Retrying packet '{}' to device {}",
+                packet.packet_type, device_id
+            );
 
             if let Err(e) = self
                 .connection_manager
@@ -206,7 +207,10 @@ impl RecoveryCoordinator {
                 // Packet will be retried again on next process_packet_retries call
                 // unless max retries reached
             } else {
-                debug!("Successfully retried packet '{}' to device {}", packet.packet_type, device_id);
+                debug!(
+                    "Successfully retried packet '{}' to device {}",
+                    packet.packet_type, device_id
+                );
             }
         }
 
@@ -228,11 +232,9 @@ mod tests {
     #[tokio::test]
     async fn test_recovery_coordinator_creation() {
         // Create test certificate
-        let cert = CertificateInfo::generate_self_signed(
-            "test-device",
-            vec!["127.0.0.1".to_string()],
-        )
-        .unwrap();
+        let cert =
+            CertificateInfo::generate_self_signed("test-device", vec!["127.0.0.1".to_string()])
+                .unwrap();
 
         // Create test device info
         let device_info = DeviceInfo {
@@ -262,11 +264,8 @@ mod tests {
         recovery_manager.init().await.unwrap();
 
         // Create coordinator
-        let _coordinator = RecoveryCoordinator::new(
-            connection_manager,
-            device_manager,
-            recovery_manager,
-        );
+        let _coordinator =
+            RecoveryCoordinator::new(connection_manager, device_manager, recovery_manager);
 
         // Just verify it can be created
         // Full integration testing requires running connection manager

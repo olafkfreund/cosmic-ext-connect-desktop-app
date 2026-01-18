@@ -316,8 +316,7 @@ mod tests {
 
     #[test]
     fn test_packet_deserialization_with_newline() {
-        let json_data =
-            r#"{"id":1234567890,"type":"cconnect.ping","body":{}}"#.to_string() + "\n";
+        let json_data = r#"{"id":1234567890,"type":"cconnect.ping","body":{}}"#.to_string() + "\n";
         let packet = Packet::from_bytes(json_data.as_bytes()).unwrap();
 
         assert_eq!(packet.id, 1234567890);

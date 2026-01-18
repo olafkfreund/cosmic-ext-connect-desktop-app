@@ -361,10 +361,7 @@ impl MacroPlugin {
             .await
             .insert(exec_id.clone(), execution.clone());
 
-        info!(
-            "Starting macro execution: {} ({})",
-            macro_def.name, exec_id
-        );
+        info!("Starting macro execution: {} ({})", macro_def.name, exec_id);
 
         // Spawn async task to execute macro
         let executions = self.executions.clone();
@@ -472,9 +469,7 @@ impl MacroPlugin {
                     .params
                     .get("content")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        ProtocolError::invalid_state("Missing content parameter")
-                    })?;
+                    .ok_or_else(|| ProtocolError::invalid_state("Missing content parameter"))?;
 
                 info!("Macro set_clipboard: {} chars", content.len());
                 // TODO: Send clipboard packet
@@ -630,10 +625,7 @@ impl MacroPlugin {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| ProtocolError::invalid_state("Missing step action"))?;
 
-            let params = step_json
-                .get("params")
-                .cloned()
-                .unwrap_or(json!({}));
+            let params = step_json.get("params").cloned().unwrap_or(json!({}));
 
             steps.push(MacroStep {
                 action: action.to_string(),

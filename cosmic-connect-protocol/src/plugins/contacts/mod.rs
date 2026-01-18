@@ -45,8 +45,7 @@ pub const PACKET_TYPE_REQUEST_ALL_UIDS_TIMESTAMPS: &str =
 pub const PACKET_TYPE_REQUEST_VCARDS_BY_UID: &str = "cconnect.contacts.request_vcards_by_uid";
 
 /// Packet type for response with UIDs and timestamps
-pub const PACKET_TYPE_RESPONSE_UIDS_TIMESTAMPS: &str =
-    "cconnect.contacts.response_uids_timestamps";
+pub const PACKET_TYPE_RESPONSE_UIDS_TIMESTAMPS: &str = "cconnect.contacts.response_uids_timestamps";
 
 /// Packet type for response with vCard data
 pub const PACKET_TYPE_RESPONSE_VCARDS: &str = "cconnect.contacts.response_vcards";
@@ -183,7 +182,10 @@ impl ContactsPlugin {
                     // Check if this is a new contact or an update
                     match self.contacts_cache.get(uid) {
                         Some(&cached_timestamp) if cached_timestamp < timestamp => {
-                            debug!("Contact {} updated: {} -> {}", uid, cached_timestamp, timestamp);
+                            debug!(
+                                "Contact {} updated: {} -> {}",
+                                uid, cached_timestamp, timestamp
+                            );
                             self.contacts_cache.insert(uid.clone(), timestamp);
                             updated_count += 1;
                         }
@@ -522,8 +524,12 @@ mod tests {
         plugin.handle_packet(&packet, &mut device).await.unwrap();
 
         assert_eq!(plugin.get_contact_count(), 2);
-        assert!(plugin.get_all_contact_uids().contains(&"contact1".to_string()));
-        assert!(plugin.get_all_contact_uids().contains(&"contact2".to_string()));
+        assert!(plugin
+            .get_all_contact_uids()
+            .contains(&"contact1".to_string()));
+        assert!(plugin
+            .get_all_contact_uids()
+            .contains(&"contact2".to_string()));
     }
 
     #[tokio::test]
@@ -552,7 +558,9 @@ mod tests {
     fn test_clear_cache() {
         let mut plugin = create_test_plugin();
         plugin.contacts_cache.insert("test".to_string(), 123);
-        plugin.vcards_cache.insert("test".to_string(), "data".to_string());
+        plugin
+            .vcards_cache
+            .insert("test".to_string(), "data".to_string());
 
         plugin.clear_cache();
 

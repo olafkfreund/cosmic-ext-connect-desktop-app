@@ -6,9 +6,9 @@
 //! The transport layer supports multiple transport types (TCP, Bluetooth)
 //! through a common trait interface.
 
-mod r#trait;
 pub mod bluetooth;
 pub mod tcp;
+mod r#trait;
 
 // TLS modules removed - now using cosmic-connect-core
 // Old OpenSSL-based TLS moved to cosmic-connect-core with rustls
@@ -16,8 +16,8 @@ pub mod tcp;
 // pub mod tls_config;
 
 pub use bluetooth::{
-    BluetoothConnection, BluetoothTransportFactory, CCONNECT_SERVICE_UUID,
-    RFCOMM_READ_CHAR_UUID, RFCOMM_WRITE_CHAR_UUID,
+    BluetoothConnection, BluetoothTransportFactory, CCONNECT_SERVICE_UUID, RFCOMM_READ_CHAR_UUID,
+    RFCOMM_WRITE_CHAR_UUID,
 };
 pub use r#trait::{
     LatencyCategory, Transport, TransportAddress, TransportCapabilities, TransportFactory,

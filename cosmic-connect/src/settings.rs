@@ -168,18 +168,54 @@ impl PluginConfig {
     /// Set plugin enabled status by name
     pub fn set(&mut self, plugin: &str, enabled: bool) -> bool {
         match plugin {
-            "ping" => { self.enable_ping = enabled; true }
-            "battery" => { self.enable_battery = enabled; true }
-            "notification" => { self.enable_notification = enabled; true }
-            "share" => { self.enable_share = enabled; true }
-            "clipboard" => { self.enable_clipboard = enabled; true }
-            "mpris" => { self.enable_mpris = enabled; true }
-            "runcommand" => { self.enable_runcommand = enabled; true }
-            "remoteinput" => { self.enable_remoteinput = enabled; true }
-            "findmyphone" => { self.enable_findmyphone = enabled; true }
-            "telephony" => { self.enable_telephony = enabled; true }
-            "presenter" => { self.enable_presenter = enabled; true }
-            "contacts" => { self.enable_contacts = enabled; true }
+            "ping" => {
+                self.enable_ping = enabled;
+                true
+            }
+            "battery" => {
+                self.enable_battery = enabled;
+                true
+            }
+            "notification" => {
+                self.enable_notification = enabled;
+                true
+            }
+            "share" => {
+                self.enable_share = enabled;
+                true
+            }
+            "clipboard" => {
+                self.enable_clipboard = enabled;
+                true
+            }
+            "mpris" => {
+                self.enable_mpris = enabled;
+                true
+            }
+            "runcommand" => {
+                self.enable_runcommand = enabled;
+                true
+            }
+            "remoteinput" => {
+                self.enable_remoteinput = enabled;
+                true
+            }
+            "findmyphone" => {
+                self.enable_findmyphone = enabled;
+                true
+            }
+            "telephony" => {
+                self.enable_telephony = enabled;
+                true
+            }
+            "presenter" => {
+                self.enable_presenter = enabled;
+                true
+            }
+            "contacts" => {
+                self.enable_contacts = enabled;
+                true
+            }
             _ => false,
         }
     }
@@ -290,7 +326,10 @@ pub fn plugins_by_category() -> Vec<(&'static str, Vec<&'static str>)> {
     vec![
         ("Core", vec!["ping", "battery", "findmyphone"]),
         ("Media & Notifications", vec!["mpris", "notification"]),
-        ("Input & Control", vec!["remoteinput", "presenter", "runcommand"]),
+        (
+            "Input & Control",
+            vec!["remoteinput", "presenter", "runcommand"],
+        ),
         ("File Transfer", vec!["share"]),
         ("Productivity", vec!["clipboard"]),
         ("Mobile (Experimental)", vec!["telephony", "contacts"]),

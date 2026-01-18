@@ -911,10 +911,7 @@ mod tests {
         assert_eq!(content, "First update");
 
         // Second update
-        let packet2 = Packet::new(
-            "cconnect.clipboard",
-            json!({ "content": "Second update" }),
-        );
+        let packet2 = Packet::new("cconnect.clipboard", json!({ "content": "Second update" }));
         plugin.handle_packet(&packet2, &mut device).await.unwrap();
 
         let content = plugin.get_content().await;

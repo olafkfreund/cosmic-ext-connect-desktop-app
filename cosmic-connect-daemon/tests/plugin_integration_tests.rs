@@ -256,7 +256,9 @@ async fn test_clipboard_sync_between_devices() -> Result<()> {
 
     // Device 1 sends clipboard content
     let test_content = "Hello from device 1!";
-    let packet = plugin1.create_clipboard_packet(test_content.to_string()).await;
+    let packet = plugin1
+        .create_clipboard_packet(test_content.to_string())
+        .await;
     assert_eq!(packet.packet_type, "cconnect.clipboard");
     assert_eq!(packet.body["content"], test_content);
 
@@ -443,9 +445,7 @@ async fn test_battery_request_response_cycle() -> Result<()> {
     let response_packet = plugin.create_battery_packet(&battery_status);
 
     // Handle the response
-    plugin
-        .handle_packet(&response_packet, &mut device)
-        .await?;
+    plugin.handle_packet(&response_packet, &mut device).await?;
 
     // Verify battery status was updated
     let status = plugin.get_battery_status();

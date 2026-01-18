@@ -120,15 +120,12 @@ impl BluetoothDiscoveryService {
             .await
             .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
-        adapters
-            .into_iter()
-            .next()
-            .ok_or_else(|| {
-                ProtocolError::Io(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "No Bluetooth adapter found",
-                ))
-            })
+        adapters.into_iter().next().ok_or_else(|| {
+            ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "No Bluetooth adapter found",
+            ))
+        })
     }
 
     /// Get a receiver for discovery events
@@ -331,7 +328,10 @@ impl BluetoothDiscoveryService {
                 bt_address,
             ));
         } else {
-            debug!("Updated Bluetooth device: {} at {}", device_info.device_name, bt_address);
+            debug!(
+                "Updated Bluetooth device: {} at {}",
+                device_info.device_name, bt_address
+            );
             let _ = event_tx.send(DiscoveryEvent::bluetooth_updated(device_info, bt_address));
         }
 

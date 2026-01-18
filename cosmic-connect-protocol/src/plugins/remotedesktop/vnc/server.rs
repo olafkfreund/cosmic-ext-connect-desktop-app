@@ -31,7 +31,7 @@
 use super::{
     auth::{generate_password, VncAuth},
     protocol::*,
-    StreamingSession, StreamConfig,
+    StreamConfig, StreamingSession,
 };
 use crate::{
     plugins::remotedesktop::{
@@ -188,7 +188,8 @@ impl VncServer {
         info!("Input handler created for VNC input forwarding");
 
         // Protocol message loop
-        self.protocol_loop(&mut stream, &mut session, &mut input_handler).await?;
+        self.protocol_loop(&mut stream, &mut session, &mut input_handler)
+            .await?;
 
         info!("Client disconnected");
         Ok(())
@@ -205,7 +206,10 @@ impl VncServer {
         // 2. Read client protocol version
         let mut client_version = [0u8; 12];
         stream.read_exact(&mut client_version)?;
-        debug!("Client version: {:?}", String::from_utf8_lossy(&client_version));
+        debug!(
+            "Client version: {:?}",
+            String::from_utf8_lossy(&client_version)
+        );
 
         // Verify client version
         if client_version != *RFB_VERSION_3_8 && client_version != *RFB_VERSION_3_3 {
@@ -237,7 +241,9 @@ impl VncServer {
             if !auth.authenticate(stream).await? {
                 // Send failure
                 stream.write_u32(SECURITY_RESULT_FAILED)?;
-                return Err(crate::ProtocolError::Plugin("VNC authentication failed".to_string()));
+                return Err(crate::ProtocolError::Plugin(
+                    "VNC authentication failed".to_string(),
+                ));
             }
         }
 
@@ -402,11 +408,7 @@ impl VncServer {
     }
 
     /// Send framebuffer update to client
-    fn send_framebuffer_update(
-        &self,
-        stream: &mut TcpStream,
-        frame: &EncodedFrame,
-    ) -> Result<()> {
+    fn send_framebuffer_update(&self, stream: &mut TcpStream, frame: &EncodedFrame) -> Result<()> {
         // Map our encoding type to RFB encoding
         let rfb_encoding = match frame.encoding {
             EncodingType::Raw => RfbEncoding::Raw as i32,
@@ -432,30 +434,47 @@ impl VncServer {
         let bytes = update.to_bytes();
         stream.write_all(&bytes)?;
 
-        debug!("Sent framebuffer update: {}x{} ({} bytes)", frame.width, frame.height, bytes.len());
+        debug!(
+            "Sent framebuffer update: {}x{} ({} bytes)",
+            frame.width,
+            frame.height,
+            bytes.len()
+        );
 
         Ok(())
     }
 
     /// Handle KeyEvent message
-    async fn handle_key_event(&self, event: KeyEvent, input_handler: &mut InputHandler) -> Result<()> {
+    async fn handle_key_event(
+        &self,
+        event: KeyEvent,
+        input_handler: &mut InputHandler,
+    ) -> Result<()> {
         debug!("Key event: down={}, key=0x{:08x}", event.down, event.key);
 
         // Forward to input handler
-        input_handler.handle_key_event(event.key, event.down).await?;
+        input_handler
+            .handle_key_event(event.key, event.down)
+            .await?;
 
         Ok(())
     }
 
     /// Handle PointerEvent message
-    async fn handle_pointer_event(&self, event: PointerEvent, input_handler: &mut InputHandler) -> Result<()> {
+    async fn handle_pointer_event(
+        &self,
+        event: PointerEvent,
+        input_handler: &mut InputHandler,
+    ) -> Result<()> {
         debug!(
             "Pointer event: buttons=0x{:02x}, pos=({}, {})",
             event.button_mask, event.x, event.y
         );
 
         // Forward to input handler
-        input_handler.handle_pointer_event(event.x, event.y, event.button_mask).await?;
+        input_handler
+            .handle_pointer_event(event.x, event.y, event.button_mask)
+            .await?;
 
         Ok(())
     }

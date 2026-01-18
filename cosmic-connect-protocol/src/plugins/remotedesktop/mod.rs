@@ -189,12 +189,8 @@ impl Plugin for RemoteDesktopPlugin {
         }
 
         match packet.packet_type.as_str() {
-            "cconnect.remotedesktop.request" => {
-                self.handle_request(packet, device).await
-            }
-            "cconnect.remotedesktop.control" => {
-                self.handle_control(packet, device).await
-            }
+            "cconnect.remotedesktop.request" => self.handle_request(packet, device).await,
+            "cconnect.remotedesktop.control" => self.handle_control(packet, device).await,
             _ => {
                 warn!("Unknown packet type: {}", packet.packet_type);
                 Ok(())
@@ -206,19 +202,31 @@ impl Plugin for RemoteDesktopPlugin {
 impl RemoteDesktopPlugin {
     /// Handle remote desktop session request
     async fn handle_request(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
-        info!(
-            "Received remote desktop request from {}",
-            device.name()
-        );
+        info!("Received remote desktop request from {}", device.name());
 
         #[cfg(feature = "remotedesktop")]
         {
             // Parse request
-            let _mode = packet.body.get("mode").and_then(|v| v.as_str()).unwrap_or("control");
-            let _quality = packet.body.get("quality").and_then(|v| v.as_str()).unwrap_or("medium");
-            let _fps = packet.body.get("fps").and_then(|v| v.as_u64()).unwrap_or(30);
+            let _mode = packet
+                .body
+                .get("mode")
+                .and_then(|v| v.as_str())
+                .unwrap_or("control");
+            let _quality = packet
+                .body
+                .get("quality")
+                .and_then(|v| v.as_str())
+                .unwrap_or("medium");
+            let _fps = packet
+                .body
+                .get("fps")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(30);
 
-            debug!("Request: mode={}, quality={}, fps={}", _mode, _quality, _fps);
+            debug!(
+                "Request: mode={}, quality={}, fps={}",
+                _mode, _quality, _fps
+            );
 
             // Check if session already active
             let state = self.session_manager.state().await;
@@ -300,10 +308,7 @@ impl RemoteDesktopPlugin {
 
     /// Handle session control commands
     async fn handle_control(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
-        info!(
-            "Received remote desktop control from {}",
-            device.name()
-        );
+        info!("Received remote desktop control from {}", device.name());
 
         let body = &packet.body;
         let action = body.get("action").and_then(|v| v.as_str());

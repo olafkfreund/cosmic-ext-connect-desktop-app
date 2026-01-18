@@ -273,7 +273,10 @@ impl DeviceManager {
         // Ensure parent directory exists
         if let Some(parent) = registry_path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
-                ProtocolError::from_io_error(e, &format!("creating registry directory {:?}", parent))
+                ProtocolError::from_io_error(
+                    e,
+                    &format!("creating registry directory {:?}", parent),
+                )
             })?;
         }
 
