@@ -8,6 +8,9 @@ let
   # Import the package
   cosmic-connect-pkg = pkgs.callPackage ./package.nix { };
 
+  # TOML format generator
+  tomlFormat = pkgs.formats.toml { };
+
 in {
   options.services.cosmic-connect = {
     enable = mkEnableOption "COSMIC Connect - Device connectivity for COSMIC Desktop";
@@ -348,7 +351,7 @@ in {
 
     # Generate configuration file
     environment.etc."xdg/cosmic-connect/daemon.toml" = mkIf cfg.daemon.enable {
-      text = let
+      source = let
         pluginConfig = {
           plugins = {
             enable_ping = cfg.plugins.ping;
@@ -373,7 +376,7 @@ in {
         # Merge user settings with plugin config
         finalConfig = lib.recursiveUpdate pluginConfig cfg.daemon.settings;
       in
-        generators.toTOML { } finalConfig;
+        tomlFormat.generate "daemon.toml" finalConfig;
     };
 
     # Create necessary directories
