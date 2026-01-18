@@ -11,7 +11,7 @@ use crate::{Packet, ProtocolError, Result};
 use async_trait::async_trait;
 use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter, WriteType};
 use btleplug::platform::{Adapter, Manager, Peripheral};
-use futures::StreamExt;
+// use futures::StreamExt;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{timeout, Duration};

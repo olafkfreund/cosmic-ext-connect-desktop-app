@@ -56,6 +56,7 @@ struct ActiveConnection {
     /// Task handling this connection
     task: JoinHandle<()>,
     /// Device ID
+    #[allow(dead_code)]
     device_id: String,
     /// Remote address
     remote_addr: SocketAddr,

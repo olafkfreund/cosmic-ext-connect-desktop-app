@@ -368,6 +368,7 @@ impl MprisManager {
     }
 
     /// Open URI
+    #[allow(dead_code)]
     pub async fn open_uri(&self, player: &str, uri: &str) -> Result<()> {
         let bus_name = Self::player_bus_name(player);
         let player_proxy = zbus::Proxy::new(
@@ -532,6 +533,7 @@ impl MprisManager {
     }
 
     /// Stop monitoring a player
+    #[allow(dead_code)]
     pub async fn stop_monitoring(&self, player: &str) {
         info!("Stopping MPRIS monitoring for player: {}", player);
 

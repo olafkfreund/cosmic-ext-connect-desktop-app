@@ -1955,15 +1955,19 @@ impl Daemon {
         dbus_server: &Option<Arc<DbusServer>>,
     ) -> Result<()> {
         match event {
-            DiscoveryEvent::DeviceDiscovered { info, address, .. } => {
+            DiscoveryEvent::DeviceDiscovered {
+                info,
+                transport_address,
+                ..
+            } => {
                 info!(
                     "Device discovered: {} ({}) at {}",
                     info.device_name,
                     info.device_type.as_str(),
-                    address
+                    transport_address
                 );
                 let mut manager = device_manager.write().await;
-                manager.update_from_discovery(info.clone(), address);
+                manager.update_from_discovery(info.clone(), transport_address);
                 if let Err(e) = manager.save_registry() {
                     warn!("Failed to save device registry: {}", e);
                 }
@@ -1984,10 +1988,17 @@ impl Daemon {
                 //
                 // This prevents reconnection loops where both sides try to connect simultaneously.
             }
-            DiscoveryEvent::DeviceUpdated { info, address, .. } => {
-                debug!("Device updated: {} at {}", info.device_name, address);
+            DiscoveryEvent::DeviceUpdated {
+                info,
+                transport_address,
+                ..
+            } => {
+                debug!(
+                    "Device updated: {} at {}",
+                    info.device_name, transport_address
+                );
                 let mut manager = device_manager.write().await;
-                manager.update_from_discovery(info, address);
+                manager.update_from_discovery(info, transport_address);
             }
             DiscoveryEvent::DeviceTimeout { device_id } => {
                 info!("Device timed out: {}", device_id);

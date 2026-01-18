@@ -140,6 +140,7 @@ use super::{Plugin, PluginFactory};
 const DEFAULT_MAX_MESSAGES: usize = 1000;
 
 /// Default retention period in days
+#[allow(dead_code)]
 const DEFAULT_RETENTION_DAYS: i64 = 90;
 
 /// Chat message
@@ -242,6 +243,7 @@ impl ChatStorage {
     }
 
     /// Get message by ID
+    #[allow(dead_code)]
     fn get(&self, message_id: &str) -> Option<&ChatMessage> {
         self.messages
             .iter()

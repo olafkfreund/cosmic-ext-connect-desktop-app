@@ -292,9 +292,9 @@ impl PowerPlugin {
 
         // Query current power state
         // TODO: Implement actual power state detection
-        let state = "running";
-        let battery_present = false;
-        let on_battery = false;
+        let _state = "running";
+        let _battery_present = false;
+        let _on_battery = false;
 
         // TODO: Send status response packet back to device
         // Need to implement packet sending infrastructure
@@ -500,15 +500,19 @@ mod tests {
     use crate::{DeviceInfo, DeviceType};
 
     fn create_test_device() -> Device {
-        Device::new(DeviceInfo {
-            id: "test_device".to_string(),
-            name: "Test Device".to_string(),
-            device_type: DeviceType::Desktop,
-            protocol_version: 7,
-            incoming_capabilities: vec!["cconnect.power".to_string()],
-            outgoing_capabilities: vec!["cconnect.power".to_string()],
-            tcp_port: 1716,
-        })
+        Device::new(
+            DeviceInfo {
+                device_id: "test_device".to_string(),
+                device_name: "Test Device".to_string(),
+                device_type: DeviceType::Desktop,
+                protocol_version: 7,
+                incoming_capabilities: vec!["cconnect.power".to_string()],
+                outgoing_capabilities: vec!["cconnect.power".to_string()],
+                tcp_port: 1716,
+            },
+            crate::ConnectionState::Disconnected,
+            crate::PairingStatus::Paired,
+        )
     }
 
     #[test]

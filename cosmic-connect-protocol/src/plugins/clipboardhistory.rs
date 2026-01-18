@@ -156,16 +156,17 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::any::Any;
-use std::path::PathBuf;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use super::{Plugin, PluginFactory};
 
 /// Maximum content size (10MB)
+#[allow(dead_code)]
 const MAX_CONTENT_SIZE: usize = 10 * 1024 * 1024;
 
 /// Default maximum items to keep
+#[allow(dead_code)]
 const DEFAULT_MAX_ITEMS: usize = 100;
 
 /// Default retention period in days
@@ -268,7 +269,7 @@ impl ClipboardHistoryStorage {
     }
 
     /// Add item to history
-    fn add(&mut self, mut item: ClipboardHistoryItem) -> Result<()> {
+    fn add(&mut self, item: ClipboardHistoryItem) -> Result<()> {
         // Check size limit
         if item.content.len() > self.config.max_item_size {
             return Err(ProtocolError::invalid_state(format!(
@@ -296,6 +297,7 @@ impl ClipboardHistoryStorage {
     }
 
     /// Get item by ID
+    #[allow(dead_code)]
     fn get(&self, id: &str) -> Option<&ClipboardHistoryItem> {
         self.items.iter().find(|item| item.id == id)
     }

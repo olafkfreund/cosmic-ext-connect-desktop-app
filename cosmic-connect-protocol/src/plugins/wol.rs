@@ -402,6 +402,7 @@ impl PluginFactory for WolPluginFactory {
 mod tests {
     use super::*;
     use crate::{DeviceInfo, DeviceType};
+    use serde_json::json;
 
     fn create_test_device() -> Device {
         let info = DeviceInfo::new("Test Device", DeviceType::Desktop, 1716);

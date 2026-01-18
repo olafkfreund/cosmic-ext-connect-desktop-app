@@ -452,15 +452,19 @@ mod tests {
 
     fn create_test_device() -> Device {
         use crate::{DeviceInfo, DeviceType};
-        Device::new(DeviceInfo {
-            id: "test_device".to_string(),
-            name: "Test Device".to_string(),
-            device_type: DeviceType::Phone,
-            protocol_version: 7,
-            incoming_capabilities: vec!["cconnect.lock".to_string()],
-            outgoing_capabilities: vec!["cconnect.lock".to_string()],
-            tcp_port: 1716,
-        })
+        Device::new(
+            DeviceInfo {
+                device_id: "test_device".to_string(),
+                device_name: "Test Device".to_string(),
+                device_type: DeviceType::Phone,
+                protocol_version: 7,
+                incoming_capabilities: vec!["cconnect.lock".to_string()],
+                outgoing_capabilities: vec!["cconnect.lock".to_string()],
+                tcp_port: 1716,
+            },
+            crate::ConnectionState::Disconnected,
+            crate::PairingStatus::Paired,
+        )
     }
 
     #[test]

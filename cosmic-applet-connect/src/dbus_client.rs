@@ -12,9 +12,11 @@ use tracing::{debug, info, warn};
 use zbus::{proxy, Connection};
 
 /// DBus service name
+#[allow(dead_code)]
 pub const SERVICE_NAME: &str = "com.system76.CosmicConnect";
 
 /// DBus object path
+#[allow(dead_code)]
 pub const OBJECT_PATH: &str = "/com/system76/CosmicConnect";
 
 /// Device information from DBus
@@ -234,22 +236,34 @@ pub enum DaemonEvent {
     /// Pairing request received
     PairingRequest { device_id: String },
     /// Pairing status changed
-    PairingStatusChanged { device_id: String, status: String },
+    PairingStatusChanged {
+        #[allow(dead_code)]
+        device_id: String,
+        status: String,
+    },
     /// Plugin event
     PluginEvent {
+        #[allow(dead_code)]
         device_id: String,
+        #[allow(dead_code)]
         plugin: String,
+        #[allow(dead_code)]
         data: String,
     },
     /// Device plugin state changed
     DevicePluginStateChanged {
+        #[allow(dead_code)]
         device_id: String,
+        #[allow(dead_code)]
         plugin_name: String,
+        #[allow(dead_code)]
         enabled: bool,
     },
     /// Daemon disconnected
+    #[allow(dead_code)]
     DaemonDisconnected,
     /// Daemon reconnected
+    #[allow(dead_code)]
     DaemonReconnected,
     /// File transfer progress
     TransferProgress {
@@ -430,6 +444,7 @@ trait CConnect {
 /// DBus client for communicating with the daemon
 pub struct DbusClient {
     /// DBus connection
+    #[allow(dead_code)]
     connection: Connection,
     /// Proxy to daemon interface
     proxy: CConnectProxy<'static>,
@@ -614,6 +629,7 @@ impl DbusClient {
     }
 
     /// Get information about a specific device
+    #[allow(dead_code)]
     pub async fn get_device(&self, device_id: &str) -> Result<DeviceInfo> {
         debug!("Getting device info for {}", device_id);
         self.proxy
@@ -641,6 +657,7 @@ impl DbusClient {
     }
 
     /// Trigger device discovery
+    #[allow(dead_code)]
     pub async fn refresh_discovery(&self) -> Result<()> {
         debug!("Refreshing device discovery");
         self.proxy
@@ -650,6 +667,7 @@ impl DbusClient {
     }
 
     /// Get device connection state
+    #[allow(dead_code)]
     pub async fn get_device_state(&self, device_id: &str) -> Result<String> {
         debug!("Getting device state for {}", device_id);
         self.proxy
@@ -704,6 +722,7 @@ impl DbusClient {
     }
 
     /// Send a notification to a device
+    #[allow(dead_code)]
     pub async fn send_notification(&self, device_id: &str, title: &str, body: &str) -> Result<()> {
         info!("Sending notification to device {}: {}", device_id, title);
         self.proxy
@@ -905,6 +924,7 @@ impl DbusClient {
     }
 
     /// Check if daemon is available
+    #[allow(dead_code)]
     pub async fn is_daemon_available(&self) -> bool {
         // Try to list devices as a health check
         self.proxy.list_devices().await.is_ok()
@@ -914,10 +934,12 @@ impl DbusClient {
 /// Auto-reconnecting DBus client wrapper
 pub struct ReconnectingClient {
     /// Current client (None if disconnected)
+    #[allow(dead_code)]
     client: Option<DbusClient>,
     /// Event receiver
     event_rx: mpsc::UnboundedReceiver<DaemonEvent>,
     /// Event sender for reconnection
+    #[allow(dead_code)]
     reconnect_tx: mpsc::UnboundedSender<DaemonEvent>,
 }
 
@@ -939,11 +961,13 @@ impl ReconnectingClient {
     /// Get a reference to the current client
     ///
     /// Returns None if disconnected
+    #[allow(dead_code)]
     pub fn client(&self) -> Option<&DbusClient> {
         self.client.as_ref()
     }
 
     /// Attempt to reconnect to the daemon
+    #[allow(dead_code)]
     pub async fn reconnect(&mut self) -> Result<()> {
         info!("Attempting to reconnect to daemon");
 
@@ -973,6 +997,7 @@ impl ReconnectingClient {
     }
 
     /// Try to receive an event without blocking
+    #[allow(dead_code)]
     pub fn try_recv_event(&mut self) -> Result<DaemonEvent, mpsc::error::TryRecvError> {
         self.event_rx.try_recv()
     }

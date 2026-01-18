@@ -242,6 +242,7 @@ impl DeviceConfig {
     }
 
     /// Clear RemoteDesktop settings (use defaults)
+    #[allow(dead_code)]
     pub fn clear_remotedesktop_settings(&mut self) {
         self.remotedesktop_settings = None;
     }
@@ -285,6 +286,7 @@ impl DeviceConfig {
     }
 
     /// Clear MAC address
+    #[allow(dead_code)]
     pub fn clear_mac_address(&mut self) {
         self.mac_address = None;
     }
@@ -355,31 +357,37 @@ impl DeviceConfigRegistry {
     }
 
     /// Update device configuration
+    #[allow(dead_code)]
     pub fn update(&mut self, device_id: &str, config: DeviceConfig) {
         self.configs.insert(device_id.to_string(), config);
     }
 
     /// Remove device configuration
+    #[allow(dead_code)]
     pub fn remove(&mut self, device_id: &str) -> Option<DeviceConfig> {
         self.configs.remove(device_id)
     }
 
     /// Get all device IDs with custom configurations
+    #[allow(dead_code)]
     pub fn device_ids(&self) -> Vec<String> {
         self.configs.keys().cloned().collect()
     }
 
     /// Check if device has custom configuration
+    #[allow(dead_code)]
     pub fn has_config(&self, device_id: &str) -> bool {
         self.configs.contains_key(device_id)
     }
 
     /// Get number of configured devices
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.configs.len()
     }
 
     /// Check if registry is empty
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.configs.is_empty()
     }

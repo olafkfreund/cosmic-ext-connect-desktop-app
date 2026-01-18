@@ -227,7 +227,6 @@ impl RecoveryCoordinator {
 mod tests {
     use super::*;
     use crate::{CertificateInfo, ConnectionConfig, DeviceInfo, DeviceType};
-    use std::collections::HashMap;
 
     #[tokio::test]
     async fn test_recovery_coordinator_creation() {

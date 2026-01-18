@@ -62,7 +62,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashSet;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 const PLUGIN_NAME: &str = "screenshare";
 const INCOMING_CAPABILITY: &str = "cconnect.screenshare";
@@ -167,18 +167,22 @@ pub struct ShareConfig {
     pub adaptive_bitrate: bool,
 }
 
+#[allow(dead_code)]
 fn default_fps() -> u8 {
     DEFAULT_FPS
 }
 
+#[allow(dead_code)]
 fn default_bitrate() -> u32 {
     DEFAULT_BITRATE_KBPS
 }
 
+#[allow(dead_code)]
 fn default_quality() -> String {
     DEFAULT_QUALITY.to_string()
 }
 
+#[allow(dead_code)]
 fn default_true() -> bool {
     true
 }
@@ -283,10 +287,12 @@ pub struct Annotation {
     pub width: u8,
 }
 
+#[allow(dead_code)]
 fn default_color() -> String {
     "#FF0000".to_string() // Red
 }
 
+#[allow(dead_code)]
 fn default_line_width() -> u8 {
     3
 }
@@ -295,6 +301,7 @@ fn default_line_width() -> u8 {
 #[derive(Debug)]
 struct ShareSession {
     /// Session configuration
+    #[allow(dead_code)]
     config: ShareConfig,
 
     /// Connected viewers
@@ -345,6 +352,7 @@ impl ShareSession {
         self.viewers.remove(viewer_id);
     }
 
+    #[allow(dead_code)]
     fn update_stats(&mut self, frame_bytes: u64) {
         self.frames_sent += 1;
         self.bytes_sent += frame_bytes;
@@ -821,11 +829,7 @@ mod tests {
         let config = ShareConfig::default();
         let body = serde_json::to_value(&config).unwrap();
 
-        let packet = Packet {
-            id: 1,
-            packet_type: "cconnect.screenshare.start".to_string(),
-            body,
-        };
+        let packet = Packet::new("cconnect.screenshare.start", body);
 
         assert!(plugin.handle_packet(&packet, &mut device).await.is_ok());
 
@@ -849,11 +853,7 @@ mod tests {
             .unwrap();
         screenshare_plugin.receiving = true;
 
-        let packet = Packet {
-            id: 2,
-            packet_type: "cconnect.screenshare.stop".to_string(),
-            body: serde_json::json!({}),
-        };
+        let packet = Packet::new("cconnect.screenshare.stop", serde_json::json!({}));
 
         assert!(plugin.handle_packet(&packet, &mut device).await.is_ok());
 

@@ -29,6 +29,7 @@ const MAX_RECONNECT_DELAY: Duration = Duration::from_secs(60);
 const MAX_PACKET_RETRIES: u32 = 3;
 
 /// Packet retry delay
+#[allow(dead_code)]
 const PACKET_RETRY_DELAY: Duration = Duration::from_millis(500);
 
 /// Reconnection strategy with exponential backoff

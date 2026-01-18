@@ -190,33 +190,39 @@ impl Metrics {
     }
 
     /// Record a sent packet
+    #[allow(dead_code)]
     pub fn record_packet_sent(&mut self, size: usize) {
         self.packets_sent += 1;
         self.bytes_sent += size as u64;
     }
 
     /// Record a received packet
+    #[allow(dead_code)]
     pub fn record_packet_received(&mut self, size: usize) {
         self.packets_received += 1;
         self.bytes_received += size as u64;
     }
 
     /// Update connection count
+    #[allow(dead_code)]
     pub fn update_connections(&mut self, count: usize) {
         self.active_connections = count;
     }
 
     /// Update paired device count
+    #[allow(dead_code)]
     pub fn update_paired_devices(&mut self, count: usize) {
         self.paired_devices = count;
     }
 
     /// Record plugin invocation
+    #[allow(dead_code)]
     pub fn record_plugin_invocation(&mut self) {
         self.plugin_invocations += 1;
     }
 
     /// Record plugin error
+    #[allow(dead_code)]
     pub fn record_plugin_error(&mut self) {
         self.plugin_errors += 1;
     }
@@ -249,6 +255,7 @@ impl Metrics {
     }
 
     /// Display metrics summary
+    #[allow(dead_code)]
     pub fn display(&self) {
         let uptime = self.uptime_seconds();
         let hours = uptime / 3600;
@@ -331,6 +338,7 @@ impl Metrics {
 }
 
 /// Format bytes in human-readable form
+#[allow(dead_code)]
 fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut value = bytes as f64;

@@ -13,12 +13,14 @@ use crate::cosmic_notifications::CosmicNotifier;
 
 /// Central error handler that manages error notifications and recovery
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct ErrorHandler {
     notifier: Arc<RwLock<Option<CosmicNotifier>>>,
 }
 
 impl ErrorHandler {
     /// Create a new error handler
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             notifier: Arc::new(RwLock::new(None)),
@@ -28,6 +30,7 @@ impl ErrorHandler {
     /// Initialize the error handler with a notifier
     ///
     /// This should be called during daemon startup.
+    #[allow(dead_code)]
     pub async fn init(&self) -> Result<()> {
         let notifier = CosmicNotifier::new().await?;
         *self.notifier.write().await = Some(notifier);
@@ -58,6 +61,8 @@ impl ErrorHandler {
     ///     Ok(_) => { /* ... */ }
     /// }
     /// ```
+    /// ```
+    #[allow(dead_code)]
     pub async fn handle_error(
         &self,
         error: &ProtocolError,
@@ -85,6 +90,8 @@ impl ErrorHandler {
     }
 
     /// Show an error notification to the user
+    /// Show an error notification to the user
+    #[allow(dead_code)]
     async fn notify_error(&self, error: &ProtocolError, device_id: Option<&str>) -> Result<()> {
         let notifier_guard = self.notifier.read().await;
         let Some(notifier) = notifier_guard.as_ref() else {
@@ -185,6 +192,8 @@ impl ErrorHandler {
     }
 
     /// Handle a file transfer error with notification
+    /// Handle a file transfer error with notification
+    #[allow(dead_code)]
     pub async fn handle_file_transfer_error(
         &self,
         device_name: &str,
@@ -210,6 +219,8 @@ impl ErrorHandler {
     ///
     /// Plugin errors are logged but typically don't require user notification
     /// unless they prevent core functionality.
+    /// unless they prevent core functionality.
+    #[allow(dead_code)]
     pub async fn handle_plugin_error(
         &self,
         plugin_name: &str,
@@ -235,6 +246,8 @@ impl ErrorHandler {
     }
 
     /// Check if notifications are enabled
+    /// Check if notifications are enabled
+    #[allow(dead_code)]
     pub async fn notifications_enabled(&self) -> bool {
         self.notifier.read().await.is_some()
     }

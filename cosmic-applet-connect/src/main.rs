@@ -37,6 +37,7 @@ const SPACE_XXL: f32 = 24.0; // Double extra large (empty states, major padding)
 // Icon sizes
 const ICON_XS: u16 = 12;
 const ICON_S: u16 = 16; // Standard button/action icon
+#[allow(dead_code)]
 const ICON_M: u16 = 24;
 const ICON_L: u16 = 32;
 const ICON_XL: u16 = 48; // Hero/Empty state
@@ -2390,15 +2391,6 @@ fn action_button_with_tooltip(
         cosmic::widget::tooltip::Position::Bottom,
     )
     .into()
-}
-
-/// Creates a small icon button for device quick actions (ping, send file, etc.)
-/// @deprecated Use action_button_with_tooltip instead
-fn action_button(icon_name: &str, message: Message) -> Element<'static, Message> {
-    button::icon(icon::from_name(icon_name).size(ICON_S))
-        .on_press(message)
-        .padding(SPACE_XS)
-        .into()
 }
 
 /// Returns the icon name for a device type

@@ -192,6 +192,7 @@ impl ScreenshotPlugin {
     /// Capture a screenshot
     ///
     /// Returns the path to the captured screenshot file.
+    #[allow(dead_code)]
     fn capture_screenshot(&self, capture_type: CaptureType) -> Result<PathBuf> {
         let display_server = Self::detect_display_server();
 
@@ -483,7 +484,10 @@ enum CaptureType {
         height: u32,
     },
     /// Window capture
-    Window { window_id: String },
+    Window {
+        #[allow(dead_code)]
+        window_id: String,
+    },
 }
 
 impl Default for ScreenshotPlugin {
@@ -596,6 +600,7 @@ impl PluginFactory for ScreenshotPluginFactory {
 mod tests {
     use super::*;
     use crate::{DeviceInfo, DeviceType};
+    use serde_json::json;
 
     fn create_test_device() -> Device {
         let info = DeviceInfo::new("Test Device", DeviceType::Desktop, 1716);

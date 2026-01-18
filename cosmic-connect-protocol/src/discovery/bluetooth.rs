@@ -8,7 +8,7 @@ use crate::transport::CCONNECT_SERVICE_UUID;
 use crate::{DeviceInfo, ProtocolError, Result};
 use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter};
 use btleplug::platform::{Adapter, Manager, Peripheral};
-use futures::StreamExt;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};

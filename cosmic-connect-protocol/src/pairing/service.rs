@@ -443,6 +443,7 @@ impl PairingService {
     }
 
     /// Get remote address for an active pairing request
+    #[allow(dead_code)]
     async fn get_request_addr(&self, device_id: &str) -> Option<SocketAddr> {
         self.active_requests
             .read()

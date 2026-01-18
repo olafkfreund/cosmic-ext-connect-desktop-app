@@ -31,8 +31,10 @@ struct ActiveBluetoothConnection {
     /// Task handling this connection
     task: JoinHandle<()>,
     /// Device ID
+    #[allow(dead_code)]
     device_id: String,
     /// Bluetooth address
+    #[allow(dead_code)]
     bt_address: String,
 }
 
@@ -48,6 +50,7 @@ pub struct BluetoothConnectionManager {
     event_rx: Arc<RwLock<mpsc::UnboundedReceiver<TransportManagerEvent>>>,
 
     /// Bluetooth operation timeout
+    #[allow(dead_code)]
     timeout: Duration,
 }
 

@@ -235,7 +235,7 @@ pub enum MacroExecutionStatus {
 
 /// Active macro execution state
 #[derive(Debug, Clone)]
-struct MacroExecution {
+pub struct MacroExecution {
     /// Execution ID
     id: String,
 
@@ -421,7 +421,7 @@ impl MacroPlugin {
     }
 
     /// Execute a single macro step
-    async fn execute_step(step: &MacroStep, variables: &HashMap<String, String>) -> Result<()> {
+    async fn execute_step(step: &MacroStep, _variables: &HashMap<String, String>) -> Result<()> {
         match step.action.as_str() {
             "notify" => {
                 let title = step
@@ -930,7 +930,7 @@ mod tests {
         let mut plugin = MacroPlugin::new();
 
         let mut steps = Vec::new();
-        for i in 0..200 {
+        for _ in 0..200 {
             steps.push(MacroStep {
                 action: "wait".to_string(),
                 params: json!({"seconds": 0}),

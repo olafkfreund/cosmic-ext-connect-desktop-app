@@ -335,6 +335,7 @@ impl TransportConfig {
     }
 
     /// Check if a Bluetooth device address should be accepted
+    #[allow(dead_code)]
     pub fn should_accept_bluetooth_device(&self, address: &str) -> bool {
         // If no filter, accept all devices
         if self.bluetooth_device_filter.is_empty() {

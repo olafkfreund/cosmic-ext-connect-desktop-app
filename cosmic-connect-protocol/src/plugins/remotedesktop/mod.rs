@@ -95,7 +95,7 @@ use crate::{Device, Packet, Result};
 use async_trait::async_trait;
 use serde_json::json;
 use std::any::Any;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use super::{Plugin, PluginFactory};
 
@@ -201,7 +201,7 @@ impl Plugin for RemoteDesktopPlugin {
 
 impl RemoteDesktopPlugin {
     /// Handle remote desktop session request
-    async fn handle_request(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
+    async fn handle_request(&mut self, _packet: &Packet, device: &mut Device) -> Result<()> {
         info!("Received remote desktop request from {}", device.name());
 
         #[cfg(feature = "remotedesktop")]

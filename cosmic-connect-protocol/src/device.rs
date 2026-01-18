@@ -20,7 +20,7 @@
 //! Device information is persisted to disk to remember paired devices
 //! across application restarts.
 
-use crate::{DeviceInfo, PairingStatus, ProtocolError, Result};
+use crate::{DeviceInfo, PairingStatus, ProtocolError, Result, TransportAddress};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -360,21 +360,27 @@ impl DeviceManager {
     }
 
     /// Update device from discovery info
-    pub fn update_from_discovery(&mut self, info: DeviceInfo, address: std::net::SocketAddr) {
+    pub fn update_from_discovery(&mut self, info: DeviceInfo, address: TransportAddress) {
         let device_id = info.device_id.clone();
-        let host = address.ip().to_string();
-        let port = info.tcp_port;
+
+        // Extract connection info based on transport
+        let (host, port) = match &address {
+            TransportAddress::Tcp(addr) => (Some(addr.ip().to_string()), Some(info.tcp_port)),
+            TransportAddress::Bluetooth { address, .. } => (Some(address.clone()), None),
+        };
 
         if let Some(device) = self.devices.get_mut(&device_id) {
             // Update existing device
             device.info = info;
-            device.host = Some(host);
-            device.port = Some(port);
+            device.host = host;
+            device.port = port;
             device.update_last_seen();
             debug!("Updated device from discovery: {}", device_id);
         } else {
             // Add new device
-            let device = Device::from_discovery(info);
+            let mut device = Device::from_discovery(info);
+            device.host = host;
+            device.port = port;
             self.add_device(device);
         }
     }

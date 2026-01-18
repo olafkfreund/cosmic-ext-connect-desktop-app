@@ -62,13 +62,14 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 const PLUGIN_NAME: &str = "filesync";
 const INCOMING_CAPABILITY: &str = "cconnect.filesync";
 const OUTGOING_CAPABILITY: &str = "cconnect.filesync";
 
 // File sync configuration constants
+#[allow(dead_code)]
 const MAX_FILE_SIZE_MB: u64 = 1024; // 1GB max file size
 const DEFAULT_SCAN_INTERVAL_SECS: u64 = 60; // Scan every minute
 const DEFAULT_VERSION_KEEP: usize = 5; // Keep 5 previous versions
@@ -361,7 +362,7 @@ impl FileSyncPlugin {
         local_index: &SyncIndex,
         remote_index: &SyncIndex,
     ) -> Vec<FileConflict> {
-        let mut conflicts = Vec::new();
+        let conflicts = Vec::new();
 
         // TODO: Compare file lists
         // TODO: Detect additions, deletions, modifications
@@ -568,7 +569,7 @@ impl Plugin for FileSyncPlugin {
 
             "cconnect.filesync.transfer" => {
                 // Receive file data transfer
-                let folder_id: String = packet
+                let _folder_id: String = packet
                     .body
                     .get("folder_id")
                     .and_then(|v| v.as_str())
@@ -592,7 +593,7 @@ impl Plugin for FileSyncPlugin {
 
             "cconnect.filesync.delete" => {
                 // Synchronize file deletion
-                let folder_id: String = packet
+                let _folder_id: String = packet
                     .body
                     .get("folder_id")
                     .and_then(|v| v.as_str())
@@ -802,11 +803,7 @@ mod tests {
         );
         body.insert("config".to_string(), serde_json::to_value(&config).unwrap());
 
-        let packet = Packet {
-            id: 1,
-            packet_type: "cconnect.filesync.config".to_string(),
-            body: serde_json::Value::Object(body),
-        };
+        let packet = Packet::new("cconnect.filesync.config", serde_json::Value::Object(body));
 
         assert!(plugin.handle_packet(&packet, &mut device).await.is_ok());
     }

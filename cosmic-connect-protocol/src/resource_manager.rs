@@ -33,6 +33,7 @@ const MAX_TOTAL_TRANSFER_SIZE: u64 = 1024 * 1024 * 1024;
 const MEMORY_PRESSURE_THRESHOLD: u64 = 500 * 1024 * 1024; // 500 MB
 
 /// Maximum packet queue size per device
+#[allow(dead_code)]
 const MAX_PACKET_QUEUE_SIZE: usize = 100;
 
 /// Resource management configuration
@@ -77,6 +78,7 @@ struct ConnectionInfo {
     /// Device ID
     device_id: String,
     /// Connection timestamp
+    #[allow(dead_code)]
     connected_at: u64,
     /// Last activity timestamp
     last_activity: u64,

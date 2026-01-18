@@ -77,7 +77,7 @@ pub enum PairingStatus {
 /// Device certificate information (legacy OpenSSL-based)
 /// TODO: Remove this and use cosmic_connect_core::CertificateInfo
 #[derive(Debug, Clone)]
-pub(crate) struct LegacyCertificateInfo {
+pub struct LegacyCertificateInfo {
     /// Device ID (UUID)
     pub device_id: String,
 

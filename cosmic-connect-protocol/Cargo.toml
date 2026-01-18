@@ -43,6 +43,7 @@ image = { version = "0.25", optional = true }
 [features]
 default = []
 remotedesktop = ["pipewire", "openh264", "lz4", "image"]
+low_latency = []
 
 [dev-dependencies]
 tokio-test = "0.4"

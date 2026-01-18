@@ -775,7 +775,6 @@ impl Default for PluginManager {
 mod tests {
     use super::*;
     use crate::{DeviceInfo, DeviceType};
-    use serde_json::json;
 
     // Mock plugin for testing
     struct MockPlugin {
@@ -807,6 +806,10 @@ mod tests {
         }
 
         fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
 
@@ -847,7 +850,7 @@ mod tests {
     #[test]
     fn test_plugin_manager_creation() {
         let manager = PluginManager::new();
-        assert_eq!(manager.plugin_count(), 0);
+        assert_eq!(manager.factory_count(), 0);
         assert!(manager.list_plugins().is_empty());
     }
 

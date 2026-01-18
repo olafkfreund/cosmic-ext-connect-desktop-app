@@ -54,19 +54,22 @@ use crate::{Device, Packet, ProtocolError, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 const PLUGIN_NAME: &str = "audiostream";
 const INCOMING_CAPABILITY: &str = "cconnect.audiostream";
 const OUTGOING_CAPABILITY: &str = "cconnect.audiostream";
 
 // Audio configuration constants
+#[allow(dead_code)]
 const DEFAULT_SAMPLE_RATE: u32 = 48000;
+#[allow(dead_code)]
 const DEFAULT_BITRATE: u32 = 128000; // 128 kbps
+#[allow(dead_code)]
 const DEFAULT_CHANNELS: u8 = 2; // Stereo
+#[allow(dead_code)]
 const MAX_BUFFER_SIZE_MS: u32 = 500; // 500ms max buffer
 const MIN_BUFFER_SIZE_MS: u32 = 50; // 50ms min buffer
 
@@ -250,6 +253,7 @@ impl AudioStream {
         }
     }
 
+    #[allow(dead_code)]
     fn update_stats(&mut self, bytes: u64) {
         self.bytes_streamed += bytes;
         self.packet_count += 1;
@@ -418,6 +422,7 @@ impl AudioStreamPlugin {
     }
 
     /// Process audio data packet
+    #[allow(dead_code)]
     async fn process_audio_data(&self, data: &[u8]) -> Result<()> {
         let mut stream_lock = self.incoming_stream.write().await;
         if let Some(stream) = stream_lock.as_mut() {
@@ -755,11 +760,7 @@ mod tests {
         let config = StreamConfig::default();
         let body = serde_json::to_value(&config).unwrap();
 
-        let packet = Packet {
-            id: 1,
-            packet_type: "cconnect.audiostream.start".to_string(),
-            body,
-        };
+        let packet = Packet::new("cconnect.audiostream.start", body);
 
         assert!(plugin.handle_packet(&packet, &mut device).await.is_ok());
     }
@@ -793,11 +794,7 @@ mod tests {
             serde_json::to_value(StreamDirection::Output).unwrap(),
         );
 
-        let packet = Packet {
-            id: 2,
-            packet_type: "cconnect.audiostream.stop".to_string(),
-            body: serde_json::Value::Object(body),
-        };
+        let packet = Packet::new("cconnect.audiostream.stop", serde_json::Value::Object(body));
 
         assert!(plugin.handle_packet(&packet, &mut device).await.is_ok());
 
