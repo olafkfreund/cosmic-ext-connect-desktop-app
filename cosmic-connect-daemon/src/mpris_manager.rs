@@ -19,7 +19,7 @@ pub const MPRIS_PLAYER_INTERFACE: &str = "org.mpris.MediaPlayer2.Player";
 pub const MPRIS_BUS_PREFIX: &str = "org.mpris.MediaPlayer2.";
 
 /// Playback status from MPRIS2
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PlaybackStatus {
     Playing,
     Paused,
@@ -41,7 +41,7 @@ impl PlaybackStatus {
 }
 
 /// Loop status from MPRIS2
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LoopStatus {
     None,
     Track,
@@ -67,7 +67,7 @@ impl LoopStatus {
 }
 
 /// Media player metadata
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct PlayerMetadata {
     pub artist: Option<String>,
     pub title: Option<String>,
@@ -77,7 +77,7 @@ pub struct PlayerMetadata {
 }
 
 /// Player state from MPRIS2
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PlayerState {
     pub name: String,
     pub identity: String,

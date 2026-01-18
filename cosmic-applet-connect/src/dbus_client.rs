@@ -4,6 +4,7 @@
 //! Handles method calls, signal subscription, and error recovery.
 
 use anyhow::{Context, Result};
+#[allow(dead_code)]
 use futures::stream::StreamExt;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
@@ -112,6 +113,50 @@ impl Default for RemoteDesktopSettings {
     }
 }
 
+/// Playback status from MPRIS2
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum PlaybackStatus {
+    Playing,
+    Paused,
+    Stopped,
+}
+
+/// Loop status from MPRIS2
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum LoopStatus {
+    None,
+    Track,
+    Playlist,
+}
+
+/// Media player metadata
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct PlayerMetadata {
+    pub artist: Option<String>,
+    pub title: Option<String>,
+    pub album: Option<String>,
+    pub album_art_url: Option<String>,
+    pub length: i64, // microseconds
+}
+
+/// Player state
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PlayerState {
+    pub name: String,
+    pub identity: String,
+    pub playback_status: PlaybackStatus,
+    pub position: i64, // microseconds
+    pub volume: f64,   // 0.0 to 1.0
+    pub loop_status: LoopStatus,
+    pub shuffle: bool,
+    pub can_play: bool,
+    pub can_pause: bool,
+    pub can_go_next: bool,
+    pub can_go_previous: bool,
+    pub can_seek: bool,
+    pub metadata: PlayerMetadata,
+}
+
 impl DeviceConfig {
     /// Get whether a plugin is enabled (considering device override vs global)
     pub fn get_plugin_enabled(&self, plugin: &str) -> bool {
@@ -206,6 +251,23 @@ pub enum DaemonEvent {
     DaemonDisconnected,
     /// Daemon reconnected
     DaemonReconnected,
+    /// File transfer progress
+    TransferProgress {
+        transfer_id: String,
+        device_id: String,
+        filename: String,
+        current: u64,
+        total: u64,
+        direction: String,
+    },
+    /// File transfer complete
+    TransferComplete {
+        transfer_id: String,
+        device_id: String,
+        filename: String,
+        success: bool,
+        error: String,
+    },
 }
 
 /// DBus proxy for COSMIC Connect daemon interface
@@ -265,6 +327,9 @@ trait CConnect {
     /// Get list of available MPRIS media players
     async fn get_mpris_players(&self) -> zbus::fdo::Result<Vec<String>>;
 
+    /// Get detailed state for a specific MPRIS player
+    async fn get_player_state(&self, player: &str) -> zbus::fdo::Result<String>;
+
     /// Control MPRIS player playback
     async fn mpris_control(&self, player: &str, action: &str) -> zbus::fdo::Result<()>;
 
@@ -297,6 +362,9 @@ trait CConnect {
 
     /// Get RemoteDesktop settings for a device
     async fn get_remotedesktop_settings(&self, device_id: &str) -> zbus::fdo::Result<String>;
+
+    /// Set a custom nickname for a device
+    async fn set_device_nickname(&self, device_id: &str, nickname: &str) -> zbus::fdo::Result<()>;
 
     /// Set RemoteDesktop settings for a device
     async fn set_remotedesktop_settings(
@@ -335,6 +403,27 @@ trait CConnect {
         device_id: &str,
         plugin_name: &str,
         enabled: bool,
+    ) -> zbus::fdo::Result<()>;
+
+    /// Signal: File transfer progress
+    #[zbus(signal)]
+    fn transfer_progress(
+        transfer_id: &str,
+        device_id: &str,
+        filename: &str,
+        current: u64,
+        total: u64,
+        direction: &str,
+    ) -> zbus::fdo::Result<()>;
+
+    /// Signal: File transfer complete
+    #[zbus(signal)]
+    fn transfer_complete(
+        transfer_id: &str,
+        device_id: &str,
+        filename: &str,
+        success: bool,
+        error: &str,
     ) -> zbus::fdo::Result<()>;
 }
 
@@ -473,6 +562,39 @@ impl DbusClient {
                         device_id,
                         plugin_name,
                         enabled,
+                    });
+                }
+            }
+        });
+
+        let event_tx = self.event_tx.clone();
+        let mut progress_stream = self.proxy.receive_transfer_progress().await?;
+        tokio::spawn(async move {
+            while let Some(signal) = progress_stream.next().await {
+                if let Ok(args) = signal.args() {
+                    let _ = event_tx.send(DaemonEvent::TransferProgress {
+                        transfer_id: args.transfer_id().to_string(),
+                        device_id: args.device_id().to_string(),
+                        filename: args.filename().to_string(),
+                        current: *args.current(),
+                        total: *args.total(),
+                        direction: args.direction().to_string(),
+                    });
+                }
+            }
+        });
+
+        let event_tx = self.event_tx.clone();
+        let mut complete_stream = self.proxy.receive_transfer_complete().await?;
+        tokio::spawn(async move {
+            while let Some(signal) = complete_stream.next().await {
+                if let Ok(args) = signal.args() {
+                    let _ = event_tx.send(DaemonEvent::TransferComplete {
+                        transfer_id: args.transfer_id().to_string(),
+                        device_id: args.device_id().to_string(),
+                        filename: args.filename().to_string(),
+                        success: *args.success(),
+                        error: args.error().to_string(),
                     });
                 }
             }
@@ -617,6 +739,18 @@ impl DbusClient {
             .context("Failed to get MPRIS players")
     }
 
+    /// Get detailed state for a specific MPRIS player
+    pub async fn get_player_state(&self, player: &str) -> Result<PlayerState> {
+        debug!("Getting player state for {}", player);
+        let json = self
+            .proxy
+            .get_player_state(player)
+            .await
+            .context("Failed to get player state")?;
+
+        serde_json::from_str(&json).context("Failed to parse player state")
+    }
+
     /// Control MPRIS player playback
     ///
     /// # Arguments
@@ -759,6 +893,15 @@ impl DbusClient {
             .set_remotedesktop_settings(device_id, &json)
             .await
             .context("Failed to set RemoteDesktop settings")
+    }
+
+    /// Set a custom nickname for a device
+    pub async fn set_device_nickname(&self, device_id: &str, nickname: &str) -> Result<()> {
+        info!("Setting nickname for {}: '{}'", device_id, nickname);
+        self.proxy
+            .set_device_nickname(device_id, nickname)
+            .await
+            .context("Failed to set device nickname")
     }
 
     /// Check if daemon is available

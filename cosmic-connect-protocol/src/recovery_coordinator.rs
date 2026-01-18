@@ -232,9 +232,7 @@ mod tests {
     #[tokio::test]
     async fn test_recovery_coordinator_creation() {
         // Create test certificate
-        let cert =
-            CertificateInfo::generate_self_signed("test-device", vec!["127.0.0.1".to_string()])
-                .unwrap();
+        let cert = CertificateInfo::generate("test-device").unwrap();
 
         // Create test device info
         let device_info = DeviceInfo {
@@ -248,7 +246,9 @@ mod tests {
         };
 
         // Create managers
-        let device_manager = Arc::new(RwLock::new(DeviceManager::new(None)));
+        let temp_dir_dm = tempfile::TempDir::new().unwrap();
+        let registry_path = temp_dir_dm.path().join("registry.json");
+        let device_manager = Arc::new(RwLock::new(DeviceManager::new(registry_path).unwrap()));
         let connection_manager = Arc::new(
             ConnectionManager::new(
                 cert,

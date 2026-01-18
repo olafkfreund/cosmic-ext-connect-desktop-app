@@ -1963,7 +1963,7 @@ impl Daemon {
                     address
                 );
                 let mut manager = device_manager.write().await;
-                manager.update_from_discovery(info.clone());
+                manager.update_from_discovery(info.clone(), address);
                 if let Err(e) = manager.save_registry() {
                     warn!("Failed to save device registry: {}", e);
                 }
@@ -1987,7 +1987,7 @@ impl Daemon {
             DiscoveryEvent::DeviceUpdated { info, address, .. } => {
                 debug!("Device updated: {} at {}", info.device_name, address);
                 let mut manager = device_manager.write().await;
-                manager.update_from_discovery(info);
+                manager.update_from_discovery(info, address);
             }
             DiscoveryEvent::DeviceTimeout { device_id } => {
                 info!("Device timed out: {}", device_id);

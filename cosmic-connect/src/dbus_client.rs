@@ -11,9 +11,11 @@ use tracing::{debug, info, warn};
 use zbus::{proxy, Connection};
 
 /// DBus service name
+#[allow(dead_code)]
 pub const SERVICE_NAME: &str = "com.system76.CosmicConnect";
 
 /// DBus object path
+#[allow(dead_code)]
 pub const OBJECT_PATH: &str = "/com/system76/CosmicConnect";
 
 /// Device information from DBus
@@ -56,23 +58,29 @@ pub enum DaemonEvent {
     /// Device was added (discovered)
     DeviceAdded {
         device_id: String,
+        #[allow(dead_code)]
         device_info: DeviceInfo,
     },
     /// Device was removed (disappeared)
     DeviceRemoved { device_id: String },
     /// Device state changed
+    #[allow(dead_code)]
     DeviceStateChanged { device_id: String, state: String },
     /// Pairing request received
+    #[allow(dead_code)]
     PairingRequest { device_id: String },
     /// Pairing status changed
+    #[allow(dead_code)]
     PairingStatusChanged { device_id: String, status: String },
     /// Plugin event
+    #[allow(dead_code)]
     PluginEvent {
         device_id: String,
         plugin: String,
         data: String,
     },
     /// Transfer progress update
+    #[allow(dead_code)]
     TransferProgress {
         transfer_id: String,
         device_id: String,
@@ -82,6 +90,7 @@ pub enum DaemonEvent {
         direction: String,
     },
     /// Transfer completed
+    #[allow(dead_code)]
     TransferComplete {
         transfer_id: String,
         device_id: String,
@@ -90,8 +99,10 @@ pub enum DaemonEvent {
         error_message: String,
     },
     /// Daemon disconnected
+    #[allow(dead_code)]
     DaemonDisconnected,
     /// Daemon reconnected
+    #[allow(dead_code)]
     DaemonReconnected,
 }
 
@@ -253,10 +264,12 @@ trait CConnect {
 /// DBus client for communicating with the daemon
 pub struct DbusClient {
     /// DBus connection
+    #[allow(dead_code)]
     connection: Connection,
     /// Proxy to daemon interface
     proxy: CConnectProxy<'static>,
     /// Event sender
+    #[allow(dead_code)]
     event_tx: mpsc::UnboundedSender<DaemonEvent>,
 }
 
@@ -291,6 +304,7 @@ impl DbusClient {
     }
 
     /// Start listening for signals from the daemon
+    #[allow(dead_code)]
     pub async fn start_signal_listener(&self) -> Result<()> {
         debug!("Starting signal listener");
 
@@ -419,6 +433,7 @@ impl DbusClient {
     }
 
     /// Get information about a specific device
+    #[allow(dead_code)]
     pub async fn get_device(&self, device_id: &str) -> Result<DeviceInfo> {
         debug!("Getting device info for {}", device_id);
         self.proxy
@@ -428,6 +443,7 @@ impl DbusClient {
     }
 
     /// Request pairing with a device
+    #[allow(dead_code)]
     pub async fn pair_device(&self, device_id: &str) -> Result<()> {
         info!("Requesting pairing with device {}", device_id);
         self.proxy
@@ -437,6 +453,7 @@ impl DbusClient {
     }
 
     /// Unpair a device
+    #[allow(dead_code)]
     pub async fn unpair_device(&self, device_id: &str) -> Result<()> {
         info!("Unpairing device {}", device_id);
         self.proxy
@@ -446,6 +463,7 @@ impl DbusClient {
     }
 
     /// Accept an incoming pairing request
+    #[allow(dead_code)]
     pub async fn accept_pairing(&self, device_id: &str) -> Result<()> {
         info!("Accepting pairing request from device {}", device_id);
         self.proxy
@@ -455,6 +473,7 @@ impl DbusClient {
     }
 
     /// Reject an incoming pairing request
+    #[allow(dead_code)]
     pub async fn reject_pairing(&self, device_id: &str) -> Result<()> {
         info!("Rejecting pairing request from device {}", device_id);
         self.proxy
@@ -464,6 +483,7 @@ impl DbusClient {
     }
 
     /// Trigger device discovery
+    #[allow(dead_code)]
     pub async fn refresh_discovery(&self) -> Result<()> {
         debug!("Refreshing device discovery");
         self.proxy
@@ -473,6 +493,7 @@ impl DbusClient {
     }
 
     /// Get device connection state
+    #[allow(dead_code)]
     pub async fn get_device_state(&self, device_id: &str) -> Result<String> {
         debug!("Getting device state for {}", device_id);
         self.proxy
@@ -770,6 +791,7 @@ impl DbusClient {
 }
 
 /// Auto-reconnecting DBus client wrapper
+#[allow(dead_code)]
 pub struct ReconnectingClient {
     /// Current client (None if disconnected)
     client: Option<DbusClient>,

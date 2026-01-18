@@ -163,7 +163,9 @@ async fn test_plugin_manager_battery_query() {
     let mut manager = PluginManager::new();
 
     // Register battery plugin factory
-    manager.register_factory(Arc::new(battery::BatteryPluginFactory));
+    manager
+        .register_factory(Arc::new(battery::BatteryPluginFactory))
+        .unwrap();
 
     let device = create_mock_device();
     let device_id = device.info.device_id.clone();
@@ -210,9 +212,9 @@ async fn test_multiple_plugins() -> Result<()> {
     let mut manager = PluginManager::new();
 
     // Register multiple plugin factories
-    manager.register_factory(Arc::new(battery::BatteryPluginFactory));
-    manager.register_factory(Arc::new(ping::PingPluginFactory));
-    manager.register_factory(Arc::new(notification::NotificationPluginFactory));
+    manager.register_factory(Arc::new(battery::BatteryPluginFactory))?;
+    manager.register_factory(Arc::new(ping::PingPluginFactory))?;
+    manager.register_factory(Arc::new(notification::NotificationPluginFactory))?;
 
     let device = create_mock_device();
     let device_id = device.info.device_id.clone();
@@ -266,8 +268,8 @@ async fn test_clipboard_sync_between_devices() -> Result<()> {
     plugin2.handle_packet(&packet, &mut device2).await?;
 
     // Verify the clipboard was updated on device 2
-    let received_content = plugin2.get_clipboard_content();
-    assert_eq!(received_content, Some(test_content.to_string()));
+    let received_content = plugin2.get_content().await;
+    assert_eq!(received_content, test_content);
 
     Ok(())
 }
@@ -280,7 +282,7 @@ async fn test_clipboard_connect_packet() -> Result<()> {
     plugin.init(&device).await?;
 
     // Test clipboard connect packet (sent on device connection)
-    let connect_packet = plugin.create_clipboard_connect_packet().await;
+    let connect_packet = plugin.create_connect_packet().await;
     assert_eq!(connect_packet.packet_type, "cconnect.clipboard.connect");
 
     // Verify timestamp is present
@@ -298,7 +300,7 @@ async fn test_share_plugin_text() -> Result<()> {
 
     // Test sharing text
     let test_text = "Shared text content";
-    let packet = plugin.create_share_text_packet(test_text.to_string());
+    let packet = plugin.create_text_packet(test_text.to_string());
     assert_eq!(packet.packet_type, "cconnect.share.request");
     assert_eq!(packet.body["text"], test_text);
 
@@ -315,7 +317,7 @@ async fn test_share_plugin_url() -> Result<()> {
 
     // Test sharing URL
     let test_url = "https://example.com";
-    let packet = plugin.create_share_url_packet(test_url.to_string());
+    let packet = plugin.create_url_packet(test_url.to_string());
     assert_eq!(packet.packet_type, "cconnect.share.request");
     assert_eq!(packet.body["url"], test_url);
 
@@ -329,7 +331,14 @@ async fn test_share_plugin_file() -> Result<()> {
     // Test file share packet creation
     let filename = "test_file.txt";
     let filesize = 1024;
-    let packet = plugin.create_share_file_packet(filename.to_string(), filesize);
+    let file_info = share::FileShareInfo {
+        filename: filename.to_string(),
+        size: filesize,
+        creation_time: None,
+        last_modified: None,
+        open: false,
+    };
+    let packet = plugin.create_file_packet(file_info, 0);
     assert_eq!(packet.packet_type, "cconnect.share.request");
 
     // Verify packet contains file metadata
@@ -357,23 +366,27 @@ async fn test_mpris_control_commands() -> Result<()> {
     let plugin = mpris::MprisPlugin::new();
 
     // Test play/pause command
-    let play_packet = plugin.create_play_pause_command("test-player".to_string());
+    let play_packet =
+        plugin.create_control_packet("test-player".to_string(), mpris::PlaybackAction::PlayPause);
     assert_eq!(play_packet.packet_type, "cconnect.mpris.request");
     assert_eq!(play_packet.body["action"], "PlayPause");
     assert_eq!(play_packet.body["player"], "test-player");
 
     // Test next command
-    let next_packet = plugin.create_next_command("test-player".to_string());
+    let next_packet =
+        plugin.create_control_packet("test-player".to_string(), mpris::PlaybackAction::Next);
     assert_eq!(next_packet.packet_type, "cconnect.mpris.request");
     assert_eq!(next_packet.body["action"], "Next");
 
     // Test previous command
-    let prev_packet = plugin.create_previous_command("test-player".to_string());
+    let prev_packet =
+        plugin.create_control_packet("test-player".to_string(), mpris::PlaybackAction::Previous);
     assert_eq!(prev_packet.packet_type, "cconnect.mpris.request");
     assert_eq!(prev_packet.body["action"], "Previous");
 
     // Test stop command
-    let stop_packet = plugin.create_stop_command("test-player".to_string());
+    let stop_packet =
+        plugin.create_control_packet("test-player".to_string(), mpris::PlaybackAction::Stop);
     assert_eq!(stop_packet.packet_type, "cconnect.mpris.request");
     assert_eq!(stop_packet.body["action"], "Stop");
 
@@ -481,7 +494,7 @@ async fn test_notification_send_and_dismiss() -> Result<()> {
     assert_eq!(plugin.notification_count(), 1);
 
     // Create dismiss packet
-    let dismiss_packet = plugin.create_dismiss_packet("test-notif-123".to_string());
+    let dismiss_packet = plugin.create_dismiss_packet("test-notif-123");
     assert_eq!(dismiss_packet.packet_type, "cconnect.notification.request");
     assert_eq!(dismiss_packet.body["cancel"], "test-notif-123");
 
@@ -495,11 +508,11 @@ async fn test_plugin_manager_multi_device() -> Result<()> {
     let mut manager = PluginManager::new();
 
     // Register all plugin factories
-    manager.register_factory(Arc::new(battery::BatteryPluginFactory));
-    manager.register_factory(Arc::new(ping::PingPluginFactory));
-    manager.register_factory(Arc::new(notification::NotificationPluginFactory));
-    manager.register_factory(Arc::new(clipboard::ClipboardPluginFactory));
-    manager.register_factory(Arc::new(share::SharePluginFactory));
+    manager.register_factory(Arc::new(battery::BatteryPluginFactory))?;
+    manager.register_factory(Arc::new(ping::PingPluginFactory))?;
+    manager.register_factory(Arc::new(notification::NotificationPluginFactory))?;
+    manager.register_factory(Arc::new(clipboard::ClipboardPluginFactory))?;
+    manager.register_factory(Arc::new(share::SharePluginFactory))?;
 
     // Create two devices
     let device1 = create_mock_device();
@@ -520,7 +533,7 @@ async fn test_plugin_manager_multi_device() -> Result<()> {
     assert!(manager.get_device_plugin(&device2_id, "ping").is_some());
 
     // Cleanup one device
-    manager.cleanup_device_plugins(&device1_id).await;
+    manager.cleanup_device_plugins(&device1_id).await?;
 
     // Verify device1 plugins removed but device2 remains
     assert!(manager.get_device_plugin(&device1_id, "battery").is_none());
@@ -536,8 +549,8 @@ async fn test_packet_routing_to_correct_plugin() -> Result<()> {
     let mut manager = PluginManager::new();
 
     // Register plugin factories
-    manager.register_factory(Arc::new(battery::BatteryPluginFactory));
-    manager.register_factory(Arc::new(ping::PingPluginFactory));
+    manager.register_factory(Arc::new(battery::BatteryPluginFactory))?;
+    manager.register_factory(Arc::new(ping::PingPluginFactory))?;
 
     let device = create_mock_device();
     let device_id = device.info.device_id.clone();
@@ -556,8 +569,15 @@ async fn test_packet_routing_to_correct_plugin() -> Result<()> {
     assert_eq!(battery_packet.packet_type, "cconnect.battery.request");
 
     // Route packets through manager
-    manager.route_packet(&device_id, &ping_packet).await;
-    manager.route_packet(&device_id, &battery_packet).await;
+    let mut device_mut = device.clone();
+    manager
+        .handle_packet(&device_id, &ping_packet, &mut device_mut)
+        .await
+        .unwrap();
+    manager
+        .handle_packet(&device_id, &battery_packet, &mut device_mut)
+        .await
+        .unwrap();
 
     // Both should succeed (no panics/errors)
     Ok(())

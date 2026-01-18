@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
-use zbus::object_server::SignalContext;
+use zbus::object_server::SignalEmitter;
 use zbus::{connection, interface, Connection};
 
 /// Tracks active file transfers with cancellation support
@@ -69,6 +69,7 @@ pub const SERVICE_NAME: &str = "com.system76.CosmicConnect";
 pub const OBJECT_PATH: &str = "/com/system76/CosmicConnect";
 
 /// DBus interface name
+#[allow(dead_code)]
 pub const INTERFACE_NAME: &str = "com.system76.CosmicConnect";
 
 /// Device state for DBus serialization
@@ -219,7 +220,7 @@ impl CConnectInterface {
         };
 
         if let Err(e) = Self::device_plugin_state_changed(
-            iface_ref.signal_context(),
+            iface_ref.signal_emitter(),
             device_id,
             plugin_name,
             enabled,
@@ -666,7 +667,7 @@ impl CConnectInterface {
                             .await
                         {
                             let _ = CConnectInterface::transfer_progress(
-                                object_server.signal_context(),
+                                object_server.signal_emitter(),
                                 &tid_clone,
                                 &did_clone,
                                 &fname_clone,
@@ -706,7 +707,7 @@ impl CConnectInterface {
                 .await
             {
                 let _ = CConnectInterface::transfer_complete(
-                    object_server.signal_context(),
+                    object_server.signal_emitter(),
                     &transfer_id_clone,
                     &device_id_clone,
                     &filename,
@@ -1558,6 +1559,37 @@ impl CConnectInterface {
         Ok(players)
     }
 
+    /// Get detailed state for a specific MPRIS player
+    ///
+    /// Returns the full state including metadata (title, artist, album art)
+    /// and playback status.
+    ///
+    /// # Arguments
+    /// * `player` - Player name (as returned by GetMprisPlayers)
+    ///
+    /// # Returns
+    /// JSON string of PlayerState
+    async fn get_player_state(&self, player: String) -> Result<String, zbus::fdo::Error> {
+        debug!("DBus: GetPlayerState called for {}", player);
+
+        let Some(mpris_manager) = &self.mpris_manager else {
+            return Err(zbus::fdo::Error::Failed(
+                "MPRIS manager not available".to_string(),
+            ));
+        };
+
+        let state = mpris_manager
+            .get_player_state(&player)
+            .await
+            .ok_or_else(|| zbus::fdo::Error::Failed(format!("Player not found: {}", player)))?;
+
+        let json = serde_json::to_string_pretty(&state).map_err(|e| {
+            zbus::fdo::Error::Failed(format!("Failed to serialize player state: {}", e))
+        })?;
+
+        Ok(json)
+    }
+
     /// Control MPRIS player playback
     ///
     /// # Arguments
@@ -2025,7 +2057,7 @@ impl CConnectInterface {
     /// * `device_info` - Device information
     #[zbus(signal)]
     async fn device_added(
-        signal_context: &SignalContext<'_>,
+        signal_emitter: &SignalEmitter<'_>,
         device_id: &str,
         device_info: DeviceInfo,
     ) -> zbus::Result<()>;
@@ -2038,7 +2070,7 @@ impl CConnectInterface {
     /// * `device_id` - The device ID
     #[zbus(signal)]
     async fn device_removed(
-        signal_context: &SignalContext<'_>,
+        signal_emitter: &SignalEmitter<'_>,
         device_id: &str,
     ) -> zbus::Result<()>;
 
@@ -2051,7 +2083,7 @@ impl CConnectInterface {
     /// * `state` - New state: "connected", "paired", "reachable", or "unknown"
     #[zbus(signal)]
     async fn device_state_changed(
-        signal_context: &SignalContext<'_>,
+        signal_emitter: &SignalEmitter<'_>,
         device_id: &str,
         state: &str,
     ) -> zbus::Result<()>;
@@ -2064,7 +2096,7 @@ impl CConnectInterface {
     /// * `device_id` - The device ID requesting pairing
     #[zbus(signal)]
     async fn pairing_request(
-        signal_context: &SignalContext<'_>,
+        signal_emitter: &SignalEmitter<'_>,
         device_id: &str,
     ) -> zbus::Result<()>;
 
@@ -2077,7 +2109,7 @@ impl CConnectInterface {
     /// * `status` - Status: "paired", "rejected", or "failed"
     #[zbus(signal)]
     async fn pairing_status_changed(
-        signal_context: &SignalContext<'_>,
+        signal_emitter: &SignalEmitter<'_>,
         device_id: &str,
         status: &str,
     ) -> zbus::Result<()>;
@@ -2092,7 +2124,7 @@ impl CConnectInterface {
     /// * `data` - Plugin-specific JSON data
     #[zbus(signal)]
     async fn plugin_event(
-        signal_context: &SignalContext<'_>,
+        signal_emitter: &SignalEmitter<'_>,
         device_id: &str,
         plugin: &str,
         data: &str,
@@ -2109,7 +2141,7 @@ impl CConnectInterface {
     /// * `enabled` - Whether the plugin is now enabled
     #[zbus(signal)]
     async fn device_plugin_state_changed(
-        signal_context: &SignalContext<'_>,
+        signal_emitter: &SignalEmitter<'_>,
         device_id: &str,
         plugin_name: &str,
         enabled: bool,
@@ -2128,7 +2160,7 @@ impl CConnectInterface {
     /// * `direction` - "sending" or "receiving"
     #[zbus(signal)]
     async fn transfer_progress(
-        signal_context: &SignalContext<'_>,
+        signal_emitter: &SignalEmitter<'_>,
         transfer_id: &str,
         device_id: &str,
         filename: &str,
@@ -2149,7 +2181,7 @@ impl CConnectInterface {
     /// * `error_message` - Error message if failed (empty if successful)
     #[zbus(signal)]
     async fn transfer_complete(
-        signal_context: &SignalContext<'_>,
+        signal_emitter: &SignalEmitter<'_>,
         transfer_id: &str,
         device_id: &str,
         filename: &str,
@@ -2230,6 +2262,7 @@ impl DbusServer {
     }
 
     /// Get the DBus connection
+    #[allow(dead_code)]
     pub fn connection(&self) -> &Connection {
         &self.connection
     }
@@ -2242,7 +2275,7 @@ impl DbusServer {
             .interface::<_, CConnectInterface>(OBJECT_PATH)
             .await?;
 
-        CConnectInterface::device_added(iface_ref.signal_context(), device.id(), device_info)
+        CConnectInterface::device_added(iface_ref.signal_emitter(), device.id(), device_info)
             .await?;
 
         debug!("Emitted DeviceAdded signal for {}", device.id());
@@ -2256,7 +2289,7 @@ impl DbusServer {
             .interface::<_, CConnectInterface>(OBJECT_PATH)
             .await?;
 
-        CConnectInterface::device_removed(iface_ref.signal_context(), device_id).await?;
+        CConnectInterface::device_removed(iface_ref.signal_emitter(), device_id).await?;
 
         debug!("Emitted DeviceRemoved signal for {}", device_id);
         Ok(())
@@ -2269,7 +2302,7 @@ impl DbusServer {
             .interface::<_, CConnectInterface>(OBJECT_PATH)
             .await?;
 
-        CConnectInterface::device_state_changed(iface_ref.signal_context(), device_id, state)
+        CConnectInterface::device_state_changed(iface_ref.signal_emitter(), device_id, state)
             .await?;
 
         debug!(
@@ -2286,7 +2319,7 @@ impl DbusServer {
             .interface::<_, CConnectInterface>(OBJECT_PATH)
             .await?;
 
-        CConnectInterface::pairing_request(iface_ref.signal_context(), device_id).await?;
+        CConnectInterface::pairing_request(iface_ref.signal_emitter(), device_id).await?;
 
         debug!("Emitted PairingRequest signal for {}", device_id);
         Ok(())
@@ -2299,7 +2332,7 @@ impl DbusServer {
             .interface::<_, CConnectInterface>(OBJECT_PATH)
             .await?;
 
-        CConnectInterface::pairing_status_changed(iface_ref.signal_context(), device_id, status)
+        CConnectInterface::pairing_status_changed(iface_ref.signal_emitter(), device_id, status)
             .await?;
 
         debug!(
@@ -2310,13 +2343,14 @@ impl DbusServer {
     }
 
     /// Emit a plugin_event signal
+    #[allow(dead_code)]
     pub async fn emit_plugin_event(&self, device_id: &str, plugin: &str, data: &str) -> Result<()> {
         let object_server = self.connection.object_server();
         let iface_ref = object_server
             .interface::<_, CConnectInterface>(OBJECT_PATH)
             .await?;
 
-        CConnectInterface::plugin_event(iface_ref.signal_context(), device_id, plugin, data)
+        CConnectInterface::plugin_event(iface_ref.signal_emitter(), device_id, plugin, data)
             .await?;
 
         debug!("Emitted PluginEvent signal for {} ({})", device_id, plugin);
@@ -2324,6 +2358,7 @@ impl DbusServer {
     }
 
     /// Emit a transfer_progress signal
+    #[allow(dead_code)]
     pub async fn emit_transfer_progress(
         &self,
         transfer_id: &str,
@@ -2339,7 +2374,7 @@ impl DbusServer {
             .await?;
 
         CConnectInterface::transfer_progress(
-            iface_ref.signal_context(),
+            iface_ref.signal_emitter(),
             transfer_id,
             device_id,
             filename,
@@ -2357,6 +2392,7 @@ impl DbusServer {
     }
 
     /// Emit a transfer_complete signal
+    #[allow(dead_code)]
     pub async fn emit_transfer_complete(
         &self,
         transfer_id: &str,
@@ -2371,7 +2407,7 @@ impl DbusServer {
             .await?;
 
         CConnectInterface::transfer_complete(
-            iface_ref.signal_context(),
+            iface_ref.signal_emitter(),
             transfer_id,
             device_id,
             filename,
