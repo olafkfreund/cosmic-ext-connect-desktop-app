@@ -864,12 +864,26 @@ impl CConnectApplet {
 
         let content = if self.devices.is_empty() {
             column![
-                text("No devices found").size(14),
-                text("Make sure CConnect is installed on your devices").size(12),
+                container(icon::from_name("phone-disconnected-symbolic").size(48))
+                    .padding(Padding::from([8, 0, 12, 0])),
+                text("No Devices Found")
+                    .size(18)
+                    .weight(cosmic::iced::font::Weight::Bold),
+                text("Make sure:").size(13).weight(cosmic::iced::font::Weight::Medium),
+                text("• CConnect app is installed on your devices").size(12),
+                text("• Devices are on the same network").size(12),
+                text("• Firewall ports 1814-1864 are open").size(12),
+                container(
+                    button::text("Refresh")
+                        .on_press(Message::RefreshDevices)
+                        .padding(8)
+                )
+                .padding(Padding::from([12, 0, 0, 0])),
             ]
-            .spacing(4)
-            .padding(16)
+            .spacing(8)
+            .padding(24)
             .width(Length::Fill)
+            .align_x(Horizontal::Center)
         } else {
             // Group devices by category
             let mut connected = Vec::new();
@@ -1009,8 +1023,10 @@ impl CConnectApplet {
 
         // Device name and status column with last seen for disconnected devices
         let mut name_status_col = column![
-            text(&device.info.device_name).size(14),
-            text(status_text).size(11),
+            text(&device.info.device_name)
+                .size(16)
+                .weight(cosmic::iced::font::Weight::Semibold),
+            text(status_text).size(12),
         ]
         .spacing(2);
 
@@ -1074,8 +1090,8 @@ impl CConnectApplet {
                 .padding(Padding::new(0.0).bottom(4.0).left(66.0).right(12.0))
                 .align_x(Horizontal::Left),
         ]
-        .spacing(0)
-        .padding(Padding::from([8.0, 4.0]))
+        .spacing(4)
+        .padding(Padding::from([12.0, 16.0]))
         .width(Length::Fill);
 
         // Add settings panel if this device is expanded
@@ -1106,46 +1122,53 @@ impl CConnectApplet {
         device: &'a Device,
         device_id: &str,
     ) -> cosmic::iced::widget::Row<'a, Message, cosmic::Theme> {
-        let mut actions = row![].spacing(4);
+        let mut actions = row![].spacing(8);
 
         // Quick actions for connected & paired devices
         if device.is_connected() && device.is_paired() {
             actions = actions
-                .push(action_button(
+                .push(action_button_with_tooltip(
                     "user-available-symbolic",
+                    "Send ping",
                     Message::SendPing(device_id.to_string()),
                 ))
-                .push(action_button(
+                .push(action_button_with_tooltip(
                     "document-send-symbolic",
+                    "Send file",
                     Message::SendFile(device_id.to_string()),
                 ))
-                .push(action_button(
+                .push(action_button_with_tooltip(
                     "insert-text-symbolic",
+                    "Share clipboard text",
                     Message::ShareText(device_id.to_string()),
                 ))
-                .push(action_button(
+                .push(action_button_with_tooltip(
                     "send-to-symbolic",
+                    "Share URL",
                     Message::ShareUrl(device_id.to_string()),
                 ));
 
             if matches!(device.info.device_type, DeviceType::Phone) {
-                actions = actions.push(action_button(
+                actions = actions.push(action_button_with_tooltip(
                     "find-location-symbolic",
+                    "Find my phone",
                     Message::FindPhone(device_id.to_string()),
                 ));
             }
 
             // Battery refresh button
-            actions = actions.push(action_button(
+            actions = actions.push(action_button_with_tooltip(
                 "view-refresh-symbolic",
+                "Refresh battery status",
                 Message::RequestBatteryUpdate(device_id.to_string()),
             ));
         }
 
         // Settings button (for paired devices)
         if device.is_paired() {
-            actions = actions.push(action_button(
+            actions = actions.push(action_button_with_tooltip(
                 "emblem-system-symbolic",
+                "Plugin settings",
                 Message::ToggleDeviceSettings(device_id.to_string()),
             ));
         }
@@ -1433,7 +1456,24 @@ impl CConnectApplet {
     }
 }
 
+/// Creates a small icon button with tooltip for device quick actions
+fn action_button_with_tooltip(
+    icon_name: &str,
+    tooltip_text: &'static str,
+    message: Message,
+) -> Element<'static, Message> {
+    cosmic::widget::tooltip(
+        button::icon(icon::from_name(icon_name).size(16))
+            .on_press(message)
+            .padding(6),
+        tooltip_text,
+        cosmic::widget::tooltip::Position::Bottom,
+    )
+    .into()
+}
+
 /// Creates a small icon button for device quick actions (ping, send file, etc.)
+/// @deprecated Use action_button_with_tooltip instead
 fn action_button(icon_name: &str, message: Message) -> Element<'static, Message> {
     button::icon(icon::from_name(icon_name).size(16))
         .on_press(message)
