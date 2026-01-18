@@ -95,7 +95,7 @@ use crate::{Device, Packet, Result};
 use async_trait::async_trait;
 use serde_json::json;
 use std::any::Any;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use super::{Plugin, PluginFactory};
 
