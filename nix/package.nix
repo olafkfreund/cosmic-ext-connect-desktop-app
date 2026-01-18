@@ -1,36 +1,37 @@
-{ lib
-, rustPlatform
-, fetchFromGitHub
-, pkg-config
-, cmake
-, openssl
-, libxkbcommon
-, wayland
-, wayland-protocols
-, libGL
-, libglvnd
-, mesa
-, pixman
-, libinput
-, libxcb
-, xcbutil
-, xcbutilwm
-, xcbutilimage
-, libdrm
-, fontconfig
-, freetype
-, udev
-, dbus
-, libpulseaudio
-, expat
-, glib
-, gtk3
-, pango
-, cairo
-, gdk-pixbuf
-, atk
-, pipewire
-, stdenv
+{
+  lib,
+  rustPlatform,
+  fetchFromGitHub,
+  pkg-config,
+  cmake,
+  openssl,
+  libxkbcommon,
+  wayland,
+  wayland-protocols,
+  libGL,
+  libglvnd,
+  mesa,
+  pixman,
+  libinput,
+  libxcb,
+  xcbutil,
+  xcbutilwm,
+  xcbutilimage,
+  libdrm,
+  fontconfig,
+  freetype,
+  udev,
+  dbus,
+  libpulseaudio,
+  expat,
+  glib,
+  gtk3,
+  pango,
+  cairo,
+  gdk-pixbuf,
+  atk,
+  pipewire,
+  stdenv,
 }:
 
 rustPlatform.buildRustPackage rec {
@@ -41,17 +42,18 @@ rustPlatform.buildRustPackage rec {
   # Cargo will fetch cosmic-connect-core as a git dependency via allowBuiltinFetchGit
   src = lib.cleanSourceWith {
     src = ../.;
-    filter = path: type:
+    filter =
+      path: type:
       let
         baseName = baseNameOf path;
         relativePath = lib.removePrefix (toString ../. + "/") (toString path);
       in
-        # Exclude cosmic-connect-core subdirectory (git submodule)
-        !lib.hasPrefix "cosmic-connect-core" relativePath
-        # Exclude .gitmodules to prevent git submodule conflicts
-        && baseName != ".gitmodules"
-        # Include everything else
-        && (lib.cleanSourceFilter path type);
+      # Exclude cosmic-connect-core subdirectory (git submodule)
+      !lib.hasPrefix "cosmic-connect-core" relativePath
+      # Exclude .gitmodules to prevent git submodule conflicts
+      && baseName != ".gitmodules"
+      # Include everything else
+      && (lib.cleanSourceFilter path type);
   };
 
   cargoLock = {
@@ -64,7 +66,7 @@ rustPlatform.buildRustPackage rec {
   nativeBuildInputs = [
     pkg-config
     cmake
-    rustPlatform.bindgenHook  # Automatically configures bindgen for PipeWire
+    rustPlatform.bindgenHook # Automatically configures bindgen for PipeWire
   ];
 
   buildInputs = [
@@ -94,7 +96,7 @@ rustPlatform.buildRustPackage rec {
     cairo
     gdk-pixbuf
     atk
-    pipewire  # RemoteDesktop plugin dependency
+    pipewire # RemoteDesktop plugin dependency
   ];
 
   # Build all workspace members with RemoteDesktop feature
@@ -187,7 +189,6 @@ rustPlatform.buildRustPackage rec {
       This package includes:
       - cosmic-applet-connect: Panel applet for COSMIC
       - cosmic-connect-daemon: Background service (DBus, systemd)
-      - cosmic-connect: CLI tool for device management
 
       Built with RemoteDesktop plugin support (requires PipeWire).
     '';

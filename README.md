@@ -11,6 +11,7 @@ A modern, cross-platform device connectivity solution for COSMIC Desktop, writte
 **COSMIC Connect** provides seamless integration between your Android devices and COSMIC Desktop, enabling device synchronization, file sharing, notification mirroring, clipboard sync, remote control capabilities, and advanced desktop-to-desktop collaboration features.
 
 This project is part of a **multi-platform ecosystem**:
+
 - **[cosmic-connect-core](https://github.com/olafkfreund/cosmic-connect-core)** - Shared Rust library (protocol, TLS, plugins)
 - **[cosmic-connect-desktop-app](https://github.com/olafkfreund/cosmic-connect-desktop-app)** - This repository (COSMIC Desktop)
 - **[cosmic-connect-android](https://github.com/olafkfreund/cosmic-connect-android)** - Android app with Kotlin FFI bindings
@@ -40,8 +41,7 @@ cosmic-connect-core (Shared Library)
                                 ├──→ Desktop (This Repo)
                                 │    ├── cosmic-connect-protocol
                                 │    ├── cosmic-connect-daemon
-                                │    ├── cosmic-applet-connect
-                                │    └── cosmic-connect (CLI)
+                                │    └── cosmic-applet-connect
                                 │
                                 └──→ Android App
                                      └── Kotlin via FFI
@@ -68,7 +68,6 @@ cosmic-connect-desktop-app/
 ├── cosmic-applet-connect/    # COSMIC panel applet (UI)
 │   ├── dbus_client.rs       # DBus communication
 │   └── main.rs              # Applet UI with settings panel
-├── cosmic-connect/           # CLI tool
 └── docs/                     # Documentation
     ├── architecture/         # System design
     ├── development/          # Development guides
@@ -84,7 +83,7 @@ Note: `cosmic-connect-core` is a git submodule. Initialize with `git submodule u
 **Version:** 0.1.0
 **Protocol:** CConnect v7/8 (KDE Connect compatible)
 **Discovery Port:** 1816 (conflicts avoided with KDE Connect's 1716)
-**Packet Namespace:** cconnect.* (independent from kdeconnect.*)
+**Packet Namespace:** cconnect._ (independent from kdeconnect._)
 **UI Compliance:** COSMIC Design System (hierarchical text, theme system, WCAG AA+)
 **Plugin Count:** 20 plugins (12 core + 8 advanced desktop features)
 
@@ -283,6 +282,7 @@ Note: `cosmic-connect-core` is a git submodule. Initialize with `git submodule u
 ### Recently Completed
 
 **Q1 2026**
+
 - DBus interface type mismatch fixes for device listing
 - Enhanced error handling and logging
 - Improved daemon-applet communication stability
@@ -290,6 +290,7 @@ Note: `cosmic-connect-core` is a git submodule. Initialize with `git submodule u
 ### Previous Milestones
 
 **Q1 2025 - Major Plugin Expansion**
+
 - Complete plugin system implementation (20 plugins total)
 - Advanced desktop collaboration features:
   - System monitoring and Wake-on-LAN for remote desktop management
@@ -309,9 +310,10 @@ Note: `cosmic-connect-core` is a git submodule. Initialize with `git submodule u
 - Comprehensive documentation updates
 
 **Q4 2024**
+
 - COSMIC Design System compliance (hierarchical text, theme integration, accessibility)
 - Port independence (1816) for side-by-side operation with KDE Connect
-- Protocol namespace (cconnect.*) establishing project identity
+- Protocol namespace (cconnect.\*) establishing project identity
 - Settings UI foundation with DaemonConfig data structures
 - Connection stability improvements (socket replacement, IP-based detection)
 
@@ -391,6 +393,7 @@ cargo build
 ```
 
 Note: If you already cloned without `--recurse-submodules`, initialize submodules with:
+
 ```bash
 git submodule update --init --recursive
 ```
@@ -595,7 +598,7 @@ systemctl --user start cosmic-connect-daemon
 
 1. **Install companion app on your mobile device**:
    - Android: [COSMIC Connect Android](https://github.com/olafkfreund/cosmic-connect-android) (in development)
-   - Note: COSMIC Connect uses the CConnect protocol (port 1816, cconnect.* packets) and is NOT compatible with standard KDE Connect apps
+   - Note: COSMIC Connect uses the CConnect protocol (port 1816, cconnect.\* packets) and is NOT compatible with standard KDE Connect apps
 
 2. **Configure firewall** (required for device discovery):
 
@@ -640,6 +643,7 @@ systemctl --user start cosmic-connect-daemon
 ### Using the Applet
 
 The COSMIC panel applet provides:
+
 - **Device List** - View all discovered and paired devices
 - **Battery Status** - See battery level and charging status
 - **Quick Actions**:
@@ -654,6 +658,7 @@ The COSMIC panel applet provides:
 ### Per-Device Settings
 
 Configure plugins individually for each device:
+
 - Click the Settings button on any paired device
 - Toggle plugins on/off per device
 - Configure RemoteDesktop quality, FPS, and resolution
@@ -710,11 +715,13 @@ nix develop
 This project includes a Claude Code skill with specialized agents for COSMIC Desktop development.
 
 **Install the skill:**
+
 ```bash
 ./.claude/skills/install.sh
 ```
 
 **Quick usage:**
+
 ```bash
 # Pre-commit check
 @cosmic-code-reviewer /pre-commit-check
@@ -773,11 +780,13 @@ cargo test -p cosmic-connect-daemon
 ```
 
 **Testing Documentation:**
+
 - **[Automated Testing Guide](docs/AUTOMATED_TESTING.md)** - Integration test suite documentation
 - **[Plugin Testing Guide](docs/PLUGIN_TESTING_GUIDE.md)** - Manual testing with real devices
 - **[Testing Scripts](scripts/README.md)** - Testing script documentation
 
 **Test Coverage:**
+
 - 82 unit tests covering all 20 plugins
 - 43 integration tests for end-to-end workflows
 - Multi-device scenarios
@@ -808,6 +817,7 @@ chmod +x .git/hooks/pre-commit
 ```
 
 Hooks will automatically:
+
 - Format code (`cargo fmt`)
 - Run linting (`cargo clippy`)
 - Run tests (`cargo test`)
@@ -914,6 +924,7 @@ plugin_manager.register_factory(Box::new(MyPluginFactory::new()));
 **Implements**: KDE Connect Protocol v7/8
 
 **Compatible with:**
+
 - KDE Connect Desktop (Linux, Windows, macOS)
 - KDE Connect Android
 - KDE Connect iOS
@@ -922,6 +933,7 @@ plugin_manager.register_factory(Box::new(MyPluginFactory::new()));
 - COSMIC Connect Android (via shared core)
 
 **Protocol References:**
+
 - [KDE Connect Protocol](https://invent.kde.org/network/kdeconnect-kde)
 - [Valent Protocol Reference](https://valent.andyholmes.ca/documentation/protocol.html)
 - [Our Architecture Documentation](docs/architecture/Architecture.md)
@@ -965,6 +977,7 @@ See [Issue #52](https://github.com/olafkfreund/cosmic-connect-desktop-app/issues
 ## Contributing
 
 Contributions are welcome! Please see:
+
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Complete contributing guide with AI skill setup
 - **[Development Guide](docs/development/Development-Guide.md)** - Development setup and workflow
 - **[Architecture](docs/architecture/Architecture.md)** - System architecture understanding
@@ -983,6 +996,7 @@ Contributions are welcome! Please see:
 7. Open a Pull Request
 
 **Commit Convention**: `type(scope): description`
+
 - `feat`: New feature
 - `fix`: Bug fix
 - `docs`: Documentation changes
@@ -1010,6 +1024,7 @@ Contributions are welcome! Please see:
 - **Production Ready** for COSMIC Desktop
 
 Latest updates (Q1 2026):
+
 - Fixed critical DBus interface type mismatch causing device listing failures
 - Enhanced daemon-applet communication stability
 - 20 plugins fully implemented and tested (8 added in 2025)
@@ -1024,6 +1039,7 @@ Latest updates (Q1 2026):
 This project is licensed under the **GNU General Public License v3.0 or later** - see the [LICENSE](LICENSE) file for details.
 
 **Trademarks:**
+
 - KDE Connect is a trademark of KDE e.V.
 - COSMIC is a trademark of System76, Inc.
 
@@ -1039,7 +1055,7 @@ This project is licensed under the **GNU General Public License v3.0 or later** 
 
 - **Issues**: [GitHub Issues](https://github.com/olafkfreund/cosmic-connect-desktop-app/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/olafkfreund/cosmic-connect-desktop-app/discussions)
-- **COSMIC Community**: [Pop!_OS Mattermost](https://chat.pop-os.org/)
+- **COSMIC Community**: [Pop!\_OS Mattermost](https://chat.pop-os.org/)
 
 ## Security
 

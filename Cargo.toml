@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "cosmic-connect-protocol",
     "cosmic-applet-connect",
-    "cosmic-connect",
     "cosmic-connect-daemon",
 ]
 
