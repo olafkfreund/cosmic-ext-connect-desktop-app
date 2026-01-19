@@ -31,6 +31,7 @@ pub mod frame;
 pub use frame::{EncodedFrame, EncodingType, PixelFormat, QualityPreset, RawFrame};
 
 use crate::Result;
+use tracing::{debug, info, warn};
 
 /// Monitor information
 #[derive(Debug, Clone)]
