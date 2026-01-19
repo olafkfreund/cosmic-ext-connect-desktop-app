@@ -135,6 +135,13 @@ const PLUGINS: &[PluginMetadata] = &[
         icon: "find-location-symbolic",
         capability: "cconnect.findmyphone",
     },
+    PluginMetadata {
+        id: "filesync",
+        name: "File Synchronization",
+        description: "Sync folders with device",
+        icon: "folder-sync-symbolic",
+        capability: "cconnect.filesync",
+    },
 ];
 
 #[derive(Debug, Clone)]
@@ -186,8 +193,16 @@ struct CConnectApplet {
     history: Vec<HistoryEvent>,
     view_mode: ViewMode,
     // Scanning state
+    // Scanning state
     scanning: bool,
     loading_battery: bool,
+    // File Sync state
+    sync_folders: HashMap<String, Vec<dbus_client::SyncFolderInfo>>,
+    add_sync_folder_device: Option<String>,
+    add_sync_folder_path: String,
+    add_sync_folder_id: String,
+    add_sync_folder_strategy: String,
+    file_sync_settings_device: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -268,6 +283,18 @@ enum Message {
     ), // id, device, file, cur, tot, dir
     TransferComplete(String, String, String, bool, String), // id, device, file, success, error
     KeyPress(keyboard::Key, keyboard::Modifiers),
+    // File Sync
+    LoadSyncFolders(String),
+    SyncFoldersLoaded(String, Vec<dbus_client::SyncFolderInfo>),
+    UpdateSyncFolderPathInput(String),
+    UpdateSyncFolderIdInput(String),
+    UpdateSyncFolderStrategy(String),
+    AddSyncFolder(String),            // device_id
+    RemoveSyncFolder(String, String), // device_id, folder_id
+    StartAddSyncFolder(String),       // device_id
+    CancelAddSyncFolder,
+    ShowFileSyncSettings(String), // device_id
+    CloseFileSyncSettings,
 }
 
 /// Fetches device list from the daemon via D-Bus
@@ -473,6 +500,12 @@ impl cosmic::Application for CConnectApplet {
             view_mode: ViewMode::Devices,
             scanning: false,
             loading_battery: false,
+            sync_folders: HashMap::new(),
+            add_sync_folder_device: None,
+            add_sync_folder_path: String::new(),
+            add_sync_folder_id: String::new(),
+            add_sync_folder_strategy: "last_modified_wins".to_string(),
+            file_sync_settings_device: None,
         };
         (app, Task::none())
     }
@@ -1270,6 +1303,108 @@ impl cosmic::Application for CConnectApplet {
 
                 Task::none()
             }
+            Message::ShowFileSyncSettings(device_id) => {
+                self.file_sync_settings_device = Some(device_id.clone());
+                // Also load folders when showing settings
+                return cosmic::task::message(cosmic::Action::App(Message::LoadSyncFolders(
+                    device_id,
+                )));
+            }
+            Message::CloseFileSyncSettings => {
+                self.file_sync_settings_device = None;
+                self.add_sync_folder_device = None; // Also close add form if open
+                Task::none()
+            }
+            Message::LoadSyncFolders(device_id) => match tokio::runtime::Handle::try_current() {
+                Ok(_) => {
+                    let future = async move {
+                        match DbusClient::connect().await {
+                            Ok((client, _)) => {
+                                match client.get_sync_folders(device_id.clone()).await {
+                                    Ok(folders) => Some((device_id, folders)),
+                                    Err(e) => {
+                                        tracing::error!("Failed to get sync folders: {}", e);
+                                        None
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to connect to dbus: {}", e);
+                                None
+                            }
+                        }
+                    };
+
+                    Task::perform(future, |result| {
+                        if let Some((device_id, folders)) = result {
+                            cosmic::Action::App(Message::SyncFoldersLoaded(device_id, folders))
+                        } else {
+                            cosmic::Action::None
+                        }
+                    })
+                }
+                Err(_) => Task::none(),
+            },
+            Message::SyncFoldersLoaded(device_id, folders) => {
+                self.sync_folders.insert(device_id, folders);
+                Task::none()
+            }
+            Message::StartAddSyncFolder(device_id) => {
+                self.add_sync_folder_device = Some(device_id);
+                self.add_sync_folder_path = String::new();
+                self.add_sync_folder_id = String::new();
+                self.add_sync_folder_strategy = "last_modified_wins".to_string();
+                Task::none()
+            }
+            Message::CancelAddSyncFolder => {
+                self.add_sync_folder_device = None;
+                Task::none()
+            }
+            Message::UpdateSyncFolderPathInput(path) => {
+                self.add_sync_folder_path = path;
+                // Auto-generate folder ID from path if empty
+                if self.add_sync_folder_id.is_empty() {
+                    if let Some(name) = std::path::Path::new(&self.add_sync_folder_path).file_name()
+                    {
+                        self.add_sync_folder_id = name.to_string_lossy().to_string();
+                    }
+                }
+                Task::none()
+            }
+            Message::UpdateSyncFolderIdInput(id) => {
+                self.add_sync_folder_id = id;
+                Task::none()
+            }
+            Message::UpdateSyncFolderStrategy(strategy) => {
+                self.add_sync_folder_strategy = strategy;
+                Task::none()
+            }
+            Message::AddSyncFolder(device_id) => {
+                if self.add_sync_folder_path.is_empty() || self.add_sync_folder_id.is_empty() {
+                    return Task::none();
+                }
+
+                let folder_id = self.add_sync_folder_id.clone();
+                let path = self.add_sync_folder_path.clone();
+                let strategy = self.add_sync_folder_strategy.clone();
+
+                self.add_sync_folder_device = None; // Close dialog/form
+
+                device_operation_task(
+                    device_id,
+                    "add_sync_folder",
+                    move |client, dev_id| async move {
+                        client
+                            .add_sync_folder(dev_id, folder_id, path, strategy)
+                            .await
+                    },
+                )
+            }
+            Message::RemoveSyncFolder(device_id, folder_id) => device_operation_task(
+                device_id,
+                "remove_sync_folder",
+                move |client, dev_id| async move { client.remove_sync_folder(dev_id, folder_id).await },
+            ),
         }
     }
 
@@ -1884,6 +2019,14 @@ impl CConnectApplet {
             }
         }
 
+        // Add FileSync settings panel if active
+        if self.file_sync_settings_device.as_ref() == Some(device_id) {
+            content = content.push(
+                container(self.file_sync_settings_view(device_id))
+                    .padding(Padding::from([SPACE_S, 0.0, 0.0, 66.0])), // Indent under device name
+            );
+        }
+
         container(content)
             .width(Length::Fill)
             .class(cosmic::theme::Container::Card)
@@ -2115,11 +2258,17 @@ impl CConnectApplet {
                 );
             }
 
-            // Settings button (only for RemoteDesktop plugin)
+            // Settings button (only for RemoteDesktop and FileSync plugin)
             if plugin_meta.id == "remotedesktop" {
                 plugin_row = plugin_row.push(
                     button::icon(icon::from_name("emblem-system-symbolic").size(ICON_XS))
                         .on_press(Message::ShowRemoteDesktopSettings(device_id.to_string()))
+                        .padding(SPACE_XXS),
+                );
+            } else if plugin_meta.id == "filesync" {
+                plugin_row = plugin_row.push(
+                    button::icon(icon::from_name("emblem-system-symbolic").size(ICON_XS))
+                        .on_press(Message::ShowFileSyncSettings(device_id.to_string()))
                         .padding(SPACE_XXS),
                 );
             }
@@ -2156,6 +2305,150 @@ impl CConnectApplet {
         )
         .padding(SPACE_M)
         .into()
+    }
+
+    /// FileSync settings view
+    fn file_sync_settings_view(&self, device_id: &str) -> Element<'_, Message> {
+        use cosmic::widget::{horizontal_space, text_input};
+
+        // Header with close button
+        let header = row![
+            cosmic::widget::text::body("File Sync Settings"),
+            horizontal_space(),
+            button::icon(icon::from_name("window-close-symbolic").size(ICON_14))
+                .on_press(Message::CloseFileSyncSettings)
+                .padding(SPACE_XXS)
+        ]
+        .width(Length::Fill)
+        .align_y(cosmic::iced::Alignment::Center);
+
+        let mut content = column![header].spacing(SPACE_M);
+
+        // List existing sync folders
+        if let Some(folders) = self.sync_folders.get(device_id) {
+            if !folders.is_empty() {
+                let mut list = column![].spacing(SPACE_S);
+                for folder in folders {
+                    let strategy_text = match folder.strategy.as_str() {
+                        "LastModifiedWins" => "Last Modified",
+                        "KeepBoth" => "Keep Both",
+                        "Manual" => "Manual",
+                        s => s,
+                    };
+
+                    let row = row![
+                        column![
+                            cosmic::widget::text::body(&folder.folder_id),
+                            cosmic::widget::text::caption(&folder.path),
+                            cosmic::widget::text::caption(format!("Conflict: {}", strategy_text)),
+                        ]
+                        .spacing(SPACE_XXS),
+                        horizontal_space(),
+                        button::icon(icon::from_name("user-trash-symbolic").size(ICON_S))
+                            .on_press(Message::RemoveSyncFolder(
+                                device_id.to_string(),
+                                folder.folder_id.clone()
+                            ))
+                            .padding(SPACE_XS)
+                    ]
+                    .align_y(cosmic::iced::Alignment::Center)
+                    .width(Length::Fill);
+
+                    list = list.push(
+                        container(row)
+                            .padding(SPACE_S)
+                            .class(cosmic::theme::Container::Card),
+                    );
+                }
+                content = content.push(list);
+            } else {
+                content = content.push(
+                    container(cosmic::widget::text::caption("No sync folders configured"))
+                        .padding(SPACE_S)
+                        .width(Length::Fill)
+                        .align_x(Horizontal::Center),
+                );
+            }
+        } else {
+            content = content.push(
+                container(
+                    row![
+                        icon::from_name("process-working-symbolic").size(ICON_S),
+                        cosmic::widget::text::caption("Loading..."),
+                    ]
+                    .spacing(SPACE_S)
+                    .align_y(cosmic::iced::Alignment::Center),
+                )
+                .padding(SPACE_S)
+                .width(Length::Fill)
+                .align_x(Horizontal::Center),
+            );
+        }
+
+        content = content.push(divider::horizontal::default());
+
+        // Add New Folder Form
+        if self.add_sync_folder_device.as_deref() == Some(device_id) {
+            let strategy_idx = match self.add_sync_folder_strategy.as_str() {
+                "last_modified_wins" => 0,
+                "keep_both" => 1,
+                "manual" => 2,
+                _ => 0,
+            };
+
+            let form = column![
+                cosmic::widget::text::title3("Add Sync Folder"),
+                text_input("Local Path", &self.add_sync_folder_path)
+                    .on_input(Message::UpdateSyncFolderPathInput),
+                text_input("Folder ID", &self.add_sync_folder_id)
+                    .on_input(Message::UpdateSyncFolderIdInput),
+                row![
+                    cosmic::widget::text::body("Conflict Strategy:"),
+                    cosmic::widget::dropdown(
+                        &["Last Modified", "Keep Both", "Manual"],
+                        Some(strategy_idx),
+                        |idx| {
+                            let s = match idx {
+                                0 => "last_modified_wins",
+                                1 => "keep_both",
+                                2 => "manual",
+                                _ => "last_modified_wins",
+                            }
+                            .to_string();
+                            Message::UpdateSyncFolderStrategy(s)
+                        }
+                    )
+                ]
+                .spacing(SPACE_S)
+                .align_y(cosmic::iced::Alignment::Center),
+                row![
+                    button::text("Cancel").on_press(Message::CancelAddSyncFolder),
+                    horizontal_space(),
+                    button::text("Add Folder")
+                        .on_press(Message::AddSyncFolder(device_id.to_string()))
+                ]
+                .spacing(SPACE_M)
+                .spacing(SPACE_M)
+            ]
+            .spacing(SPACE_S); // Distinct background for form
+
+            content = content.push(
+                container(form)
+                    .padding(SPACE_S)
+                    .class(cosmic::theme::Container::Card),
+            );
+        } else {
+            content = content.push(
+                button::text("Add Synced Folder")
+                    .on_press(Message::StartAddSyncFolder(device_id.to_string()))
+                    .width(Length::Fill),
+            );
+        }
+
+        container(content)
+            .class(cosmic::theme::Container::Card)
+            .padding(SPACE_M)
+            .into()
     }
 
     /// RemoteDesktop settings view with quality, FPS, and resolution controls

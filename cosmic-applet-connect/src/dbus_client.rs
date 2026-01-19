@@ -103,6 +103,14 @@ pub struct RemoteDesktopSettings {
     pub custom_height: Option<u32>,
 }
 
+/// Sync Folder configuration from DBus
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, zbus::zvariant::Type)]
+pub struct SyncFolderInfo {
+    pub folder_id: String,
+    pub path: String,
+    pub strategy: String,
+}
+
 impl Default for RemoteDesktopSettings {
     fn default() -> Self {
         Self {
@@ -386,6 +394,25 @@ trait CConnect {
         device_id: &str,
         settings_json: &str,
     ) -> zbus::fdo::Result<()>;
+
+    /// Add a folder to sync with a device
+    async fn add_sync_folder(
+        &self,
+        device_id: String,
+        folder_id: String,
+        path: String,
+        strategy: String,
+    ) -> zbus::fdo::Result<()>;
+
+    /// Remove a sync folder from a device
+    async fn remove_sync_folder(
+        &self,
+        device_id: String,
+        folder_id: String,
+    ) -> zbus::fdo::Result<()>;
+
+    /// Get list of synced folders for a device
+    async fn get_sync_folders(&self, device_id: String) -> zbus::fdo::Result<Vec<SyncFolderInfo>>;
 
     /// Signal: Device was added
     #[zbus(signal)]
@@ -928,6 +955,36 @@ impl DbusClient {
     pub async fn is_daemon_available(&self) -> bool {
         // Try to list devices as a health check
         self.proxy.list_devices().await.is_ok()
+    }
+
+    /// Add a folder to sync with a device
+    pub async fn add_sync_folder(
+        &self,
+        device_id: String,
+        folder_id: String,
+        path: String,
+        strategy: String,
+    ) -> Result<()> {
+        self.proxy
+            .add_sync_folder(device_id, folder_id, path, strategy)
+            .await
+            .context("Failed to call add_sync_folder")
+    }
+
+    /// Remove a sync folder from a device
+    pub async fn remove_sync_folder(&self, device_id: String, folder_id: String) -> Result<()> {
+        self.proxy
+            .remove_sync_folder(device_id, folder_id)
+            .await
+            .context("Failed to call remove_sync_folder")
+    }
+
+    /// Get list of synced folders for a device
+    pub async fn get_sync_folders(&self, device_id: String) -> Result<Vec<SyncFolderInfo>> {
+        self.proxy
+            .get_sync_folders(device_id)
+            .await
+            .context("Failed to call get_sync_folders")
     }
 }
 

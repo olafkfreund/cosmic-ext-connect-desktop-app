@@ -120,6 +120,9 @@ impl ConflictStrategy {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncFolder {
     /// Local path to sync
+    /// Folder identifier
+    pub folder_id: String,
+
     pub local_path: PathBuf,
 
     /// Remote path on other device
@@ -286,6 +289,11 @@ pub struct SyncStats {
     pub conflicts: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct FileSyncConfig {
+    sync_folders: HashMap<String, SyncFolder>,
+}
+
 /// File sync plugin
 pub struct FileSyncPlugin {
     /// Device ID this plugin is associated with
@@ -314,6 +322,9 @@ pub struct FileSyncPlugin {
 
     /// Packet sender for proactive updates
     packet_sender: Option<Sender<(String, Packet)>>,
+
+    /// Path to configuration file
+    config_path: Option<PathBuf>,
 }
 
 impl FileSyncPlugin {
@@ -329,18 +340,107 @@ impl FileSyncPlugin {
             watcher: None,
             watcher_handle: None,
             packet_sender: None,
+            config_path: None,
         }
     }
 
+    /// Get the configuration file path for a device
+    fn get_config_path(device_id: &str) -> Result<PathBuf> {
+        let home_dir = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .map_err(|_| {
+                ProtocolError::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Could not determine home directory",
+                ))
+            })?;
+
+        let plugin_dir = PathBuf::from(home_dir)
+            .join(".config")
+            .join("cconnect")
+            .join(device_id)
+            .join("filesync");
+
+        Ok(plugin_dir.join("config.json"))
+    }
+
+    /// Load configuration from disk
+    async fn load_config(&self) -> Result<()> {
+        if let Some(config_path) = &self.config_path {
+            if config_path.exists() {
+                let contents = tokio::fs::read_to_string(config_path).await.map_err(|e| {
+                    ProtocolError::Plugin(format!("Failed to read config file: {}", e))
+                })?;
+
+                let loaded_config: FileSyncConfig =
+                    serde_json::from_str(&contents).map_err(|e| {
+                        ProtocolError::Plugin(format!("Failed to parse config file: {}", e))
+                    })?;
+
+                let mut folders = self.sync_folders.write().await;
+                *folders = loaded_config.sync_folders;
+
+                info!("Loaded {} sync folders from config", folders.len());
+            } else {
+                debug!("Config file does not exist yet: {:?}", config_path);
+            }
+        }
+        Ok(())
+    }
+
+    /// Save configuration to disk
+    async fn save_config(&self) -> Result<()> {
+        if let Some(config_path) = &self.config_path {
+            if let Some(parent) = config_path.parent() {
+                tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                    ProtocolError::Plugin(format!("Failed to create config directory: {}", e))
+                })?;
+            }
+
+            let folders = self.sync_folders.read().await;
+            let config = FileSyncConfig {
+                sync_folders: folders.clone(),
+            };
+
+            let contents = serde_json::to_string_pretty(&config)
+                .map_err(|e| ProtocolError::Plugin(format!("Failed to serialize config: {}", e)))?;
+
+            tokio::fs::write(config_path, contents).await.map_err(|e| {
+                ProtocolError::Plugin(format!("Failed to write config file: {}", e))
+            })?;
+
+            debug!("Saved configuration to {:?}", config_path);
+        }
+        Ok(())
+    }
+
     /// Add or update sync folder configuration
-    pub async fn configure_folder(&mut self, folder_id: String, config: SyncFolder) -> Result<()> {
+    pub async fn configure_folder(
+        &mut self,
+        folder_id: String,
+        local_path: PathBuf,
+        conflict_strategy: ConflictStrategy,
+    ) -> Result<()> {
+        let config = SyncFolder {
+            folder_id: folder_id.clone(),
+            local_path: local_path.clone(),
+            remote_path: PathBuf::new(), // TODO: Allow configuring remote path
+            enabled: true,
+            bidirectional: true,
+            ignore_patterns: Vec::new(),
+            conflict_strategy,
+            versioning: false,
+            version_keep: DEFAULT_VERSION_KEEP,
+            scan_interval_secs: DEFAULT_SCAN_INTERVAL_SECS,
+            bandwidth_limit_kbps: 0,
+        };
+
         config.validate()?;
 
         info!(
-            "Configuring sync folder '{}': {} -> {}",
+            "Configuring sync folder '{}': {}",
             folder_id,
-            config.local_path.display(),
-            config.remote_path.display()
+            config.local_path.display()
         );
 
         {
@@ -364,6 +464,8 @@ impl FileSyncPlugin {
         }
 
         // TODO: Trigger initial index generation
+
+        self.save_config().await?;
 
         Ok(())
     }
@@ -394,6 +496,8 @@ impl FileSyncPlugin {
                 }
             }
 
+            self.save_config().await?;
+
             Ok(())
         } else {
             Err(ProtocolError::Plugin(format!(
@@ -401,6 +505,12 @@ impl FileSyncPlugin {
                 folder_id
             )))
         }
+    }
+
+    /// Get list of configured sync folders
+    pub async fn get_folders(&self) -> Vec<SyncFolder> {
+        let folders = self.sync_folders.read().await;
+        folders.values().cloned().collect()
     }
 
     /// Compute BLAKE3 hash of a file
@@ -648,37 +758,107 @@ impl FileSyncPlugin {
             strategy
         );
 
+        let device_id = self.device_id.clone().ok_or_else(|| {
+            ProtocolError::Plugin("Plugin not initialized (missing device_id)".to_string())
+        })?;
+
         match strategy {
             ConflictStrategy::LastModifiedWins => {
                 // Use most recently modified file
                 if conflict.local_metadata.modified > conflict.remote_metadata.modified {
-                    // TODO: Push local file to remote
                     debug!("Local file is newer, pushing to remote");
+                    self.initiate_upload(
+                        device_id,
+                        conflict.folder_id.clone(),
+                        conflict.path.clone(),
+                    )
+                    .await?;
                 } else {
-                    // TODO: Pull remote file to local
                     debug!("Remote file is newer, pulling from remote");
+                    self.request_download(
+                        device_id,
+                        conflict.folder_id.clone(),
+                        conflict.path.clone(),
+                    )
+                    .await?;
                 }
             }
             ConflictStrategy::KeepBoth => {
                 // Rename one file with timestamp
-                // TODO: Rename conflicting file
-                // TODO: Pull remote file
                 debug!("Keeping both files");
+
+                // Get local path and rename it
+                let config = {
+                    let folders = self.sync_folders.read().await;
+                    folders.get(&conflict.folder_id).cloned()
+                };
+
+                if let Some(config) = config {
+                    let local_path = config.local_path.join(&conflict.path);
+                    if local_path.exists() {
+                        let file_stem = local_path
+                            .file_stem()
+                            .map(|s| s.to_string_lossy())
+                            .unwrap_or_default();
+                        let extension = local_path
+                            .extension()
+                            .map(|s| s.to_string_lossy())
+                            .unwrap_or_default();
+
+                        let new_name = if extension.is_empty() {
+                            format!("{} (Conflict {})", file_stem, conflict.timestamp)
+                        } else {
+                            format!(
+                                "{} (Conflict {}).{}",
+                                file_stem, conflict.timestamp, extension
+                            )
+                        };
+
+                        let new_path = local_path.with_file_name(new_name);
+                        if let Err(e) = tokio::fs::rename(&local_path, &new_path).await {
+                            warn!(
+                                "Failed to rename conflicting file {}: {}",
+                                local_path.display(),
+                                e
+                            );
+                            return Err(ProtocolError::Io(e));
+                        }
+
+                        // Pull remote file
+                        self.request_download(
+                            device_id,
+                            conflict.folder_id.clone(),
+                            conflict.path.clone(),
+                        )
+                        .await?;
+                    }
+                }
             }
             ConflictStrategy::Manual => {
-                // TODO: Prompt user for resolution
-                // For now, keep as pending
-                warn!("Manual resolution required");
+                // Manual resolution implies the user will trigger a specific action later,
+                // or picked one of the other strategies in the UI which called this method with that strategy.
+                // If 'Manual' is passed here, it typically means "defer to user".
+                warn!("Manual resolution strategy requested but requires specific action.");
                 return Ok(());
             }
             ConflictStrategy::SizeBased => {
                 // Keep larger file
                 if conflict.local_metadata.size > conflict.remote_metadata.size {
-                    // TODO: Push local file to remote
                     debug!("Local file is larger, pushing to remote");
+                    self.initiate_upload(
+                        device_id,
+                        conflict.folder_id.clone(),
+                        conflict.path.clone(),
+                    )
+                    .await?;
                 } else {
-                    // TODO: Pull remote file to local
                     debug!("Remote file is larger, pulling from remote");
+                    self.request_download(
+                        device_id,
+                        conflict.folder_id.clone(),
+                        conflict.path.clone(),
+                    )
+                    .await?;
                 }
             }
         }
@@ -732,7 +912,7 @@ impl FileSyncPlugin {
             if local_path.exists() && local_path.starts_with(&config.local_path) {
                 // Start PayloadServer
                 match PayloadServer::new().await {
-                    Ok(mut server) => {
+                    Ok(server) => {
                         let port = server.port();
                         let size = tokio::fs::metadata(&local_path)
                             .await
@@ -842,8 +1022,13 @@ impl Plugin for FileSyncPlugin {
         self.device_id = Some(device.id().to_string());
         self.packet_sender = Some(packet_sender);
 
-        // TODO: Load sync folder configurations from database
-        // TODO: Initialize file system watchers
+        // Set up config path
+        self.config_path = Some(Self::get_config_path(device.id())?);
+
+        // Load existing configuration
+        if let Err(e) = self.load_config().await {
+            warn!("Failed to load config: {}", e);
+        }
 
         Ok(())
     }
@@ -971,7 +1156,8 @@ impl Plugin for FileSyncPlugin {
                     )?)
                     .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
 
-                self.configure_folder(folder_id, config).await?;
+                self.configure_folder(folder_id, config.local_path, config.conflict_strategy)
+                    .await?;
 
                 info!("Received sync folder configuration");
             }
@@ -1005,7 +1191,19 @@ impl Plugin for FileSyncPlugin {
                     // Handle conflicts
                     for action in &plan.actions {
                         if let SyncAction::Conflict(conflict) = action {
-                            self.pending_conflicts.push(conflict.clone());
+                            let strategy = conflict.suggested_strategy;
+                            if strategy == ConflictStrategy::Manual {
+                                self.pending_conflicts.push(conflict.clone());
+                            } else {
+                                if let Err(e) = self.resolve_conflict(conflict, strategy).await {
+                                    warn!(
+                                        "Failed to auto-resolve conflict for {}: {}",
+                                        conflict.path.display(),
+                                        e
+                                    );
+                                    self.pending_conflicts.push(conflict.clone());
+                                }
+                            }
                         }
                     }
 
@@ -1280,6 +1478,7 @@ mod tests {
         plugin.enabled = true;
 
         let config = SyncFolder {
+            folder_id: "test_folder".to_string(),
             local_path: std::env::temp_dir(),
             remote_path: PathBuf::from("/remote/path"),
             enabled: true,
@@ -1293,7 +1492,11 @@ mod tests {
         };
 
         assert!(plugin
-            .configure_folder("test_folder".to_string(), config)
+            .configure_folder(
+                "test_folder".to_string(),
+                config.local_path,
+                config.conflict_strategy
+            )
             .await
             .is_ok());
         assert!(plugin.get_folder_config("test_folder").await.is_some());
@@ -1305,6 +1508,7 @@ mod tests {
         plugin.enabled = true;
 
         let config = SyncFolder {
+            folder_id: "test_folder".to_string(),
             local_path: std::env::temp_dir(),
             remote_path: PathBuf::from("/remote/path"),
             enabled: true,
@@ -1318,7 +1522,11 @@ mod tests {
         };
 
         plugin
-            .configure_folder("test_folder".to_string(), config)
+            .configure_folder(
+                "test_folder".to_string(),
+                config.local_path,
+                config.conflict_strategy,
+            )
             .await
             .unwrap();
         assert!(plugin.remove_folder("test_folder").await.is_ok());
@@ -1339,6 +1547,7 @@ mod tests {
     #[tokio::test]
     async fn test_sync_folder_validation() {
         let valid_config = SyncFolder {
+            folder_id: "test_folder".to_string(),
             local_path: std::env::temp_dir(),
             remote_path: PathBuf::from("/remote/path"),
             enabled: true,
@@ -1354,6 +1563,7 @@ mod tests {
         assert!(valid_config.validate().is_ok());
 
         let invalid_config = SyncFolder {
+            folder_id: "test_folder".to_string(),
             local_path: PathBuf::from("/nonexistent/path"),
             remote_path: PathBuf::from("/remote/path"),
             enabled: true,
@@ -1392,6 +1602,7 @@ mod tests {
         plugin.start().await.unwrap();
 
         let config = SyncFolder {
+            folder_id: "test_folder".to_string(),
             local_path: std::env::temp_dir(),
             remote_path: PathBuf::from("/remote/path"),
             enabled: true,

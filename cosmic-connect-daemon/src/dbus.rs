@@ -4,8 +4,12 @@
 //! Exposes device management, pairing, and plugin actions via DBus.
 
 use anyhow::{Context, Result};
+use cosmic_connect_protocol::plugins::filesync::{
+    ConflictStrategy as FilesyncConflictStrategy, FileSyncPlugin, SyncFolder as FilesyncFolder,
+};
 use cosmic_connect_protocol::{ConnectionManager, Device, DeviceManager, PluginManager};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -148,6 +152,24 @@ pub struct DaemonMetrics {
     pub packets_per_second: f64,
     /// Bandwidth in bytes per second (averaged)
     pub bandwidth_bps: f64,
+}
+
+/// Sync Folder configuration for DBus serialization
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, zbus::zvariant::Type)]
+pub struct SyncFolderInfo {
+    pub folder_id: String,
+    pub path: String,
+    pub strategy: String,
+}
+
+impl From<&FilesyncFolder> for SyncFolderInfo {
+    fn from(folder: &FilesyncFolder) -> Self {
+        Self {
+            folder_id: folder.folder_id.clone(),
+            path: folder.local_path.to_string_lossy().to_string(),
+            strategy: format!("{:?}", folder.conflict_strategy),
+        }
+    }
 }
 
 /// DBus interface for CConnect daemon
@@ -911,6 +933,123 @@ impl CConnectInterface {
             device_id, timestamp
         );
         Ok(())
+    }
+
+    /// Add a folder to sync with a device
+    async fn add_sync_folder(
+        &self,
+        device_id: String,
+        folder_id: String,
+        path: String,
+        strategy: String,
+    ) -> Result<(), zbus::fdo::Error> {
+        info!(
+            "DBus: AddSyncFolder called for {} (path: {})",
+            device_id, path
+        );
+
+        let mut plugin_manager = self.plugin_manager.write().await;
+
+        // Get the filesync plugin for this device
+        if let Some(plugin) = plugin_manager.get_device_plugin_mut(&device_id, "filesync") {
+            // Downcast to concrete FileSyncPlugin
+            if let Some(filesync) = plugin.as_any_mut().downcast_mut::<FileSyncPlugin>() {
+                // Parse strategy
+                let conflict_strategy = match strategy.to_lowercase().as_str() {
+                    "localwins" | "local_wins" => FilesyncConflictStrategy::LastModifiedWins, // Defaulting for simple UI
+                    "remotewins" | "remote_wins" => FilesyncConflictStrategy::LastModifiedWins, // Need proper mapping
+                    "manual" => FilesyncConflictStrategy::Manual,
+                    "keepboth" | "keep_both" => FilesyncConflictStrategy::KeepBoth,
+                    "size" | "sizebased" => FilesyncConflictStrategy::SizeBased,
+                    _ => FilesyncConflictStrategy::LastModifiedWins, // Default
+                };
+
+                let path_buf = PathBuf::from(&path);
+
+                filesync
+                    .configure_folder(folder_id, path_buf, conflict_strategy)
+                    .await
+                    .map_err(|e| {
+                        zbus::fdo::Error::Failed(format!("Failed to configure folder: {}", e))
+                    })?;
+
+                info!("Added sync folder successfully");
+                Ok(())
+            } else {
+                Err(zbus::fdo::Error::Failed(
+                    "Plugin is not FileSyncPlugin".to_string(),
+                ))
+            }
+        } else {
+            Err(zbus::fdo::Error::Failed(
+                "FileSync plugin not found for device".to_string(),
+            ))
+        }
+    }
+
+    /// Remove a sync folder from a device
+    async fn remove_sync_folder(
+        &self,
+        device_id: String,
+        folder_id: String,
+    ) -> Result<(), zbus::fdo::Error> {
+        info!(
+            "DBus: RemoveSyncFolder called for {} (folder: {})",
+            device_id, folder_id
+        );
+
+        let mut plugin_manager = self.plugin_manager.write().await;
+
+        if let Some(plugin) = plugin_manager.get_device_plugin_mut(&device_id, "filesync") {
+            if let Some(filesync) = plugin.as_any_mut().downcast_mut::<FileSyncPlugin>() {
+                filesync.remove_folder(&folder_id).await.map_err(|e| {
+                    zbus::fdo::Error::Failed(format!("Failed to remove folder: {}", e))
+                })?;
+
+                info!("Removed sync folder successfully");
+                Ok(())
+            } else {
+                Err(zbus::fdo::Error::Failed(
+                    "Plugin is not FileSyncPlugin".to_string(),
+                ))
+            }
+        } else {
+            Err(zbus::fdo::Error::Failed(
+                "FileSync plugin not found for device".to_string(),
+            ))
+        }
+    }
+
+    /// Get list of synced folders for a device
+    async fn get_sync_folders(
+        &self,
+        device_id: String,
+    ) -> Result<Vec<SyncFolderInfo>, zbus::fdo::Error> {
+        info!("DBus: GetSyncFolders called for {}", device_id);
+
+        // We only need read access here, but get_device_plugin requires iterating
+        // However, PluginManager only has get_device_plugin (which returns &dyn Plugin)
+        // and get_device_plugin_mut. We need to downcast.
+        // Downcasting for &dyn Plugin to &Concrete requires the trait to implement as_any() which returns &dyn Any.
+        // Let's assume Plugin trait has as_any(). checking... Yes it does. (lines 196 in mod.rs)
+
+        let plugin_manager = self.plugin_manager.read().await;
+
+        if let Some(plugin) = plugin_manager.get_device_plugin(&device_id, "filesync") {
+            if let Some(filesync) = plugin.as_any().downcast_ref::<FileSyncPlugin>() {
+                let folders: Vec<FilesyncFolder> = filesync.get_folders().await;
+                let result: Vec<SyncFolderInfo> =
+                    folders.iter().map(SyncFolderInfo::from).collect();
+                Ok(result)
+            } else {
+                Err(zbus::fdo::Error::Failed(
+                    "Plugin is not FileSyncPlugin".to_string(),
+                ))
+            }
+        } else {
+            // If plugin not found (e.g. device not connected or plugin not initialized), return empty list
+            Ok(Vec::new())
+        }
     }
 
     /// Get battery status from a device
