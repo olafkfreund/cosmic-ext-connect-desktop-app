@@ -152,6 +152,15 @@ rustPlatform.buildRustPackage rec {
     WantedBy=default.target
     EOF
 
+    # Install DBus service for activation
+    mkdir -p $out/share/dbus-1/services
+    cat > $out/share/dbus-1/services/com.system76.CosmicConnect.service << EOF
+    [D-BUS Service]
+    Name=com.system76.CosmicConnect
+    Exec=$out/bin/cosmic-connect-daemon
+    SystemdService=cosmic-connect-daemon.service
+    EOF
+
     # Install desktop entry for applet
     mkdir -p $out/share/applications
     cat > $out/share/applications/cosmic-applet-connect.desktop << EOF

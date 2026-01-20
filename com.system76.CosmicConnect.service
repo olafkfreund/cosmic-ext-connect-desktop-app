@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=com.system76.CosmicConnect
+Exec=/home/olafkfreund/Source/GitHub/cosmic-connect-desktop-app/target/debug/cosmic-connect-daemon
+SystemdService=cosmic-connect-daemon.service

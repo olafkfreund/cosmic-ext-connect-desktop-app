@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 with lib;
 
@@ -11,7 +16,8 @@ let
   # TOML format generator
   tomlFormat = pkgs.formats.toml { };
 
-in {
+in
+{
   options.services.cosmic-connect = {
     enable = mkEnableOption "COSMIC Connect - Device connectivity for COSMIC Desktop";
 
@@ -50,7 +56,13 @@ in {
       };
 
       logLevel = mkOption {
-        type = types.enum [ "error" "warn" "info" "debug" "trace" ];
+        type = types.enum [
+          "error"
+          "warn"
+          "info"
+          "debug"
+          "trace"
+        ];
         default = "info";
         example = "debug";
         description = ''
@@ -287,14 +299,26 @@ in {
     # Install the package system-wide
     environment.systemPackages = [ cfg.package ];
 
+    # Register DBus services so the session bus finds our .service files
+    services.dbus.packages = [ cfg.package ];
+
     # Open firewall ports if requested
     networking.firewall = mkIf cfg.openFirewall {
       allowedTCPPortRanges = [
-        { from = 1814; to = 1864; }  # Discovery (CConnect)
-        { from = 1739; to = 1764; }  # File transfer (protocol standard)
+        {
+          from = 1814;
+          to = 1864;
+        } # Discovery (CConnect)
+        {
+          from = 1739;
+          to = 1764;
+        } # File transfer (protocol standard)
       ];
       allowedUDPPortRanges = [
-        { from = 1814; to = 1864; }  # Discovery (CConnect)
+        {
+          from = 1814;
+          to = 1864;
+        } # Discovery (CConnect)
       ];
     };
 
@@ -351,31 +375,32 @@ in {
 
     # Generate configuration file
     environment.etc."xdg/cosmic-connect/daemon.toml" = mkIf cfg.daemon.enable {
-      source = let
-        pluginConfig = {
-          plugins = {
-            enable_ping = cfg.plugins.ping;
-            enable_battery = cfg.plugins.battery;
-            enable_notification = cfg.plugins.notification;
-            enable_share = cfg.plugins.share;
-            enable_clipboard = cfg.plugins.clipboard;
-            enable_mpris = cfg.plugins.mpris;
-            enable_runcommand = cfg.plugins.runcommand;
-            enable_remoteinput = cfg.plugins.remoteinput;
-            enable_findmyphone = cfg.plugins.findmyphone;
-            enable_lock = cfg.plugins.lock;
-            enable_telephony = cfg.plugins.telephony;
-            enable_presenter = cfg.plugins.presenter;
-            enable_contacts = cfg.plugins.contacts;
-            enable_systemmonitor = cfg.plugins.systemmonitor;
-            enable_wol = cfg.plugins.wol;
-            enable_screenshot = cfg.plugins.screenshot;
-            enable_remotedesktop = cfg.plugins.remotedesktop;
+      source =
+        let
+          pluginConfig = {
+            plugins = {
+              enable_ping = cfg.plugins.ping;
+              enable_battery = cfg.plugins.battery;
+              enable_notification = cfg.plugins.notification;
+              enable_share = cfg.plugins.share;
+              enable_clipboard = cfg.plugins.clipboard;
+              enable_mpris = cfg.plugins.mpris;
+              enable_runcommand = cfg.plugins.runcommand;
+              enable_remoteinput = cfg.plugins.remoteinput;
+              enable_findmyphone = cfg.plugins.findmyphone;
+              enable_lock = cfg.plugins.lock;
+              enable_telephony = cfg.plugins.telephony;
+              enable_presenter = cfg.plugins.presenter;
+              enable_contacts = cfg.plugins.contacts;
+              enable_systemmonitor = cfg.plugins.systemmonitor;
+              enable_wol = cfg.plugins.wol;
+              enable_screenshot = cfg.plugins.screenshot;
+              enable_remotedesktop = cfg.plugins.remotedesktop;
+            };
           };
-        };
-        # Merge user settings with plugin config
-        finalConfig = lib.recursiveUpdate pluginConfig cfg.daemon.settings;
-      in
+          # Merge user settings with plugin config
+          finalConfig = lib.recursiveUpdate pluginConfig cfg.daemon.settings;
+        in
         tomlFormat.generate "daemon.toml" finalConfig;
     };
 
@@ -390,14 +415,15 @@ in {
 
     # Warnings for common misconfigurations
     warnings =
-      (optional (!cfg.openFirewall)
-        "COSMIC Connect firewall ports are not open. Device discovery may not work.")
-      ++
-      (optional (!cfg.daemon.enable && cfg.applet.enable)
-        "The COSMIC Connect applet is enabled but the daemon is not. The applet requires the daemon to function.")
-      ++
-      (optional (!cfg.plugins.share && !cfg.plugins.notification && !cfg.plugins.clipboard)
-        "All major plugins are disabled. Consider enabling at least one plugin for functionality.");
+      (optional (
+        !cfg.openFirewall
+      ) "COSMIC Connect firewall ports are not open. Device discovery may not work.")
+      ++ (optional (!cfg.daemon.enable && cfg.applet.enable)
+        "The COSMIC Connect applet is enabled but the daemon is not. The applet requires the daemon to function."
+      )
+      ++ (optional (
+        !cfg.plugins.share && !cfg.plugins.notification && !cfg.plugins.clipboard
+      ) "All major plugins are disabled. Consider enabling at least one plugin for functionality.");
 
   };
 
