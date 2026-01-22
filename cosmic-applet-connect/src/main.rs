@@ -266,10 +266,11 @@ enum NotificationType {
     Info,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ViewMode {
     Devices,
     History,
+    DeviceDetails(String),
 }
 
 #[derive(Debug, Clone)]
@@ -316,6 +317,10 @@ enum Message {
     CancelRenaming,
     UpdateNicknameInput(String),
     SaveNickname(String), // device_id
+
+    // Navigation
+    ShowDeviceDetails(String),
+    CloseDeviceDetails,
 
     // Settings UI
     ToggleDeviceSettings(String),                          // device_id
@@ -1116,6 +1121,34 @@ impl cosmic::Application for CConnectApplet {
                         move |client, _| async move { client.set_device_nickname(&id, &nickname).await },
                     ),
                 ])
+            }
+
+            Message::ShowDeviceDetails(device_id) => {
+                self.view_mode = ViewMode::DeviceDetails(device_id.clone());
+                // Fetch config for this device
+                let device_id_for_async = device_id.clone();
+                let device_id_for_msg = std::sync::Arc::new(device_id.clone());
+                Task::perform(
+                    async move {
+                        match DbusClient::connect().await {
+                            Ok((client, _)) => client.get_device_config(&device_id_for_async).await,
+                            Err(e) => Err(e),
+                        }
+                    },
+                    move |result| {
+                        let device_id = (*device_id_for_msg).clone();
+                        match result {
+                            Ok(config) => {
+                                cosmic::Action::App(Message::DeviceConfigLoaded(device_id, config))
+                            }
+                            Err(_) => cosmic::Action::None,
+                        }
+                    },
+                )
+            }
+            Message::CloseDeviceDetails => {
+                self.view_mode = ViewMode::Devices;
+                Task::none()
             }
 
             Message::MprisSetVolume(player, volume) => {
@@ -2094,6 +2127,11 @@ impl CConnectApplet {
         if let Some(device_id) = &self.run_command_settings_device {
             return self.run_command_settings_view(device_id);
         }
+
+        if let ViewMode::DeviceDetails(device_id) = &self.view_mode {
+            return self.device_details_view(device_id);
+        }
+
         let view_switcher = row![
             button::text("Devices")
                 .on_press(Message::SetViewMode(ViewMode::Devices))
@@ -2418,6 +2456,90 @@ impl CConnectApplet {
             .into()
     }
 
+    fn device_details_view(&self, device_id: &str) -> Element<'_, Message> {
+        let device_state = self
+            .devices
+            .iter()
+            .find(|d| d.device.info.device_id == device_id);
+
+        let Some(device_state) = device_state else {
+            return container(text("Device not found"))
+                .padding(SPACE_M)
+                .into();
+        };
+
+        let device = &device_state.device;
+        let config = self.device_configs.get(device_id);
+
+        let header = row![
+            cosmic::widget::tooltip(
+                button::icon(icon::from_name("go-previous-symbolic").size(ICON_S))
+                    .on_press(Message::CloseDeviceDetails)
+                    .padding(SPACE_XS),
+                "Back",
+                cosmic::widget::tooltip::Position::Bottom,
+            ),
+            text(&device.info.device_name).size(ICON_M),
+            horizontal_space(),
+        ]
+        .spacing(SPACE_S)
+        .align_y(cosmic::iced::Alignment::Center);
+
+        // Basic Info
+        let info_card = column![
+            row![
+                text("Status:").width(Length::Fixed(100.0)),
+                connection_status_styled_text(device.connection_state, device.pairing_status)
+            ]
+            .spacing(SPACE_XS),
+            row![
+                text("Type:").width(Length::Fixed(100.0)),
+                text(format!("{:?}", device.info.device_type))
+            ]
+            .spacing(SPACE_XS),
+            row![
+                text("IP Address:").width(Length::Fixed(100.0)),
+                text(device.host.as_deref().unwrap_or("Unknown"))
+            ]
+            .spacing(SPACE_XS),
+            row![
+                text("ID:").width(Length::Fixed(100.0)),
+                text(if device_id.len() > 20 {
+                    format!("{}...", &device_id[..20])
+                } else {
+                    device_id.to_string()
+                })
+            ]
+            .spacing(SPACE_XS),
+        ]
+        .spacing(SPACE_S);
+
+        let mut content = column![
+            header,
+            container(info_card)
+                .padding(SPACE_M)
+                .width(Length::Fill)
+                .class(cosmic::theme::Container::Card),
+        ]
+        .spacing(SPACE_M)
+        .padding(SPACE_M);
+
+        // Settings (Plugins)
+        if let Some(config) = config {
+            // Reusing device_settings_panel but we might want to hide its header
+            // For now, let's just include it.
+            content = content.push(self.device_settings_panel(device_id, device, config));
+        } else {
+            content = content.push(
+                container(text("Loading settings..."))
+                    .width(Length::Fill)
+                    .align_x(Horizontal::Center),
+            );
+        }
+
+        content.into()
+    }
+
     fn device_row<'a>(&'a self, device_state: &'a DeviceState) -> Element<'a, Message> {
         let device = &device_state.device;
         let device_id = &device.info.device_id;
@@ -2625,6 +2747,12 @@ impl CConnectApplet {
                 "emblem-system-symbolic",
                 "Plugin settings",
                 Message::ToggleDeviceSettings(device_id.to_string()),
+            ));
+
+            actions = actions.push(action_button_with_tooltip(
+                "document-properties-symbolic",
+                "Device Details",
+                Message::ShowDeviceDetails(device_id.to_string()),
             ));
         }
 
