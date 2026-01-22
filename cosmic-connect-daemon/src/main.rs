@@ -43,10 +43,15 @@ use tracing::{debug, error, info, warn};
 
 use config::Config;
 
+use error_handler::ErrorHandler;
+
 /// Main daemon state
 struct Daemon {
     /// Configuration (wrapped for shared access with DBus)
     config: Arc<RwLock<Config>>,
+
+    /// Error handler for user notifications
+    error_handler: Arc<ErrorHandler>,
 
     /// Device certificate (for future TLS support)
     #[allow(dead_code)]
@@ -102,20 +107,28 @@ struct Daemon {
 
     /// Packet receiver for plugins (wrapped in Mutex to allow extraction)
     packet_receiver: Arc<tokio::sync::Mutex<Option<Receiver<(String, Packet)>>>>,
+
+    /// Track connection attempts for exponential backoff (device_id -> (last_attempt, failure_count))
+    connection_attempts: Arc<RwLock<std::collections::HashMap<String, (std::time::Instant, u32)>>>,
 }
 
 impl Daemon {
     /// Create a new daemon
     async fn new(config: Config) -> Result<Self> {
         // Ensure directories exist
-        config
-            .ensure_directories()
-            .context("Failed to create directories")?;
-
-        // Load or generate certificate
-        let certificate =
-            Self::load_or_generate_certificate(&config).context("Failed to load certificate")?;
-
+                    config
+                        .ensure_directories()
+                        .context("Failed to create directories")?;
+        
+                // Initialize error handler
+                let error_handler = Arc::new(ErrorHandler::new());
+                if let Err(e) = error_handler.init().await {
+                    warn!("Failed to initialize error handler: {}", e);
+                }
+        
+                // Load or generate certificate
+                let certificate =
+                    Self::load_or_generate_certificate(&config).context("Failed to load certificate")?;
         // Create device info
         let device_type = match config.device.device_type.as_str() {
             "laptop" => DeviceType::Laptop,
@@ -246,6 +259,7 @@ impl Daemon {
 
         Ok(Self {
             config,
+            error_handler,
             certificate,
             device_info,
             plugin_manager,
@@ -264,6 +278,7 @@ impl Daemon {
             dump_packets: false,
             packet_sender,
             packet_receiver,
+            connection_attempts: Arc::new(RwLock::new(std::collections::HashMap::new())),
         })
     }
 
@@ -542,10 +557,20 @@ impl Daemon {
         // Spawn task to handle discovery events
         let device_manager = self.device_manager.clone();
         let dbus_server = self.dbus_server.clone();
+        let error_handler = self.error_handler.clone();
+        let connection_manager = self.connection_manager.clone();
+        let connection_attempts = self.connection_attempts.clone();
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
-                if let Err(e) =
-                    Self::handle_discovery_event(event, &device_manager, &dbus_server).await
+                if let Err(e) = Self::handle_discovery_event(
+                    event,
+                    &device_manager,
+                    &dbus_server,
+                    &error_handler,
+                    &connection_manager,
+                    &connection_attempts,
+                )
+                .await
                 {
                     error!("Error handling discovery event: {}", e);
                 }
@@ -601,6 +626,7 @@ impl Daemon {
         let cosmic_notifier = self.cosmic_notifier.clone();
         let pairing_notifications = self.pairing_notifications.clone();
         let pending_pairing_requests = self.pending_pairing_requests.clone();
+        let error_handler = self.error_handler.clone();
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
                 if let Err(e) = Self::handle_pairing_event(
@@ -610,6 +636,7 @@ impl Daemon {
                     &cosmic_notifier,
                     &pairing_notifications,
                     &pending_pairing_requests,
+                    &error_handler,
                 )
                 .await
                 {
@@ -632,6 +659,7 @@ impl Daemon {
         cosmic_notifier: &Option<Arc<cosmic_notifications::CosmicNotifier>>,
         pairing_notifications: &Arc<RwLock<std::collections::HashMap<u32, String>>>,
         pending_pairing_requests: &Arc<RwLock<std::collections::HashMap<String, bool>>>,
+        error_handler: &ErrorHandler,
     ) -> Result<()> {
         match event {
             PairingEvent::RequestSent {
@@ -752,49 +780,19 @@ impl Daemon {
             }
             PairingEvent::PairingTimeout { device_id } => {
                 warn!("Pairing request timed out for device {}", device_id);
-
-                // Get device name for notification
-                let device_name = {
-                    let manager = device_manager.read().await;
-                    manager
-                        .get_device(&device_id)
-                        .map(|d| d.name().to_string())
-                        .unwrap_or_else(|| device_id.clone())
-                };
-
-                // Send notification
-                if let Some(notifier) = cosmic_notifier {
-                    if let Err(e) = notifier.notify_pairing_timeout(&device_name).await {
-                        warn!("Failed to send pairing timeout notification: {}", e);
-                    } else {
-                        info!("Sent pairing timeout notification for {}", device_name);
-                    }
-                }
+                let error = cosmic_connect_protocol::ProtocolError::Timeout(
+                    "Pairing request timed out".to_string(),
+                );
+                error_handler
+                    .handle_error(&error, "pairing", Some(&device_id))
+                    .await;
             }
             PairingEvent::Error { device_id, message } => {
                 error!("Pairing error for device {:?}: {}", device_id, message);
-
-                // Get device name for notification
-                let device_name = {
-                    if let Some(ref id) = device_id {
-                        let manager = device_manager.read().await;
-                        manager
-                            .get_device(id)
-                            .map(|d| d.name().to_string())
-                            .unwrap_or_else(|| id.clone())
-                    } else {
-                        "Unknown".to_string()
-                    }
-                };
-
-                // Send notification
-                if let Some(notifier) = cosmic_notifier {
-                    if let Err(e) = notifier.notify_pairing_error(&device_name, &message).await {
-                        warn!("Failed to send pairing error notification: {}", e);
-                    } else {
-                        info!("Sent pairing error notification for {}", device_name);
-                    }
-                }
+                let error = cosmic_connect_protocol::ProtocolError::NetworkError(message);
+                error_handler
+                    .handle_error(&error, "pairing", device_id.as_deref())
+                    .await;
             }
         }
         Ok(())
@@ -846,6 +844,7 @@ impl Daemon {
             let dump_packets = self.dump_packets;
             let packet_sender = self.packet_sender.clone();
             let config = self.config.clone();
+            let error_handler = Some(self.error_handler.clone());
             tokio::spawn(async move {
                 while let Some(event) = event_rx.recv().await {
                     // Convert TransportManagerEvent to ConnectionEvent
@@ -914,6 +913,7 @@ impl Daemon {
                         dump_packets,
                         packet_sender.clone(),
                         &config,
+                        &error_handler,
                     )
                     .await
                     {
@@ -954,6 +954,7 @@ impl Daemon {
             let dump_packets = self.dump_packets;
             let packet_sender = self.packet_sender.clone();
             let config = self.config.clone();
+            let error_handler = Some(self.error_handler.clone());
             tokio::spawn(async move {
                 while let Some(event) = event_rx.recv().await {
                     if let Err(e) = Self::handle_connection_event(
@@ -969,6 +970,7 @@ impl Daemon {
                         dump_packets,
                         packet_sender.clone(),
                         &config,
+                        &error_handler,
                     )
                     .await
                     {
@@ -1229,6 +1231,7 @@ impl Daemon {
         dump_packets: bool,
         packet_sender: Sender<(String, Packet)>,
         config: &Arc<RwLock<Config>>,
+        error_handler: &Option<Arc<ErrorHandler>>,
     ) -> Result<()> {
         match event {
             ConnectionEvent::Connected {
@@ -1794,6 +1797,12 @@ impl Daemon {
             }
             ConnectionEvent::ConnectionError { device_id, message } => {
                 error!("Connection error for device {:?}: {}", device_id, message);
+                if let Some(handler) = error_handler {
+                    let error = cosmic_connect_protocol::ProtocolError::NetworkError(message);
+                    handler
+                        .handle_error(&error, "connection", device_id.as_deref())
+                        .await;
+                }
             }
             ConnectionEvent::ManagerStarted { port } => {
                 info!("Connection manager started on port {}", port);
@@ -2026,76 +2035,110 @@ impl Daemon {
         event: DiscoveryEvent,
         device_manager: &Arc<RwLock<DeviceManager>>,
         dbus_server: &Option<Arc<DbusServer>>,
+        _error_handler: &ErrorHandler,
+        connection_manager: &Arc<RwLock<ConnectionManager>>,
+        connection_attempts: &Arc<RwLock<std::collections::HashMap<String, (std::time::Instant, u32)>>>,
     ) -> Result<()> {
         match event {
             DiscoveryEvent::DeviceDiscovered {
-                info,
-                transport_address,
+                ref info,
+                ref transport_address,
+                ..
+            }
+            | DiscoveryEvent::DeviceUpdated {
+                ref info,
+                ref transport_address,
                 ..
             } => {
-                info!(
-                    "Device discovered: {} ({}) at {}",
-                    info.device_name,
-                    info.device_type.as_str(),
-                    transport_address
-                );
-                let mut manager = device_manager.write().await;
-                manager.update_from_discovery(info.clone(), transport_address);
-                if let Err(e) = manager.save_registry() {
-                    warn!("Failed to save device registry: {}", e);
+                let device_id = info.device_id.clone();
+                
+                // Update registry
+                {
+                    let mut manager = device_manager.write().await;
+                    manager.update_from_discovery(info.clone(), transport_address.clone());
+                    if let Err(e) = manager.save_registry() {
+                        warn!("Failed to save device registry: {}", e);
+                    }
                 }
 
-                // Emit DBus signal for device added
-                if let Some(dbus) = dbus_server {
-                    if let Some(device) = manager.get_device(&info.device_id) {
-                        if let Err(e) = dbus.emit_device_added(device).await {
-                            warn!("Failed to emit DeviceAdded signal: {}", e);
+                // Auto-connect if paired
+                let should_connect = {
+                    let manager = device_manager.read().await;
+                    if let Some(device) = manager.get_device(&device_id) {
+                        device.is_paired() && !device.is_connected()
+                    } else {
+                        false
+                    }
+                };
+
+                if should_connect {
+                    // Check backoff
+                    let mut attempts = connection_attempts.write().await;
+                    let now = std::time::Instant::now();
+                    let (last_attempt, count) = attempts
+                        .entry(device_id.clone())
+                        .or_insert((now - Duration::from_secs(3600), 0));
+
+                    // Exponential backoff: 2^count seconds (cap at 60s)
+                    let backoff = Duration::from_secs(2u64.pow((*count).min(6) as u32));
+                    
+                    if now.duration_since(*last_attempt) >= backoff {
+                        info!("Auto-connecting to trusted device {} (attempt {})", device_id, count);
+                        *last_attempt = now;
+                        *count += 1;
+                        
+                        // Try to connect
+                        let mgr = connection_manager.read().await;
+                        // Need to extract SocketAddr from TransportAddress if it's TCP
+                        // DiscoveryService usually returns TransportAddress::Tcp for UDP discovery results
+                        if let cosmic_connect_protocol::transport::TransportAddress::Tcp(addr) = transport_address {
+                            let device_id_clone = device_id.clone();
+                            let socket_addr = *addr;
+                            
+                            let mgr_arc = connection_manager.clone();
+                            tokio::spawn(async move {
+                                let mgr = mgr_arc.read().await;
+                                if let Err(e) = mgr.connect(&device_id_clone, socket_addr).await {
+                                    warn!("Failed to auto-connect to {}: {}", device_id_clone, e);
+                                }
+                            });
+                        }
+                    }
+                } else if should_connect == false {
+                    // Reset attempts if connected or not paired
+                    let manager = device_manager.read().await;
+                    if let Some(device) = manager.get_device(&device_id) {
+                        if device.is_connected() {
+                            let mut attempts = connection_attempts.write().await;
+                            attempts.remove(&device_id);
                         }
                     }
                 }
 
-                // NOTE: We do NOT automatically connect to discovered devices here.
-                // The connection will be established when:
-                // 1. The remote device connects to our TLS server, OR
-                // 2. The user explicitly requests pairing/connection via DBus
-                //
-                // This prevents reconnection loops where both sides try to connect simultaneously.
-            }
-            DiscoveryEvent::DeviceUpdated {
-                info,
-                transport_address,
-                ..
-            } => {
-                debug!(
-                    "Device updated: {} at {}",
-                    info.device_name, transport_address
-                );
-                let mut manager = device_manager.write().await;
-                manager.update_from_discovery(info, transport_address);
-            }
-            DiscoveryEvent::DeviceTimeout { device_id } => {
-                info!("Device timed out: {}", device_id);
-                let mut manager = device_manager.write().await;
-                if let Err(e) = manager.mark_disconnected(&device_id) {
-                    debug!("Failed to mark device {} as disconnected: {}", device_id, e);
-                }
-
-                // Emit DBus signal for device removed
-                if let Some(dbus) = dbus_server {
-                    if let Err(e) = dbus.emit_device_removed(&device_id).await {
-                        warn!("Failed to emit DeviceRemoved signal: {}", e);
+                // Emit DBus signal for device added (only on discovery, logic handles updated)
+                if matches!(event, DiscoveryEvent::DeviceDiscovered { .. }) {
+                    if let Some(dbus) = dbus_server {
+                        let manager = device_manager.read().await;
+                        if let Some(device) = manager.get_device(&device_id) {
+                            if let Err(e) = dbus.emit_device_added(device).await {
+                                warn!("Failed to emit DeviceAdded signal: {}", e);
+                            }
+                        }
                     }
                 }
             }
-            DiscoveryEvent::ServiceStarted { port } => {
-                info!("Discovery service started successfully on port {}", port);
+            DiscoveryEvent::DeviceTimeout { device_id } => {
+                info!("Device timed out: {}", device_id);
+                // We don't mark as disconnected here, ConnectionManager handles TCP timeout.
+                // But we can emit a signal if needed.
+                if let Some(dbus) = dbus_server {
+                    if let Err(e) = dbus.emit_device_state_changed(&device_id, "reachable").await {
+                         // Just updating reachability state logic handled in list_devices mostly
+                         warn!("Failed to emit state change: {}", e);
+                    }
+                }
             }
-            DiscoveryEvent::ServiceStopped => {
-                info!("Discovery service stopped");
-            }
-            DiscoveryEvent::Error { message } => {
-                error!("Discovery error: {}", message);
-            }
+            _ => {}
         }
         Ok(())
     }
