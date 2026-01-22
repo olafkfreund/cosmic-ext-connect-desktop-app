@@ -270,6 +270,7 @@ enum NotificationType {
 enum ViewMode {
     Devices,
     History,
+    TransferQueue,
     DeviceDetails(String),
 }
 
@@ -321,6 +322,7 @@ enum Message {
     // Navigation
     ShowDeviceDetails(String),
     CloseDeviceDetails,
+    ShowTransferQueue,
 
     // Settings UI
     ToggleDeviceSettings(String),                          // device_id
@@ -1148,6 +1150,10 @@ impl cosmic::Application for CConnectApplet {
             }
             Message::CloseDeviceDetails => {
                 self.view_mode = ViewMode::Devices;
+                Task::none()
+            }
+            Message::ShowTransferQueue => {
+                self.view_mode = ViewMode::TransferQueue;
                 Task::none()
             }
 
@@ -2069,6 +2075,87 @@ impl CConnectApplet {
         scrollable(history_list).into()
     }
 
+    fn transfer_queue_view(&self) -> Element<'_, Message> {
+        let mut transfers_list = column![].spacing(SPACE_S);
+
+        if self.active_transfers.is_empty() {
+            transfers_list = transfers_list.push(
+                container(
+                    column![
+                        icon::from_name("folder-download-symbolic").size(ICON_XL),
+                        text("No active transfers"),
+                    ]
+                    .spacing(SPACE_S)
+                    .align_x(Horizontal::Center),
+                )
+                .width(Length::Fill)
+                .align_x(cosmic::iced::Alignment::Center)
+                .padding(SPACE_XL),
+            );
+        } else {
+            for (_id, state) in &self.active_transfers {
+                let progress = if state.total > 0 {
+                    (state.current as f32 / state.total as f32) * 100.0
+                } else {
+                    0.0
+                };
+
+                let row = row![
+                    icon::from_name(if state.direction == "sending" {
+                        "document-send-symbolic"
+                    } else {
+                        "document-save-symbolic"
+                    })
+                    .size(ICON_M),
+                    column![
+                        text(&state.filename).size(ICON_14),
+                        progress_bar(0.0..=100.0, progress).height(Length::Fixed(6.0)),
+                        row![
+                            text(if state.direction == "sending" {
+                                "Sending..."
+                            } else {
+                                "Receiving..."
+                            })
+                            .size(ICON_XS),
+                            horizontal_space(),
+                            text(format!("{:.0}%", progress)).size(ICON_XS),
+                        ]
+                    ]
+                    .spacing(SPACE_XXS)
+                    .width(Length::Fill)
+                ]
+                .spacing(SPACE_S)
+                .align_y(cosmic::iced::Alignment::Center);
+
+                transfers_list = transfers_list.push(
+                    container(row)
+                        .padding(SPACE_S)
+                        .class(cosmic::theme::Container::Card),
+                );
+            }
+        }
+
+        column![
+            row![
+                cosmic::widget::tooltip(
+                    button::icon(icon::from_name("go-previous-symbolic").size(ICON_S))
+                        .on_press(Message::SetViewMode(ViewMode::Devices))
+                        .padding(SPACE_XS),
+                    "Back",
+                    cosmic::widget::tooltip::Position::Bottom,
+                ),
+                text("Transfer Queue").size(ICON_M),
+                horizontal_space(),
+            ]
+            .spacing(SPACE_S)
+            .align_y(cosmic::iced::Alignment::Center),
+            scrollable(transfers_list).height(Length::Fill)
+        ]
+        .spacing(SPACE_M)
+        .padding(SPACE_M)
+        .into()
+    }
+
     fn popup_view(&self) -> Element<'_, Message> {
         let content = self.inner_view();
 
@@ -2130,6 +2217,9 @@ impl CConnectApplet {
 
         if let ViewMode::DeviceDetails(device_id) = &self.view_mode {
             return self.device_details_view(device_id);
+        }
+        if self.view_mode == ViewMode::TransferQueue {
+            return self.transfer_queue_view();
         }
 
         let view_switcher = row![
@@ -3511,10 +3601,22 @@ impl CConnectApplet {
             return Element::from(cosmic::widget::Space::new(0, 0));
         }
 
-        let mut transfers_col = column![text("Active Transfers")
-            .size(ICON_14)
-            .class(theme::Text::Color(Color::from_rgb(0.5, 0.5, 1.0))),]
-        .spacing(SPACE_S);
+        let header = row![
+            text("Active Transfers")
+                .size(ICON_14)
+                .class(theme::Text::Color(Color::from_rgb(0.5, 0.5, 1.0)))
+                .width(Length::Fill),
+            cosmic::widget::tooltip(
+                button::icon(icon::from_name("go-next-symbolic").size(ICON_S))
+                    .on_press(Message::ShowTransferQueue)
+                    .padding(SPACE_XS),
+                "View Transfer Queue",
+                cosmic::widget::tooltip::Position::Bottom,
+            )
+        ]
+        .align_y(cosmic::iced::Alignment::Center);
+
+        let mut transfers_col = column![header].spacing(SPACE_S);
 
         for (_id, state) in &self.active_transfers {
             let progress = if state.total > 0 {
