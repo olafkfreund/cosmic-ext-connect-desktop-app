@@ -15,7 +15,8 @@ use cosmic_connect_protocol::{
     plugins::{
         audiostream::AudioStreamPluginFactory, battery::BatteryPluginFactory,
         chat::ChatPluginFactory, clipboard::ClipboardPluginFactory,
-        clipboardhistory::ClipboardHistoryPluginFactory, contacts::ContactsPluginFactory,
+        clipboardhistory::ClipboardHistoryPluginFactory,
+        contacts::{ContactsPlugin, ContactsPluginFactory},
         filesync::FileSyncPluginFactory, findmyphone::FindMyPhonePluginFactory,
         lock::LockPluginFactory, mousekeyboardshare::MouseKeyboardSharePluginFactory,
         mpris::MprisPluginFactory, notification::NotificationPluginFactory,
@@ -836,6 +837,7 @@ impl Daemon {
             let mpris_manager = self.mpris_manager.clone();
             let dump_packets = self.dump_packets;
             let packet_sender = self.packet_sender.clone();
+            let config = self.config.clone();
             tokio::spawn(async move {
                 while let Some(event) = event_rx.recv().await {
                     // Convert TransportManagerEvent to ConnectionEvent
@@ -903,6 +905,7 @@ impl Daemon {
                         &mpris_manager,
                         dump_packets,
                         packet_sender.clone(),
+                        &config,
                     )
                     .await
                     {
@@ -942,6 +945,7 @@ impl Daemon {
             let mpris_manager = self.mpris_manager.clone();
             let dump_packets = self.dump_packets;
             let packet_sender = self.packet_sender.clone();
+            let config = self.config.clone();
             tokio::spawn(async move {
                 while let Some(event) = event_rx.recv().await {
                     if let Err(e) = Self::handle_connection_event(
@@ -956,6 +960,7 @@ impl Daemon {
                         &mpris_manager,
                         dump_packets,
                         packet_sender.clone(),
+                        &config,
                     )
                     .await
                     {
@@ -1215,6 +1220,7 @@ impl Daemon {
         mpris_manager: &Option<Arc<mpris_manager::MprisManager>>,
         dump_packets: bool,
         packet_sender: Sender<(String, Packet)>,
+        config: &Arc<RwLock<Config>>,
     ) -> Result<()> {
         match event {
             ConnectionEvent::Connected {
@@ -1266,6 +1272,46 @@ impl Daemon {
                                                 );
                                                 wol.set_mac_address(mac_address);
                                             }
+                                        }
+                                    }
+                                }
+
+                                // Initialize Contacts plugin database and signals
+                                if let Some(contacts_plugin) =
+                                    plug_manager.get_device_plugin_mut(&device_id, "contacts")
+                                {
+                                    if let Some(contacts) = contacts_plugin
+                                        .as_any_mut()
+                                        .downcast_mut::<ContactsPlugin>()
+                                    {
+                                        // Get data dir from config
+                                        let config = config.read().await;
+                                        let db_path = config
+                                            .paths
+                                            .data_dir
+                                            .join(format!("contacts_{}.db", device_id));
+                                        drop(config);
+
+                                        if let Some(db_path_str) = db_path.to_str() {
+                                            if let Err(e) =
+                                                contacts.init_database(db_path_str).await
+                                            {
+                                                error!(
+                                                    "Failed to init contacts DB for device {}: {}",
+                                                    device_id, e
+                                                );
+                                            } else {
+                                                info!("Contacts DB initialized for device {}", device_id);
+                                            }
+                                        }
+
+                                        if let Err(e) = contacts.init_signals().await {
+                                            error!(
+                                                "Failed to init contacts signals for device {}: {}",
+                                                device_id, e
+                                            );
+                                        } else {
+                                            info!("Contacts signals initialized for device {}", device_id);
                                         }
                                     }
                                 }
