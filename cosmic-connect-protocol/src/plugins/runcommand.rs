@@ -181,6 +181,9 @@ pub struct RunCommandPlugin {
 
     /// Count of commands executed
     commands_executed: Arc<RwLock<u64>>,
+
+    /// Channel to send packets
+    packet_sender: Option<tokio::sync::mpsc::Sender<(String, Packet)>>,
 }
 
 impl RunCommandPlugin {
@@ -200,6 +203,7 @@ impl RunCommandPlugin {
             config: Arc::new(RwLock::new(RunCommandConfig::default())),
             config_path: None,
             commands_executed: Arc::new(RwLock::new(0)),
+            packet_sender: None,
         }
     }
 
@@ -506,8 +510,9 @@ impl Plugin for RunCommandPlugin {
         vec!["cconnect.runcommand".to_string()]
     }
 
-    async fn init(&mut self, device: &Device, _packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>) -> Result<()> {
+    async fn init(&mut self, device: &Device, packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>) -> Result<()> {
         self.device_id = Some(device.id().to_string());
+        self.packet_sender = Some(packet_sender);
 
         // Set up config path
         self.config_path = Some(Self::get_config_path(device.id())?);
@@ -536,10 +541,16 @@ impl Plugin for RunCommandPlugin {
 
     async fn handle_packet(&mut self, packet: &Packet, _device: &mut Device) -> Result<()> {
         if packet.packet_type == "cconnect.runcommand.request" {
-            if let Some(_response) = self.handle_request(packet).await? {
-                // Response packet would need to be sent via connection manager
-                // This will be handled by the daemon
-                debug!("Command list response packet created");
+            if let Some(response) = self.handle_request(packet).await? {
+                if let Some(sender) = &self.packet_sender {
+                    if let Some(device_id) = &self.device_id {
+                        if let Err(e) = sender.send((device_id.clone(), response)).await {
+                            error!("Failed to send runcommand response: {}", e);
+                        } else {
+                            debug!("Sent runcommand response");
+                        }
+                    }
+                }
             }
         }
         Ok(())

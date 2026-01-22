@@ -92,6 +92,9 @@ pub struct ContactsPlugin {
 
     /// DBus signals for contact updates (optional)
     signals: Option<ContactsSignals>,
+
+    /// Channel to send packets
+    packet_sender: Option<tokio::sync::mpsc::Sender<(String, Packet)>>,
 }
 
 impl ContactsPlugin {
@@ -103,6 +106,7 @@ impl ContactsPlugin {
             vcards_cache: HashMap::new(),
             database: None,
             signals: None,
+            packet_sender: None,
         }
     }
 
@@ -392,8 +396,9 @@ impl Plugin for ContactsPlugin {
         ]
     }
 
-    async fn init(&mut self, device: &Device, _packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>) -> Result<()> {
+    async fn init(&mut self, device: &Device, packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>) -> Result<()> {
         self.device_id = Some(device.id().to_string());
+        self.packet_sender = Some(packet_sender);
         info!("Contacts plugin initialized for device {}", device.name());
         Ok(())
     }
@@ -401,7 +406,16 @@ impl Plugin for ContactsPlugin {
     async fn start(&mut self) -> Result<()> {
         info!("Starting contacts plugin");
         // Automatically request contacts on start
-        // TODO: Send request packet via plugin manager
+        if let Some(sender) = &self.packet_sender {
+            if let Some(device_id) = &self.device_id {
+                let packet = self.create_request_all_uids_timestamps();
+                if let Err(e) = sender.send((device_id.clone(), packet)).await {
+                    warn!("Failed to send contacts request: {}", e);
+                } else {
+                    debug!("Sent contacts request");
+                }
+            }
+        }
         Ok(())
     }
 
