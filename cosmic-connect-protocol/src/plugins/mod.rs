@@ -111,6 +111,7 @@ pub mod lock;
 pub mod r#macro;
 pub mod mousekeyboardshare;
 pub mod mpris;
+pub mod networkshare;
 pub mod notification;
 pub mod ping;
 pub mod power;

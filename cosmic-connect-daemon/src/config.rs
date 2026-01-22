@@ -239,6 +239,10 @@ pub struct PluginConfig {
     /// Enable MouseKeyboardShare plugin (Synergy-like input sharing)
     #[serde(default = "default_false")]
     pub enable_mousekeyboardshare: bool,
+
+    /// Enable NetworkShare plugin (SFTP mounting)
+    #[serde(default = "default_true")]
+    pub enable_networkshare: bool,
 }
 
 /// Storage paths configuration
@@ -381,6 +385,7 @@ impl Default for PluginConfig {
             enable_filesync: false, // File sync disabled by default (requires file system integration)
             enable_screenshare: false, // Screen share disabled by default (requires screen capture)
             enable_mousekeyboardshare: false, // Mouse/keyboard share disabled by default (requires input capture)
+            enable_networkshare: true, // SFTP mounting enabled by default
         }
     }
 }
