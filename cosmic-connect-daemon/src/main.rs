@@ -25,7 +25,8 @@ use cosmic_connect_protocol::{
         r#macro::MacroPluginFactory, remoteinput::RemoteInputPluginFactory,
         runcommand::RunCommandPluginFactory, screenshare::ScreenSharePluginFactory,
         screenshot::ScreenshotPluginFactory, share::SharePluginFactory,
-        systemmonitor::SystemMonitorPluginFactory, telephony::TelephonyPluginFactory,
+        systemmonitor::SystemMonitorPluginFactory, systemvolume::SystemVolumePluginFactory,
+        connectivity_report::ConnectivityReportPluginFactory, telephony::TelephonyPluginFactory,
         wol::WolPluginFactory, PluginManager,
     },
     CertificateInfo, DeviceInfo, DeviceManager, DeviceType, Packet, TransportManager,
@@ -499,6 +500,14 @@ impl Daemon {
             manager
                 .register_factory(Arc::new(NetworkSharePluginFactory))
                 .context("Failed to register NetworkShare plugin factory")?;
+
+            manager
+                .register_factory(Arc::new(SystemVolumePluginFactory))
+                .context("Failed to register SystemVolume plugin factory")?;
+
+            manager
+                .register_factory(Arc::new(ConnectivityReportPluginFactory))
+                .context("Failed to register ConnectivityReport plugin factory")?;
         }
 
         info!(

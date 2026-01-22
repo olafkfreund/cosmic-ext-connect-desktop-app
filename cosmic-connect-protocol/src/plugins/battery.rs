@@ -415,6 +415,8 @@ impl Plugin for BatteryPlugin {
         vec![
             "cconnect.battery".to_string(),
             "cconnect.battery.request".to_string(),
+            "kdeconnect.battery".to_string(),
+            "kdeconnect.battery.request".to_string(),
         ]
     }
 
@@ -442,16 +444,10 @@ impl Plugin for BatteryPlugin {
     }
 
     async fn handle_packet(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
-        match packet.packet_type.as_str() {
-            "cconnect.battery" => {
-                self.handle_battery_status(packet, device);
-            }
-            "cconnect.battery.request" => {
-                self.handle_battery_request(packet, device);
-            }
-            _ => {
-                // Ignore other packet types
-            }
+        if packet.is_type("cconnect.battery") {
+            self.handle_battery_status(packet, device);
+        } else if packet.is_type("cconnect.battery.request") {
+            self.handle_battery_request(packet, device);
         }
         Ok(())
     }
@@ -470,6 +466,8 @@ impl PluginFactory for BatteryPluginFactory {
         vec![
             "cconnect.battery".to_string(),
             "cconnect.battery.request".to_string(),
+            "kdeconnect.battery".to_string(),
+            "kdeconnect.battery.request".to_string(),
         ]
     }
 
@@ -532,9 +530,11 @@ mod tests {
         let plugin = BatteryPlugin::new();
 
         let incoming = plugin.incoming_capabilities();
-        assert_eq!(incoming.len(), 2);
+        assert_eq!(incoming.len(), 4);
         assert!(incoming.contains(&"cconnect.battery".to_string()));
         assert!(incoming.contains(&"cconnect.battery.request".to_string()));
+        assert!(incoming.contains(&"kdeconnect.battery".to_string()));
+        assert!(incoming.contains(&"kdeconnect.battery.request".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 2);

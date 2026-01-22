@@ -188,7 +188,7 @@ pub struct ClipboardHistoryItem {
     pub pinned: bool,
 
     /// Content type (for future image support)
-    #[serde(default = "default_content_type")]
+    #[serde(rename = "contentType", default = "default_content_type")]
     pub content_type: String,
 }
 
@@ -504,7 +504,7 @@ impl ClipboardHistoryPlugin {
                 "id": item.id,
                 "content": item.content,
                 "timestamp": item.timestamp,
-                "content_type": item.content_type
+                "contentType": item.content_type
             }),
         )
     }
@@ -535,7 +535,7 @@ impl ClipboardHistoryPlugin {
                     "content": item.content,
                     "timestamp": item.timestamp,
                     "pinned": item.pinned,
-                    "content_type": item.content_type
+                    "contentType": item.content_type
                 })
             })
             .collect();
@@ -628,11 +628,15 @@ impl ClipboardHistoryPlugin {
             content.len()
         );
 
-        let item = ClipboardHistoryItem::with_id_and_timestamp(
+        let mut item = ClipboardHistoryItem::with_id_and_timestamp(
             id.to_string(),
             content.to_string(),
             timestamp,
         );
+
+        if let Some(content_type) = packet.body.get("contentType").and_then(|v| v.as_str()) {
+            item.content_type = content_type.to_string();
+        }
 
         self.storage.add(item)?;
 
@@ -748,6 +752,11 @@ impl Plugin for ClipboardHistoryPlugin {
             "cconnect.cliphistory.pin".to_string(),
             "cconnect.cliphistory.delete".to_string(),
             "cconnect.cliphistory.search".to_string(),
+            "kdeconnect.cliphistory.sync".to_string(),
+            "kdeconnect.cliphistory.add".to_string(),
+            "kdeconnect.cliphistory.pin".to_string(),
+            "kdeconnect.cliphistory.delete".to_string(),
+            "kdeconnect.cliphistory.search".to_string(),
         ]
     }
 
@@ -790,16 +799,18 @@ impl Plugin for ClipboardHistoryPlugin {
             return Ok(());
         }
 
-        match packet.packet_type.as_str() {
-            "cconnect.cliphistory.sync" => self.handle_sync(packet, device).await,
-            "cconnect.cliphistory.add" => self.handle_add(packet, device).await,
-            "cconnect.cliphistory.pin" => self.handle_pin(packet, device).await,
-            "cconnect.cliphistory.delete" => self.handle_delete(packet, device).await,
-            "cconnect.cliphistory.search" => self.handle_search(packet, device).await,
-            _ => {
-                warn!("Unknown packet type: {}", packet.packet_type);
-                Ok(())
-            }
+        if packet.is_type("cconnect.cliphistory.sync") {
+            self.handle_sync(packet, device).await
+        } else if packet.is_type("cconnect.cliphistory.add") {
+            self.handle_add(packet, device).await
+        } else if packet.is_type("cconnect.cliphistory.pin") {
+            self.handle_pin(packet, device).await
+        } else if packet.is_type("cconnect.cliphistory.delete") {
+            self.handle_delete(packet, device).await
+        } else if packet.is_type("cconnect.cliphistory.search") {
+            self.handle_search(packet, device).await
+        } else {
+            Ok(())
         }
     }
 }
@@ -823,6 +834,11 @@ impl PluginFactory for ClipboardHistoryPluginFactory {
             "cconnect.cliphistory.pin".to_string(),
             "cconnect.cliphistory.delete".to_string(),
             "cconnect.cliphistory.search".to_string(),
+            "kdeconnect.cliphistory.sync".to_string(),
+            "kdeconnect.cliphistory.add".to_string(),
+            "kdeconnect.cliphistory.pin".to_string(),
+            "kdeconnect.cliphistory.delete".to_string(),
+            "kdeconnect.cliphistory.search".to_string(),
         ]
     }
 
@@ -999,12 +1015,14 @@ mod tests {
         plugin.start().await.unwrap();
 
         let mut device = create_test_device();
+        let now = Utc::now().timestamp_millis();
         let packet = Packet::new(
             "cconnect.cliphistory.add",
             json!({
                 "id": "test-id",
                 "content": "Added content",
-                "timestamp": 1640000000000i64
+                "timestamp": now,
+                "contentType": "text/plain"
             }),
         );
 
@@ -1062,12 +1080,11 @@ mod tests {
         let plugin = ClipboardHistoryPlugin::new();
 
         let incoming = plugin.incoming_capabilities();
-        assert_eq!(incoming.len(), 5);
+        assert_eq!(incoming.len(), 10);
         assert!(incoming.contains(&"cconnect.cliphistory.sync".to_string()));
         assert!(incoming.contains(&"cconnect.cliphistory.add".to_string()));
-        assert!(incoming.contains(&"cconnect.cliphistory.pin".to_string()));
-        assert!(incoming.contains(&"cconnect.cliphistory.delete".to_string()));
-        assert!(incoming.contains(&"cconnect.cliphistory.search".to_string()));
+        assert!(incoming.contains(&"kdeconnect.cliphistory.sync".to_string()));
+        assert!(incoming.contains(&"kdeconnect.cliphistory.add".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 3);

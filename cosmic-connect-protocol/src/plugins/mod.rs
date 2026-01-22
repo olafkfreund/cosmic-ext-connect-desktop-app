@@ -84,7 +84,7 @@
 //!     }
 //!
 //!     async fn handle_packet(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
-//!         if packet.packet_type == "cconnect.ping" {
+//!         if packet.is_type("cconnect.ping") {
 //!             info!("Received ping from {}", device.name());
 //!             // Handle ping...
 //!         }
@@ -104,6 +104,7 @@ pub mod battery;
 pub mod chat;
 pub mod clipboard;
 pub mod clipboardhistory;
+pub mod connectivity_report;
 pub mod contacts;
 pub mod filesync;
 pub mod findmyphone;
@@ -123,6 +124,7 @@ pub mod screenshare;
 pub mod screenshot;
 pub mod share;
 pub mod systemmonitor;
+pub mod systemvolume;
 pub mod telephony;
 pub mod wol;
 
@@ -648,12 +650,30 @@ impl PluginManager {
         packet: &Packet,
         device: &mut Device,
     ) -> Result<()> {
-        let packet_type = &packet.packet_type;
+        let mut packet_type = packet.packet_type.clone();
 
         // Find plugin name for this packet type
-        let plugin_name = self.capability_map.get(packet_type).ok_or_else(|| {
-            ProtocolError::Plugin(format!("No plugin handles packet type: {}", packet_type))
-        })?;
+        let plugin_name = if let Some(name) = self.capability_map.get(&packet_type) {
+            name.clone()
+        } else if packet_type.starts_with("kdeconnect.") {
+            // Auto-alias kdeconnect.* to cconnect.* if not handled
+            let aliased = packet_type.replace("kdeconnect.", "cconnect.");
+            if let Some(name) = self.capability_map.get(&aliased) {
+                debug!("Aliasing packet type {} to {} for routing", packet_type, aliased);
+                packet_type = aliased;
+                name.clone()
+            } else {
+                return Err(ProtocolError::Plugin(format!(
+                    "No plugin handles packet type: {} (nor aliased {})",
+                    packet.packet_type, aliased
+                )));
+            }
+        } else {
+            return Err(ProtocolError::Plugin(format!(
+                "No plugin handles packet type: {}",
+                packet_type
+            )));
+        };
 
         // Get device plugins
         let device_plugins = self.device_plugins.get_mut(device_id).ok_or_else(|| {
@@ -661,7 +681,7 @@ impl PluginManager {
         })?;
 
         // Get plugin instance for this device
-        let plugin = device_plugins.get_mut(plugin_name).ok_or_else(|| {
+        let plugin = device_plugins.get_mut(&plugin_name).ok_or_else(|| {
             ProtocolError::Plugin(format!(
                 "Plugin '{}' not found for device {}",
                 plugin_name, device_id
@@ -669,8 +689,8 @@ impl PluginManager {
         })?;
 
         debug!(
-            "Routing packet {} to plugin {} for device {}",
-            packet_type, plugin_name, device_id
+            "Routing packet {} (effective: {}) to plugin {} for device {}",
+            packet.packet_type, packet_type, plugin_name, device_id
         );
 
         // Handle packet with error isolation

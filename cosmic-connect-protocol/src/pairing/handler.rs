@@ -68,7 +68,6 @@ pub enum PairingStatus {
     /// Pairing request sent, awaiting response
     Requested,
     /// Pairing request received, awaiting user confirmation
-    #[serde(rename = "requested_by_peer")]
     RequestedByPeer,
     /// Successfully paired
     Paired,

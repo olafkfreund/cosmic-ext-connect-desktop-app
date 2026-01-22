@@ -46,6 +46,7 @@ use super::{Plugin, PluginFactory};
 
 /// Packet type for SFTP connection info
 pub const PACKET_TYPE_SFTP: &str = "kdeconnect.sftp";
+pub const PACKET_TYPE_CCONNECT_SFTP: &str = "cconnect.sftp";
 
 /// SFTP connection details
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,7 +124,10 @@ impl Plugin for NetworkSharePlugin {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec![PACKET_TYPE_SFTP.to_string()]
+        vec![
+            PACKET_TYPE_SFTP.to_string(),
+            PACKET_TYPE_CCONNECT_SFTP.to_string(),
+        ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
@@ -149,14 +153,10 @@ impl Plugin for NetworkSharePlugin {
     }
 
     async fn handle_packet(&mut self, packet: &Packet, _device: &mut Device) -> Result<()> {
-        match packet.packet_type.as_str() {
-            PACKET_TYPE_SFTP => {
-                self.handle_sftp_packet(packet).await
-            }
-            _ => {
-                warn!("Unexpected packet type: {}", packet.packet_type);
-                Ok(())
-            }
+        if packet.is_type("kdeconnect.sftp") {
+            self.handle_sftp_packet(packet).await
+        } else {
+            Ok(())
         }
     }
 }
@@ -171,7 +171,10 @@ impl PluginFactory for NetworkSharePluginFactory {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec![PACKET_TYPE_SFTP.to_string()]
+        vec![
+            PACKET_TYPE_SFTP.to_string(),
+            PACKET_TYPE_CCONNECT_SFTP.to_string(),
+        ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {

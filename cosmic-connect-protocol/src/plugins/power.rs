@@ -418,6 +418,9 @@ impl Plugin for PowerPlugin {
             "cconnect.power.request".to_string(),
             "cconnect.power.inhibit".to_string(),
             "cconnect.power.query".to_string(),
+            "kdeconnect.power.request".to_string(),
+            "kdeconnect.power.inhibit".to_string(),
+            "kdeconnect.power.query".to_string(),
         ]
     }
 
@@ -457,14 +460,14 @@ impl Plugin for PowerPlugin {
             return Ok(());
         }
 
-        match packet.packet_type.as_str() {
-            "cconnect.power.request" => self.handle_power_request(packet, device).await,
-            "cconnect.power.inhibit" => self.handle_inhibit_request(packet, device).await,
-            "cconnect.power.query" => self.handle_status_query(packet, device).await,
-            _ => {
-                warn!("Unknown packet type: {}", packet.packet_type);
-                Ok(())
-            }
+        if packet.is_type("cconnect.power.request") {
+            self.handle_power_request(packet, device).await
+        } else if packet.is_type("cconnect.power.inhibit") {
+            self.handle_inhibit_request(packet, device).await
+        } else if packet.is_type("cconnect.power.query") {
+            self.handle_status_query(packet, device).await
+        } else {
+            Ok(())
         }
     }
 }
@@ -486,6 +489,9 @@ impl PluginFactory for PowerPluginFactory {
             "cconnect.power.request".to_string(),
             "cconnect.power.inhibit".to_string(),
             "cconnect.power.query".to_string(),
+            "kdeconnect.power.request".to_string(),
+            "kdeconnect.power.inhibit".to_string(),
+            "kdeconnect.power.query".to_string(),
         ]
     }
 
@@ -561,18 +567,18 @@ mod tests {
     fn test_plugin_capabilities() {
         let plugin = PowerPlugin::new();
 
-        assert!(plugin
-            .incoming_capabilities()
-            .contains(&"cconnect.power.request".to_string()));
-        assert!(plugin
-            .incoming_capabilities()
-            .contains(&"cconnect.power.inhibit".to_string()));
-        assert!(plugin
-            .incoming_capabilities()
-            .contains(&"cconnect.power.query".to_string()));
-        assert!(plugin
-            .outgoing_capabilities()
-            .contains(&"cconnect.power.status".to_string()));
+        let incoming = plugin.incoming_capabilities();
+        assert_eq!(incoming.len(), 6);
+        assert!(incoming.contains(&"cconnect.power.request".to_string()));
+        assert!(incoming.contains(&"cconnect.power.inhibit".to_string()));
+        assert!(incoming.contains(&"cconnect.power.query".to_string()));
+        assert!(incoming.contains(&"kdeconnect.power.request".to_string()));
+        assert!(incoming.contains(&"kdeconnect.power.inhibit".to_string()));
+        assert!(incoming.contains(&"kdeconnect.power.query".to_string()));
+
+        let outgoing = plugin.outgoing_capabilities();
+        assert_eq!(outgoing.len(), 1);
+        assert!(outgoing.contains(&"cconnect.power.status".to_string()));
     }
 
     #[tokio::test]

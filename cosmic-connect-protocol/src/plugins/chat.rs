@@ -395,7 +395,7 @@ impl ChatPlugin {
         Packet::new(
             "cconnect.chat.message",
             json!({
-                "message_id": message.message_id,
+                "messageId": message.message_id,
                 "text": message.text,
                 "timestamp": message.timestamp
             }),
@@ -404,12 +404,12 @@ impl ChatPlugin {
 
     /// Create typing indicator packet
     pub fn create_typing_packet(&self, is_typing: bool) -> Packet {
-        Packet::new("cconnect.chat.typing", json!({ "is_typing": is_typing }))
+        Packet::new("cconnect.chat.typing", json!({ "isTyping": is_typing }))
     }
 
     /// Create read receipt packet
     pub fn create_read_packet(&self, message_id: &str) -> Packet {
-        Packet::new("cconnect.chat.read", json!({ "message_id": message_id }))
+        Packet::new("cconnect.chat.read", json!({ "messageId": message_id }))
     }
 
     /// Create history request packet
@@ -422,7 +422,7 @@ impl ChatPlugin {
             "cconnect.chat.history",
             json!({
                 "limit": limit,
-                "before_timestamp": before_timestamp
+                "beforeTimestamp": before_timestamp
             }),
         )
     }
@@ -433,10 +433,10 @@ impl ChatPlugin {
             .into_iter()
             .map(|msg| {
                 json!({
-                    "message_id": msg.message_id,
+                    "messageId": msg.message_id,
                     "text": msg.text,
                     "timestamp": msg.timestamp,
-                    "from_me": msg.from_me,
+                    "fromMe": msg.from_me,
                     "read": msg.read
                 })
             })
@@ -452,9 +452,9 @@ impl ChatPlugin {
     async fn handle_message(&mut self, packet: &Packet, device: &Device) -> Result<()> {
         let message_id = packet
             .body
-            .get("message_id")
+            .get("messageId")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ProtocolError::invalid_state("Missing message_id"))?;
+            .ok_or_else(|| ProtocolError::invalid_state("Missing messageId"))?;
 
         let text = packet
             .body
@@ -494,7 +494,7 @@ impl ChatPlugin {
     async fn handle_typing(&mut self, packet: &Packet, device: &Device) -> Result<()> {
         let is_typing = packet
             .body
-            .get("is_typing")
+            .get("isTyping")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
@@ -514,9 +514,9 @@ impl ChatPlugin {
     async fn handle_read(&mut self, packet: &Packet, device: &Device) -> Result<()> {
         let message_id = packet
             .body
-            .get("message_id")
+            .get("messageId")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ProtocolError::invalid_state("Missing message_id"))?;
+            .ok_or_else(|| ProtocolError::invalid_state("Missing messageId"))?;
 
         info!(
             "Received read receipt from {} ({}): {}",
@@ -538,7 +538,7 @@ impl ChatPlugin {
             .and_then(|v| v.as_u64())
             .unwrap_or(50) as usize;
 
-        let before_timestamp = packet.body.get("before_timestamp").and_then(|v| v.as_i64());
+        let before_timestamp = packet.body.get("beforeTimestamp").and_then(|v| v.as_i64());
 
         info!(
             "Received history request from {} ({}): limit={}",
@@ -588,6 +588,10 @@ impl Plugin for ChatPlugin {
             "cconnect.chat.typing".to_string(),
             "cconnect.chat.read".to_string(),
             "cconnect.chat.history".to_string(),
+            "kdeconnect.chat.message".to_string(),
+            "kdeconnect.chat.typing".to_string(),
+            "kdeconnect.chat.read".to_string(),
+            "kdeconnect.chat.history".to_string(),
         ]
     }
 
@@ -627,15 +631,16 @@ impl Plugin for ChatPlugin {
             return Ok(());
         }
 
-        match packet.packet_type.as_str() {
-            "cconnect.chat.message" => self.handle_message(packet, device).await,
-            "cconnect.chat.typing" => self.handle_typing(packet, device).await,
-            "cconnect.chat.read" => self.handle_read(packet, device).await,
-            "cconnect.chat.history" => self.handle_history_request(packet, device).await,
-            _ => {
-                warn!("Unknown packet type: {}", packet.packet_type);
-                Ok(())
-            }
+        if packet.is_type("cconnect.chat.message") {
+            self.handle_message(packet, device).await
+        } else if packet.is_type("cconnect.chat.typing") {
+            self.handle_typing(packet, device).await
+        } else if packet.is_type("cconnect.chat.read") {
+            self.handle_read(packet, device).await
+        } else if packet.is_type("cconnect.chat.history") {
+            self.handle_history_request(packet, device).await
+        } else {
+            Ok(())
         }
     }
 }
@@ -658,6 +663,10 @@ impl PluginFactory for ChatPluginFactory {
             "cconnect.chat.typing".to_string(),
             "cconnect.chat.read".to_string(),
             "cconnect.chat.history".to_string(),
+            "kdeconnect.chat.message".to_string(),
+            "kdeconnect.chat.typing".to_string(),
+            "kdeconnect.chat.read".to_string(),
+            "kdeconnect.chat.history".to_string(),
         ]
     }
 
@@ -794,9 +803,11 @@ mod tests {
         let plugin = ChatPlugin::new();
 
         let incoming = plugin.incoming_capabilities();
-        assert_eq!(incoming.len(), 4);
+        assert_eq!(incoming.len(), 8);
         assert!(incoming.contains(&"cconnect.chat.message".to_string()));
         assert!(incoming.contains(&"cconnect.chat.typing".to_string()));
+        assert!(incoming.contains(&"kdeconnect.chat.message".to_string()));
+        assert!(incoming.contains(&"kdeconnect.chat.typing".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 3);
@@ -811,12 +822,13 @@ mod tests {
         plugin.start().await.unwrap();
 
         let mut device = create_test_device();
+        let now = Utc::now().timestamp_millis();
         let packet = Packet::new(
             "cconnect.chat.message",
             json!({
-                "message_id": "test-id",
+                "messageId": "test-id",
                 "text": "Hello from remote",
-                "timestamp": 1640000000000i64
+                "timestamp": now
             }),
         );
 

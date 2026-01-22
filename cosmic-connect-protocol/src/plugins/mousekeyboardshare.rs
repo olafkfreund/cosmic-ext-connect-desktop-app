@@ -113,11 +113,11 @@ pub struct ScreenGeometry {
     pub height: u32,
 
     /// X offset (for multi-monitor setups)
-    #[serde(default)]
+    #[serde(rename = "xOffset", default)]
     pub x_offset: i32,
 
     /// Y offset (for multi-monitor setups)
-    #[serde(default)]
+    #[serde(rename = "yOffset", default)]
     pub y_offset: i32,
 
     /// DPI/scale factor
@@ -146,13 +146,15 @@ impl Default for ScreenGeometry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EdgeMapping {
     /// Device ID for this edge
+    #[serde(rename = "deviceId")]
     pub device_id: String,
 
     /// Which edge on the remote device
+    #[serde(rename = "remoteEdge")]
     pub remote_edge: ScreenEdge,
 
     /// Dead zone size in pixels (to avoid accidental switching)
-    #[serde(default = "default_dead_zone")]
+    #[serde(rename = "deadZone", default = "default_dead_zone")]
     pub dead_zone: u32,
 }
 
@@ -165,30 +167,31 @@ fn default_dead_zone() -> u32 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MkShareConfig {
     /// This desktop's screen geometry
+    #[serde(rename = "localGeometry")]
     pub local_geometry: ScreenGeometry,
 
     /// Edge mappings (which edge connects to which device)
-    #[serde(default)]
+    #[serde(rename = "edgeMappings", default)]
     pub edge_mappings: HashMap<ScreenEdge, EdgeMapping>,
 
     /// Enable edge switching
-    #[serde(default = "default_true")]
+    #[serde(rename = "enableEdgeSwitching", default = "default_true")]
     pub enable_edge_switching: bool,
 
     /// Enable hotkey switching
-    #[serde(default = "default_true")]
+    #[serde(rename = "enableHotkeySwitching", default = "default_true")]
     pub enable_hotkey_switching: bool,
 
     /// Hotkey combination (e.g., "Ctrl+Shift+Tab")
-    #[serde(default = "default_hotkey")]
+    #[serde(rename = "switchHotkey", default = "default_hotkey")]
     pub switch_hotkey: String,
 
     /// Enable clipboard sync
-    #[serde(default = "default_true")]
+    #[serde(rename = "enableClipboardSync", default = "default_true")]
     pub enable_clipboard_sync: bool,
 
     /// Edge detection threshold in pixels
-    #[serde(default = "default_edge_threshold")]
+    #[serde(rename = "edgeThreshold", default = "default_edge_threshold")]
     pub edge_threshold: u32,
 }
 
@@ -287,11 +290,11 @@ pub struct MouseEvent {
     pub pressed: bool,
 
     /// Scroll delta X
-    #[serde(default)]
+    #[serde(rename = "scrollX", default)]
     pub scroll_x: i32,
 
     /// Scroll delta Y
-    #[serde(default)]
+    #[serde(rename = "scrollY", default)]
     pub scroll_y: i32,
 }
 
@@ -299,6 +302,7 @@ pub struct MouseEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyboardEvent {
     /// Key code
+    #[serde(rename = "keyCode")]
     pub key_code: u32,
 
     /// Key pressed (true) or released (false)
@@ -495,7 +499,10 @@ impl Plugin for MouseKeyboardSharePlugin {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec![INCOMING_CAPABILITY.to_string()]
+        vec![
+            INCOMING_CAPABILITY.to_string(),
+            "kdeconnect.mkshare".to_string(),
+        ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
@@ -547,75 +554,56 @@ impl Plugin for MouseKeyboardSharePlugin {
 
         debug!("Handling packet type: {}", packet.packet_type);
 
-        match packet.packet_type.as_str() {
-            "cconnect.mkshare.config" => {
-                // Receive remote configuration
-                let remote_config: MkShareConfig = serde_json::from_value(packet.body.clone())
-                    .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
+        if packet.is_type("cconnect.mkshare.config") {
+            // Receive remote configuration
+            let remote_config: MkShareConfig = serde_json::from_value(packet.body.clone())
+                .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
 
-                self.remote_configs
-                    .insert(device.id().to_string(), remote_config);
+            self.remote_configs
+                .insert(device.id().to_string(), remote_config);
 
-                info!("Received screen configuration from {}", device.name());
-            }
+            info!("Received screen configuration from {}", device.name());
+        } else if packet.is_type("cconnect.mkshare.mouse") {
+            // Receive mouse event from remote
+            let mouse_event: MouseEvent = serde_json::from_value(packet.body.clone())
+                .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
 
-            "cconnect.mkshare.mouse" => {
-                // Receive mouse event from remote
-                let mouse_event: MouseEvent = serde_json::from_value(packet.body.clone())
-                    .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
+            // TODO: Inject mouse event into local system
+            // TODO: Use RemoteInput plugin for actual injection
 
-                // TODO: Inject mouse event into local system
-                // TODO: Use RemoteInput plugin for actual injection
+            debug!(
+                "Received mouse event: ({}, {}), button: {}, pressed: {}",
+                mouse_event.x, mouse_event.y, mouse_event.button, mouse_event.pressed
+            );
+        } else if packet.is_type("cconnect.mkshare.keyboard") {
+            // Receive keyboard event from remote
+            let kbd_event: KeyboardEvent = serde_json::from_value(packet.body.clone())
+                .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
 
-                debug!(
-                    "Received mouse event: ({}, {}), button: {}, pressed: {}",
-                    mouse_event.x, mouse_event.y, mouse_event.button, mouse_event.pressed
-                );
-            }
+            // TODO: Inject keyboard event into local system
+            // TODO: Use RemoteInput plugin for actual injection
 
-            "cconnect.mkshare.keyboard" => {
-                // Receive keyboard event from remote
-                let kbd_event: KeyboardEvent = serde_json::from_value(packet.body.clone())
-                    .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
+            debug!(
+                "Received keyboard event: key_code: {}, pressed: {}, modifiers: {}",
+                kbd_event.key_code, kbd_event.pressed, kbd_event.modifiers
+            );
+        } else if packet.is_type("cconnect.mkshare.enter") {
+            // Remote desktop's cursor entered this screen
+            info!("Remote cursor entered from {}", device.name());
 
-                // TODO: Inject keyboard event into local system
-                // TODO: Use RemoteInput plugin for actual injection
+            // TODO: Show cursor at entry point
+            // TODO: Start forwarding local input to remote
+        } else if packet.is_type("cconnect.mkshare.leave") {
+            // Remote desktop's cursor left this screen
+            info!("Remote cursor left to {}", device.name());
 
-                debug!(
-                    "Received keyboard event: key_code: {}, pressed: {}, modifiers: {}",
-                    kbd_event.key_code, kbd_event.pressed, kbd_event.modifiers
-                );
-            }
+            // TODO: Hide cursor
+            // TODO: Stop forwarding input
+        } else if packet.is_type("cconnect.mkshare.hotkey") {
+            // Hotkey-triggered switch
+            info!("Hotkey switch requested by {}", device.name());
 
-            "cconnect.mkshare.enter" => {
-                // Remote desktop's cursor entered this screen
-                info!("Remote cursor entered from {}", device.name());
-
-                // TODO: Show cursor at entry point
-                // TODO: Start forwarding local input to remote
-            }
-
-            "cconnect.mkshare.leave" => {
-                // Remote desktop's cursor left this screen
-                info!("Remote cursor left to {}", device.name());
-
-                // TODO: Hide cursor
-                // TODO: Stop forwarding input
-            }
-
-            "cconnect.mkshare.hotkey" => {
-                // Hotkey-triggered switch
-                info!("Hotkey switch requested by {}", device.name());
-
-                // TODO: Switch control to requesting device
-            }
-
-            _ => {
-                warn!(
-                    "Unknown MouseKeyboardShare packet type: {}",
-                    packet.packet_type
-                );
-            }
+            // TODO: Switch control to requesting device
         }
 
         Ok(())
@@ -635,7 +623,10 @@ impl PluginFactory for MouseKeyboardSharePluginFactory {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec![INCOMING_CAPABILITY.to_string()]
+        vec![
+            INCOMING_CAPABILITY.to_string(),
+            "kdeconnect.mkshare".to_string(),
+        ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {

@@ -490,7 +490,10 @@ impl Plugin for AudioStreamPlugin {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec![INCOMING_CAPABILITY.to_string()]
+        vec![
+            INCOMING_CAPABILITY.to_string(),
+            "kdeconnect.audiostream".to_string(),
+        ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
@@ -543,57 +546,45 @@ impl Plugin for AudioStreamPlugin {
 
         debug!("Handling packet type: {}", packet.packet_type);
 
-        match packet.packet_type.as_str() {
-            "cconnect.audiostream.start" => {
-                // Start audio stream with configuration
-                let config: StreamConfig = serde_json::from_value(packet.body.clone())
-                    .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
+        if packet.is_type("cconnect.audiostream.start") {
+            // Start audio stream with configuration
+            let config: StreamConfig = serde_json::from_value(packet.body.clone())
+                .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
 
-                self.start_stream(config).await?;
+            self.start_stream(config).await?;
 
-                info!("Audio stream started from remote request");
+            info!("Audio stream started from remote request");
+        } else if packet.is_type("cconnect.audiostream.stop") {
+            // Stop audio stream
+            let direction: StreamDirection = packet
+                .body
+                .get("direction")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or(StreamDirection::Output);
+
+            match direction {
+                StreamDirection::Output => self.stop_outgoing_stream().await?,
+                StreamDirection::Input => self.stop_incoming_stream().await?,
             }
 
-            "cconnect.audiostream.stop" => {
-                // Stop audio stream
-                let direction: StreamDirection = packet
-                    .body
-                    .get("direction")
-                    .and_then(|v| serde_json::from_value(v.clone()).ok())
-                    .unwrap_or(StreamDirection::Output);
+            info!("Audio stream stopped from remote request");
+        } else if packet.is_type("cconnect.audiostream.config") {
+            // Update stream configuration
+            let config: StreamConfig = serde_json::from_value(packet.body.clone())
+                .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
 
-                match direction {
-                    StreamDirection::Output => self.stop_outgoing_stream().await?,
-                    StreamDirection::Input => self.stop_incoming_stream().await?,
-                }
+            self.update_config(config).await?;
 
-                info!("Audio stream stopped from remote request");
-            }
-
-            "cconnect.audiostream.config" => {
-                // Update stream configuration
-                let config: StreamConfig = serde_json::from_value(packet.body.clone())
-                    .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
-
-                self.update_config(config).await?;
-
-                info!("Audio stream configuration updated");
-            }
-
-            "cconnect.audiostream.data" => {
-                // Process audio data packet
-                // TODO: Extract audio data from packet payload
-                // For now, just acknowledge receipt
-                if let Some(_payload) = packet.body.get("data").and_then(|v| v.as_str()) {
-                    // TODO: Decode base64 payload
-                    debug!("Received audio data packet (payload size unknown)");
-                } else {
-                    warn!("Audio data packet has no payload");
-                }
-            }
-
-            _ => {
-                warn!("Unknown AudioStream packet type: {}", packet.packet_type);
+            info!("Audio stream configuration updated");
+        } else if packet.is_type("cconnect.audiostream.data") {
+            // Process audio data packet
+            // TODO: Extract audio data from packet payload
+            // For now, just acknowledge receipt
+            if let Some(_payload) = packet.body.get("data").and_then(|v| v.as_str()) {
+                // TODO: Decode base64 payload
+                debug!("Received audio data packet (payload size unknown)");
+            } else {
+                warn!("Audio data packet has no payload");
             }
         }
 
@@ -614,7 +605,10 @@ impl PluginFactory for AudioStreamPluginFactory {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec![INCOMING_CAPABILITY.to_string()]
+        vec![
+            INCOMING_CAPABILITY.to_string(),
+            "kdeconnect.audiostream".to_string(),
+        ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {

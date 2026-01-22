@@ -546,6 +546,8 @@ impl Plugin for ClipboardPlugin {
         vec![
             "cconnect.clipboard".to_string(),
             "cconnect.clipboard.connect".to_string(),
+            "kdeconnect.clipboard".to_string(),
+            "kdeconnect.clipboard.connect".to_string(),
         ]
     }
 
@@ -577,14 +579,10 @@ impl Plugin for ClipboardPlugin {
     }
 
     async fn handle_packet(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
-        match packet.packet_type.as_str() {
-            "cconnect.clipboard" => {
-                self.handle_clipboard_update(packet, device).await;
-            }
-            "cconnect.clipboard.connect" => {
-                self.handle_clipboard_connect(packet, device).await;
-            }
-            _ => {}
+        if packet.is_type("cconnect.clipboard") {
+            self.handle_clipboard_update(packet, device).await;
+        } else if packet.is_type("cconnect.clipboard.connect") {
+            self.handle_clipboard_connect(packet, device).await;
         }
         Ok(())
     }
@@ -603,6 +601,8 @@ impl PluginFactory for ClipboardPluginFactory {
         vec![
             "cconnect.clipboard".to_string(),
             "cconnect.clipboard.connect".to_string(),
+            "kdeconnect.clipboard".to_string(),
+            "kdeconnect.clipboard.connect".to_string(),
         ]
     }
 
@@ -672,9 +672,11 @@ mod tests {
         let plugin = ClipboardPlugin::new();
 
         let incoming = plugin.incoming_capabilities();
-        assert_eq!(incoming.len(), 2);
+        assert_eq!(incoming.len(), 4);
         assert!(incoming.contains(&"cconnect.clipboard".to_string()));
         assert!(incoming.contains(&"cconnect.clipboard.connect".to_string()));
+        assert!(incoming.contains(&"kdeconnect.clipboard".to_string()));
+        assert!(incoming.contains(&"kdeconnect.clipboard.connect".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 2);

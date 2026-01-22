@@ -515,6 +515,9 @@ impl Plugin for ScreenshotPlugin {
             "cconnect.screenshot.request".to_string(),
             "cconnect.screenshot.region".to_string(),
             "cconnect.screenshot.window".to_string(),
+            "kdeconnect.screenshot.request".to_string(),
+            "kdeconnect.screenshot.region".to_string(),
+            "kdeconnect.screenshot.window".to_string(),
         ]
     }
 
@@ -558,14 +561,14 @@ impl Plugin for ScreenshotPlugin {
             return Ok(());
         }
 
-        match packet.packet_type.as_str() {
-            "cconnect.screenshot.request" => self.handle_screenshot_request(packet, device).await,
-            "cconnect.screenshot.region" => self.handle_region_request(packet, device).await,
-            "cconnect.screenshot.window" => self.handle_window_request(packet, device).await,
-            _ => {
-                warn!("Unknown packet type: {}", packet.packet_type);
-                Ok(())
-            }
+        if packet.is_type("cconnect.screenshot.request") {
+            self.handle_screenshot_request(packet, device).await
+        } else if packet.is_type("cconnect.screenshot.region") {
+            self.handle_region_request(packet, device).await
+        } else if packet.is_type("cconnect.screenshot.window") {
+            self.handle_window_request(packet, device).await
+        } else {
+            Ok(())
         }
     }
 }
@@ -584,6 +587,9 @@ impl PluginFactory for ScreenshotPluginFactory {
             "cconnect.screenshot.request".to_string(),
             "cconnect.screenshot.region".to_string(),
             "cconnect.screenshot.window".to_string(),
+            "kdeconnect.screenshot.request".to_string(),
+            "kdeconnect.screenshot.region".to_string(),
+            "kdeconnect.screenshot.window".to_string(),
         ]
     }
 
@@ -619,10 +625,13 @@ mod tests {
         let plugin = ScreenshotPlugin::new();
 
         let incoming = plugin.incoming_capabilities();
-        assert_eq!(incoming.len(), 3);
+        assert_eq!(incoming.len(), 6);
         assert!(incoming.contains(&"cconnect.screenshot.request".to_string()));
         assert!(incoming.contains(&"cconnect.screenshot.region".to_string()));
         assert!(incoming.contains(&"cconnect.screenshot.window".to_string()));
+        assert!(incoming.contains(&"kdeconnect.screenshot.request".to_string()));
+        assert!(incoming.contains(&"kdeconnect.screenshot.region".to_string()));
+        assert!(incoming.contains(&"kdeconnect.screenshot.window".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 1);

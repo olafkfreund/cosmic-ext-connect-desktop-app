@@ -600,7 +600,10 @@ impl Plugin for ScreenSharePlugin {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec![INCOMING_CAPABILITY.to_string()]
+        vec![
+            INCOMING_CAPABILITY.to_string(),
+            "kdeconnect.screenshare".to_string(),
+        ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
@@ -644,86 +647,72 @@ impl Plugin for ScreenSharePlugin {
 
         debug!("Handling packet type: {}", packet.packet_type);
 
-        match packet.packet_type.as_str() {
-            "cconnect.screenshare.start" => {
-                // Remote device started sharing
-                let config: ShareConfig = serde_json::from_value(packet.body.clone())
-                    .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
+        if packet.is_type("cconnect.screenshare.start") {
+            // Remote device started sharing
+            let config: ShareConfig = serde_json::from_value(packet.body.clone())
+                .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
 
-                info!(
-                    "Receiving screen share from {}: {} @ {}fps",
-                    device.name(),
-                    config.codec.as_str(),
-                    config.fps
-                );
+            info!(
+                "Receiving screen share from {}: {} @ {}fps",
+                device.name(),
+                config.codec.as_str(),
+                config.fps
+            );
 
-                self.receiving = true;
+            self.receiving = true;
 
-                if let Some(port) = self.local_port {
-                    // UI is ready, send ready packet immediately
-                    info!("Sending ready packet with port {}", port);
-                    if let Some(sender) = &self.packet_sender {
-                        let body = serde_json::json!({ "tcpPort": port });
-                        let packet = Packet::new("cconnect.screenshare.ready", body);
-                        if let Err(e) = sender.send((self.device_id.clone().unwrap_or_default(), packet)).await {
-                            error!("Failed to send ready packet: {}", e);
-                        }
+            if let Some(port) = self.local_port {
+                // UI is ready, send ready packet immediately
+                info!("Sending ready packet with port {}", port);
+                if let Some(sender) = &self.packet_sender {
+                    let body = serde_json::json!({ "tcpPort": port });
+                    let packet = Packet::new("cconnect.screenshare.ready", body);
+                    if let Err(e) = sender.send((self.device_id.clone().unwrap_or_default(), packet)).await {
+                        error!("Failed to send ready packet: {}", e);
                     }
-                } else {
-                    // UI not ready, request UI start (emit internal packet)
-                    info!("Screen share started by remote, requesting UI launch");
-                    if let Some(sender) = &self.packet_sender {
-                        let packet = Packet::new("cconnect.internal.screenshare.requested", serde_json::json!({}));
-                        if let Err(e) = sender.send((self.device_id.clone().unwrap_or_default(), packet)).await {
-                            error!("Failed to send internal request: {}", e);
-                        }
+                }
+            } else {
+                // UI not ready, request UI start (emit internal packet)
+                info!("Screen share started by remote, requesting UI launch");
+                if let Some(sender) = &self.packet_sender {
+                    let packet = Packet::new("cconnect.internal.screenshare.requested", serde_json::json!({}));
+                    if let Err(e) = sender.send((self.device_id.clone().unwrap_or_default(), packet)).await {
+                        error!("Failed to send internal request: {}", e);
                     }
                 }
             }
-
-            "cconnect.screenshare.frame" => {
-                // Receive screen frame
-                if !self.receiving {
-                    warn!("Received frame but not in receiving mode");
-                    return Ok(());
-                }
-
-                // Frames are handled via separate TCP stream, this packet type is likely unused
-                // in the custom protocol, but kept for compatibility or fallback.
-                debug!("Received screen frame packet (unexpected for streaming mode)");
+        } else if packet.is_type("cconnect.screenshare.frame") {
+            // Receive screen frame
+            if !self.receiving {
+                warn!("Received frame but not in receiving mode");
+                return Ok(());
             }
 
-            "cconnect.screenshare.cursor" => {
-                // Receive cursor position
-                let position: CursorPosition = serde_json::from_value(packet.body.clone())
-                    .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
+            // Frames are handled via separate TCP stream, this packet type is likely unused
+            // in the custom protocol, but kept for compatibility or fallback.
+            debug!("Received screen frame packet (unexpected for streaming mode)");
+        } else if packet.is_type("cconnect.screenshare.cursor") {
+            // Receive cursor position
+            let position: CursorPosition = serde_json::from_value(packet.body.clone())
+                .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
 
-                // TODO: Update cursor overlay on display
-                // Need to send this to UI via DBus if not part of stream
-                debug!("Cursor updated: ({}, {})", position.x, position.y);
-            }
+            // TODO: Update cursor overlay on display
+            // Need to send this to UI via DBus if not part of stream
+            debug!("Cursor updated: ({}, {})", position.x, position.y);
+        } else if packet.is_type("cconnect.screenshare.annotation") {
+            // Receive annotation
+            let annotation: Annotation = serde_json::from_value(packet.body.clone())
+                .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
 
-            "cconnect.screenshare.annotation" => {
-                // Receive annotation
-                let annotation: Annotation = serde_json::from_value(packet.body.clone())
-                    .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
-
-                // TODO: Draw annotation on display overlay
-                debug!("Annotation received: {}", annotation.annotation_type);
-            }
-
-            "cconnect.screenshare.stop" => {
-                // Remote device stopped sharing
-                info!("Screen share stopped by {}", device.name());
-                self.receiving = false;
-                
-                // We should probably inform the UI to close the window via DBus signal?
-                // Or let the UI detect stream closure.
-            }
-
-            _ => {
-                warn!("Unknown ScreenShare packet type: {}", packet.packet_type);
-            }
+            // TODO: Draw annotation on display overlay
+            debug!("Annotation received: {}", annotation.annotation_type);
+        } else if packet.is_type("cconnect.screenshare.stop") {
+            // Remote device stopped sharing
+            info!("Screen share stopped by {}", device.name());
+            self.receiving = false;
+            
+            // We should probably inform the UI to close the window via DBus signal?
+            // Or let the UI detect stream closure.
         }
 
         Ok(())
@@ -743,7 +732,10 @@ impl PluginFactory for ScreenSharePluginFactory {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec![INCOMING_CAPABILITY.to_string()]
+        vec![
+            INCOMING_CAPABILITY.to_string(),
+            "kdeconnect.screenshare".to_string(),
+        ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {

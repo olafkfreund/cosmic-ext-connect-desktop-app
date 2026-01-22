@@ -134,7 +134,7 @@ pub struct SmsMessage {
     pub id: i64,
 
     /// Thread ID
-    #[serde(rename = "thread_id")]
+    #[serde(rename = "threadId")]
     pub thread_id: i64,
 
     /// Phone number/address
@@ -158,7 +158,7 @@ pub struct SmsMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmsConversation {
     /// Thread ID
-    #[serde(rename = "thread_id")]
+    #[serde(rename = "threadId")]
     pub thread_id: i64,
 
     /// Messages in this conversation
@@ -412,6 +412,8 @@ impl Plugin for TelephonyPlugin {
         vec![
             PACKET_TYPE_TELEPHONY.to_string(),
             PACKET_TYPE_SMS_MESSAGES.to_string(),
+            "kdeconnect.telephony".to_string(),
+            "kdeconnect.sms.messages".to_string(),
         ]
     }
 
@@ -442,19 +444,15 @@ impl Plugin for TelephonyPlugin {
     }
 
     async fn handle_packet(&mut self, packet: &Packet, _device: &mut Device) -> Result<()> {
-        match packet.packet_type.as_str() {
-            PACKET_TYPE_TELEPHONY => {
-                debug!("Received telephony event");
-                self.handle_telephony_event(packet).await
-            }
-            PACKET_TYPE_SMS_MESSAGES => {
-                debug!("Received SMS messages");
-                self.handle_sms_messages(packet).await
-            }
-            _ => {
-                warn!("Unexpected packet type: {}", packet.packet_type);
-                Ok(())
-            }
+        if packet.is_type(PACKET_TYPE_TELEPHONY) {
+            debug!("Received telephony event");
+            self.handle_telephony_event(packet).await
+        } else if packet.is_type(PACKET_TYPE_SMS_MESSAGES) {
+            debug!("Received SMS messages");
+            self.handle_sms_messages(packet).await
+        } else {
+            warn!("Unexpected packet type: {}", packet.packet_type);
+            Ok(())
         }
     }
 }
@@ -472,6 +470,8 @@ impl PluginFactory for TelephonyPluginFactory {
         vec![
             PACKET_TYPE_TELEPHONY.to_string(),
             PACKET_TYPE_SMS_MESSAGES.to_string(),
+            "kdeconnect.telephony".to_string(),
+            "kdeconnect.sms.messages".to_string(),
         ]
     }
 

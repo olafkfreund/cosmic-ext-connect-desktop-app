@@ -223,7 +223,24 @@ impl Packet {
 
     /// Check if packet is of a specific type
     pub fn is_type(&self, packet_type: &str) -> bool {
-        self.packet_type == packet_type
+        if self.packet_type == packet_type {
+            return true;
+        }
+
+        // Handle COSMIC/KDE prefixes interchangeably
+        if packet_type.starts_with("cconnect.") {
+            let kde_type = packet_type.replace("cconnect.", "kdeconnect.");
+            if self.packet_type == kde_type {
+                return true;
+            }
+        } else if packet_type.starts_with("kdeconnect.") {
+            let c_type = packet_type.replace("kdeconnect.", "cconnect.");
+            if self.packet_type == c_type {
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Get a field from the body as a specific type

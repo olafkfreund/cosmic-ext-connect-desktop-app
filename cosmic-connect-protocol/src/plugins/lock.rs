@@ -359,7 +359,7 @@ impl Plugin for LockPlugin {
         self
     }
 
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+    fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
@@ -367,6 +367,8 @@ impl Plugin for LockPlugin {
         vec![
             "cconnect.lock.request".to_string(),
             "cconnect.lock".to_string(),
+            "kdeconnect.lock.request".to_string(),
+            "kdeconnect.lock".to_string(),
         ]
     }
 
@@ -408,13 +410,12 @@ impl Plugin for LockPlugin {
             return Ok(());
         }
 
-        match packet.packet_type.as_str() {
-            "cconnect.lock.request" => self.handle_lock_request(packet, device).await,
-            "cconnect.lock" => self.handle_lock_state(packet, device).await,
-            _ => {
-                warn!("Unknown packet type: {}", packet.packet_type);
-                Ok(())
-            }
+        if packet.is_type("cconnect.lock.request") {
+            self.handle_lock_request(packet, device).await
+        } else if packet.is_type("cconnect.lock") {
+            self.handle_lock_state(packet, device).await
+        } else {
+            Ok(())
         }
     }
 }
@@ -435,6 +436,8 @@ impl PluginFactory for LockPluginFactory {
         vec![
             "cconnect.lock.request".to_string(),
             "cconnect.lock".to_string(),
+            "kdeconnect.lock.request".to_string(),
+            "kdeconnect.lock".to_string(),
         ]
     }
 
@@ -503,18 +506,17 @@ mod tests {
     fn test_plugin_capabilities() {
         let plugin = LockPlugin::new();
 
-        assert!(plugin
-            .incoming_capabilities()
-            .contains(&"cconnect.lock.request".to_string()));
-        assert!(plugin
-            .incoming_capabilities()
-            .contains(&"cconnect.lock".to_string()));
-        assert!(plugin
-            .outgoing_capabilities()
-            .contains(&"cconnect.lock.request".to_string()));
-        assert!(plugin
-            .outgoing_capabilities()
-            .contains(&"cconnect.lock".to_string()));
+        let incoming = plugin.incoming_capabilities();
+        assert_eq!(incoming.len(), 4);
+        assert!(incoming.contains(&"cconnect.lock.request".to_string()));
+        assert!(incoming.contains(&"cconnect.lock".to_string()));
+        assert!(incoming.contains(&"kdeconnect.lock.request".to_string()));
+        assert!(incoming.contains(&"kdeconnect.lock".to_string()));
+
+        let outgoing = plugin.outgoing_capabilities();
+        assert_eq!(outgoing.len(), 2);
+        assert!(outgoing.contains(&"cconnect.lock.request".to_string()));
+        assert!(outgoing.contains(&"cconnect.lock".to_string()));
     }
 
     #[tokio::test]

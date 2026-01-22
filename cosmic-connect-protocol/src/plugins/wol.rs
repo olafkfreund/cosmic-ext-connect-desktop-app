@@ -326,6 +326,8 @@ impl Plugin for WolPlugin {
         vec![
             "cconnect.wol.request".to_string(),
             "cconnect.wol.config".to_string(),
+            "kdeconnect.wol.request".to_string(),
+            "kdeconnect.wol.config".to_string(),
         ]
     }
 
@@ -362,13 +364,12 @@ impl Plugin for WolPlugin {
             return Ok(());
         }
 
-        match packet.packet_type.as_str() {
-            "cconnect.wol.request" => self.handle_wol_request(packet, device).await,
-            "cconnect.wol.config" => self.handle_wol_config(packet, device).await,
-            _ => {
-                warn!("Unknown packet type: {}", packet.packet_type);
-                Ok(())
-            }
+        if packet.is_type("cconnect.wol.request") {
+            self.handle_wol_request(packet, device).await
+        } else if packet.is_type("cconnect.wol.config") {
+            self.handle_wol_config(packet, device).await
+        } else {
+            Ok(())
         }
     }
 }
@@ -386,6 +387,8 @@ impl PluginFactory for WolPluginFactory {
         vec![
             "cconnect.wol.request".to_string(),
             "cconnect.wol.config".to_string(),
+            "kdeconnect.wol.request".to_string(),
+            "kdeconnect.wol.config".to_string(),
         ]
     }
 
@@ -422,9 +425,11 @@ mod tests {
         let plugin = WolPlugin::new();
 
         let incoming = plugin.incoming_capabilities();
-        assert_eq!(incoming.len(), 2);
+        assert_eq!(incoming.len(), 4);
         assert!(incoming.contains(&"cconnect.wol.request".to_string()));
         assert!(incoming.contains(&"cconnect.wol.config".to_string()));
+        assert!(incoming.contains(&"kdeconnect.wol.request".to_string()));
+        assert!(incoming.contains(&"kdeconnect.wol.config".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 1);

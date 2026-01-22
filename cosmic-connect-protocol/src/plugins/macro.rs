@@ -205,6 +205,7 @@ pub struct MacroStep {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MacroDefinition {
     /// Unique macro ID
+    #[serde(rename = "macroId")]
     pub id: String,
 
     /// Human-readable name
@@ -549,7 +550,7 @@ impl MacroPlugin {
         Packet::new(
             "cconnect.macro.define",
             json!({
-                "macro_id": macro_def.id,
+                "macroId": macro_def.id,
                 "name": macro_def.name,
                 "description": macro_def.description,
                 "steps": steps_json
@@ -566,7 +567,7 @@ impl MacroPlugin {
         Packet::new(
             "cconnect.macro.execute",
             json!({
-                "macro_id": macro_id,
+                "macroId": macro_id,
                 "variables": variables
             }),
         )
@@ -577,17 +578,17 @@ impl MacroPlugin {
         Packet::new(
             "cconnect.macro.status",
             json!({
-                "execution_id": execution.id,
-                "macro_id": execution.macro_id,
+                "executionId": execution.id,
+                "macroId": execution.macro_id,
                 "status": match execution.status {
                     MacroExecutionStatus::Running => "running",
                     MacroExecutionStatus::Completed => "completed",
                     MacroExecutionStatus::Failed => "failed",
                     MacroExecutionStatus::Cancelled => "cancelled",
                 },
-                "current_step": execution.current_step,
-                "total_steps": execution.total_steps,
-                "error_message": execution.error_message
+                "currentStep": execution.current_step,
+                "totalSteps": execution.total_steps,
+                "errorMessage": execution.error_message
             }),
         )
     }
@@ -596,9 +597,9 @@ impl MacroPlugin {
     async fn handle_define(&mut self, packet: &Packet, device: &Device) -> Result<()> {
         let macro_id = packet
             .body
-            .get("macro_id")
+            .get("macroId")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ProtocolError::invalid_state("Missing macro_id"))?;
+            .ok_or_else(|| ProtocolError::invalid_state("Missing macroId"))?;
 
         let name = packet
             .body
@@ -656,9 +657,9 @@ impl MacroPlugin {
     async fn handle_execute(&mut self, packet: &Packet, device: &Device) -> Result<()> {
         let macro_id = packet
             .body
-            .get("macro_id")
+            .get("macroId")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ProtocolError::invalid_state("Missing macro_id"))?;
+            .ok_or_else(|| ProtocolError::invalid_state("Missing macroId"))?;
 
         let variables = packet
             .body
@@ -689,9 +690,9 @@ impl MacroPlugin {
     async fn handle_cancel(&mut self, packet: &Packet, device: &Device) -> Result<()> {
         let exec_id = packet
             .body
-            .get("execution_id")
+            .get("executionId")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ProtocolError::invalid_state("Missing execution_id"))?;
+            .ok_or_else(|| ProtocolError::invalid_state("Missing executionId"))?;
 
         info!(
             "Received macro cancel from {} ({}): {}",
@@ -750,6 +751,10 @@ impl Plugin for MacroPlugin {
             "cconnect.macro.execute".to_string(),
             "cconnect.macro.cancel".to_string(),
             "cconnect.macro.list".to_string(),
+            "kdeconnect.macro.define".to_string(),
+            "kdeconnect.macro.execute".to_string(),
+            "kdeconnect.macro.cancel".to_string(),
+            "kdeconnect.macro.list".to_string(),
         ]
     }
 
@@ -799,15 +804,16 @@ impl Plugin for MacroPlugin {
             return Ok(());
         }
 
-        match packet.packet_type.as_str() {
-            "cconnect.macro.define" => self.handle_define(packet, device).await,
-            "cconnect.macro.execute" => self.handle_execute(packet, device).await,
-            "cconnect.macro.cancel" => self.handle_cancel(packet, device).await,
-            "cconnect.macro.list" => self.handle_list(packet, device).await,
-            _ => {
-                warn!("Unknown packet type: {}", packet.packet_type);
-                Ok(())
-            }
+        if packet.is_type("cconnect.macro.define") {
+            self.handle_define(packet, device).await
+        } else if packet.is_type("cconnect.macro.execute") {
+            self.handle_execute(packet, device).await
+        } else if packet.is_type("cconnect.macro.cancel") {
+            self.handle_cancel(packet, device).await
+        } else if packet.is_type("cconnect.macro.list") {
+            self.handle_list(packet, device).await
+        } else {
+            Ok(())
         }
     }
 }
@@ -830,6 +836,10 @@ impl PluginFactory for MacroPluginFactory {
             "cconnect.macro.execute".to_string(),
             "cconnect.macro.cancel".to_string(),
             "cconnect.macro.list".to_string(),
+            "kdeconnect.macro.define".to_string(),
+            "kdeconnect.macro.execute".to_string(),
+            "kdeconnect.macro.cancel".to_string(),
+            "kdeconnect.macro.list".to_string(),
         ]
     }
 
@@ -965,9 +975,11 @@ mod tests {
         let plugin = MacroPlugin::new();
 
         let incoming = plugin.incoming_capabilities();
-        assert_eq!(incoming.len(), 4);
+        assert_eq!(incoming.len(), 8);
         assert!(incoming.contains(&"cconnect.macro.define".to_string()));
         assert!(incoming.contains(&"cconnect.macro.execute".to_string()));
+        assert!(incoming.contains(&"kdeconnect.macro.define".to_string()));
+        assert!(incoming.contains(&"kdeconnect.macro.execute".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 2);

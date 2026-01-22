@@ -386,6 +386,8 @@ impl Plugin for ContactsPlugin {
         vec![
             PACKET_TYPE_RESPONSE_UIDS_TIMESTAMPS.to_string(),
             PACKET_TYPE_RESPONSE_VCARDS.to_string(),
+            "kdeconnect.contacts.response_uids_timestamps".to_string(),
+            "kdeconnect.contacts.response_vcards".to_string(),
         ]
     }
 
@@ -425,15 +427,12 @@ impl Plugin for ContactsPlugin {
     }
 
     async fn handle_packet(&mut self, packet: &Packet, _device: &mut Device) -> Result<()> {
-        match packet.packet_type.as_str() {
-            PACKET_TYPE_RESPONSE_UIDS_TIMESTAMPS => {
-                self.handle_uids_timestamps_response(packet).await
-            }
-            PACKET_TYPE_RESPONSE_VCARDS => self.handle_vcards_response(packet).await,
-            _ => {
-                warn!("Unknown packet type: {}", packet.packet_type);
-                Ok(())
-            }
+        if packet.is_type(PACKET_TYPE_RESPONSE_UIDS_TIMESTAMPS) {
+            self.handle_uids_timestamps_response(packet).await
+        } else if packet.is_type(PACKET_TYPE_RESPONSE_VCARDS) {
+            self.handle_vcards_response(packet).await
+        } else {
+            Ok(())
         }
     }
 }
@@ -450,6 +449,8 @@ impl PluginFactory for ContactsPluginFactory {
         vec![
             PACKET_TYPE_RESPONSE_UIDS_TIMESTAMPS.to_string(),
             PACKET_TYPE_RESPONSE_VCARDS.to_string(),
+            "kdeconnect.contacts.response_uids_timestamps".to_string(),
+            "kdeconnect.contacts.response_vcards".to_string(),
         ]
     }
 

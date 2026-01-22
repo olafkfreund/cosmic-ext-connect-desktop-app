@@ -516,7 +516,10 @@ impl Plugin for SystemMonitorPlugin {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec!["cconnect.systemmonitor.request".to_string()]
+        vec![
+            "cconnect.systemmonitor.request".to_string(),
+            "kdeconnect.systemmonitor.request".to_string(),
+        ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
@@ -553,12 +556,10 @@ impl Plugin for SystemMonitorPlugin {
             return Ok(());
         }
 
-        match packet.packet_type.as_str() {
-            "cconnect.systemmonitor.request" => self.handle_request(packet, device).await,
-            _ => {
-                warn!("Unknown packet type: {}", packet.packet_type);
-                Ok(())
-            }
+        if packet.is_type("cconnect.systemmonitor.request") {
+            self.handle_request(packet, device).await
+        } else {
+            Ok(())
         }
     }
 }
@@ -573,7 +574,10 @@ impl PluginFactory for SystemMonitorPluginFactory {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec!["cconnect.systemmonitor.request".to_string()]
+        vec![
+            "cconnect.systemmonitor.request".to_string(),
+            "kdeconnect.systemmonitor.request".to_string(),
+        ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
@@ -610,8 +614,9 @@ mod tests {
         let plugin = SystemMonitorPlugin::new();
 
         let incoming = plugin.incoming_capabilities();
-        assert_eq!(incoming.len(), 1);
+        assert_eq!(incoming.len(), 2);
         assert!(incoming.contains(&"cconnect.systemmonitor.request".to_string()));
+        assert!(incoming.contains(&"kdeconnect.systemmonitor.request".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 2);

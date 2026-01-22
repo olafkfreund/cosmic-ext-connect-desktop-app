@@ -653,22 +653,14 @@ impl Plugin for NotificationPlugin {
     }
 
     async fn handle_packet(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
-        match packet.packet_type.as_str() {
-            "cconnect.notification" => {
-                self.handle_notification(packet, device);
-            }
-            "cconnect.notification.request" => {
-                self.handle_request(packet, device);
-            }
-            "cconnect.notification.action" => {
-                self.handle_action(packet, device);
-            }
-            "cconnect.notification.reply" => {
-                self.handle_reply(packet, device);
-            }
-            _ => {
-                // Ignore other packet types
-            }
+        if packet.is_type("cconnect.notification") {
+            self.handle_notification(packet, device);
+        } else if packet.is_type("cconnect.notification.request") {
+            self.handle_request(packet, device);
+        } else if packet.is_type("cconnect.notification.action") {
+            self.handle_action(packet, device);
+        } else if packet.is_type("cconnect.notification.reply") {
+            self.handle_reply(packet, device);
         }
         Ok(())
     }

@@ -503,7 +503,10 @@ impl Plugin for RunCommandPlugin {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec!["cconnect.runcommand.request".to_string()]
+        vec![
+            "cconnect.runcommand.request".to_string(),
+            "kdeconnect.runcommand.request".to_string(),
+        ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
@@ -540,7 +543,7 @@ impl Plugin for RunCommandPlugin {
     }
 
     async fn handle_packet(&mut self, packet: &Packet, _device: &mut Device) -> Result<()> {
-        if packet.packet_type == "cconnect.runcommand.request" {
+        if packet.is_type("cconnect.runcommand.request") {
             if let Some(response) = self.handle_request(packet).await? {
                 if let Some(sender) = &self.packet_sender {
                     if let Some(device_id) = &self.device_id {
@@ -579,7 +582,10 @@ impl PluginFactory for RunCommandPluginFactory {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec!["cconnect.runcommand.request".to_string()]
+        vec![
+            "cconnect.runcommand.request".to_string(),
+            "kdeconnect.runcommand.request".to_string(),
+        ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
@@ -612,8 +618,9 @@ mod tests {
         let plugin = RunCommandPlugin::new();
 
         let incoming = plugin.incoming_capabilities();
-        assert_eq!(incoming.len(), 1);
-        assert_eq!(incoming[0], "cconnect.runcommand.request");
+        assert_eq!(incoming.len(), 2);
+        assert!(incoming.contains(&"cconnect.runcommand.request".to_string()));
+        assert!(incoming.contains(&"kdeconnect.runcommand.request".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 1);

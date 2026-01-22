@@ -1276,6 +1276,8 @@ impl Plugin for MprisPlugin {
         vec![
             "cconnect.mpris".to_string(),
             "cconnect.mpris.request".to_string(),
+            "kdeconnect.mpris".to_string(),
+            "kdeconnect.mpris.request".to_string(),
         ]
     }
 
@@ -1304,14 +1306,10 @@ impl Plugin for MprisPlugin {
     }
 
     async fn handle_packet(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
-        match packet.packet_type.as_str() {
-            "cconnect.mpris" => {
-                self.handle_mpris_status(packet, device).await;
-            }
-            "cconnect.mpris.request" => {
-                self.handle_mpris_request(packet, device);
-            }
-            _ => {}
+        if packet.is_type("cconnect.mpris") {
+            self.handle_mpris_status(packet, device).await;
+        } else if packet.is_type("cconnect.mpris.request") {
+            self.handle_mpris_request(packet, device);
         }
         Ok(())
     }
@@ -1330,6 +1328,8 @@ impl PluginFactory for MprisPluginFactory {
         vec![
             "cconnect.mpris".to_string(),
             "cconnect.mpris.request".to_string(),
+            "kdeconnect.mpris".to_string(),
+            "kdeconnect.mpris.request".to_string(),
         ]
     }
 
@@ -1395,9 +1395,11 @@ mod tests {
         let plugin = MprisPlugin::new();
 
         let incoming = plugin.incoming_capabilities();
-        assert_eq!(incoming.len(), 2);
+        assert_eq!(incoming.len(), 4);
         assert!(incoming.contains(&"cconnect.mpris".to_string()));
         assert!(incoming.contains(&"cconnect.mpris.request".to_string()));
+        assert!(incoming.contains(&"kdeconnect.mpris".to_string()));
+        assert!(incoming.contains(&"kdeconnect.mpris.request".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 2);

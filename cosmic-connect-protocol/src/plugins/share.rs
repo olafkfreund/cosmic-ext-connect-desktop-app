@@ -839,6 +839,8 @@ impl Plugin for SharePlugin {
         vec![
             "cconnect.share.request".to_string(),
             "cconnect.share.request.update".to_string(),
+            "kdeconnect.share.request".to_string(),
+            "kdeconnect.share.request.update".to_string(),
         ]
     }
 
@@ -867,14 +869,10 @@ impl Plugin for SharePlugin {
     }
 
     async fn handle_packet(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
-        match packet.packet_type.as_str() {
-            "cconnect.share.request" => {
-                self.handle_share_request(packet, device).await;
-            }
-            "cconnect.share.request.update" => {
-                self.handle_multifile_update(packet, device);
-            }
-            _ => {}
+        if packet.is_type("cconnect.share.request") {
+            self.handle_share_request(packet, device).await;
+        } else if packet.is_type("cconnect.share.request.update") {
+            self.handle_multifile_update(packet, device);
         }
         Ok(())
     }
@@ -893,6 +891,8 @@ impl PluginFactory for SharePluginFactory {
         vec![
             "cconnect.share.request".to_string(),
             "cconnect.share.request.update".to_string(),
+            "kdeconnect.share.request".to_string(),
+            "kdeconnect.share.request.update".to_string(),
         ]
     }
 
@@ -931,9 +931,11 @@ mod tests {
         let plugin = SharePlugin::new();
 
         let incoming = plugin.incoming_capabilities();
-        assert_eq!(incoming.len(), 2);
+        assert_eq!(incoming.len(), 4);
         assert!(incoming.contains(&"cconnect.share.request".to_string()));
         assert!(incoming.contains(&"cconnect.share.request.update".to_string()));
+        assert!(incoming.contains(&"kdeconnect.share.request".to_string()));
+        assert!(incoming.contains(&"kdeconnect.share.request.update".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 2);

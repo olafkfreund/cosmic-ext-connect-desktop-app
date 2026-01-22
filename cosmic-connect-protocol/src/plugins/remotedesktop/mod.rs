@@ -153,6 +153,8 @@ impl Plugin for RemoteDesktopPlugin {
         vec![
             "cconnect.remotedesktop.request".to_string(),
             "cconnect.remotedesktop.control".to_string(),
+            "kdeconnect.remotedesktop.request".to_string(),
+            "kdeconnect.remotedesktop.control".to_string(),
         ]
     }
 
@@ -190,13 +192,12 @@ impl Plugin for RemoteDesktopPlugin {
             return Ok(());
         }
 
-        match packet.packet_type.as_str() {
-            "cconnect.remotedesktop.request" => self.handle_request(packet, device).await,
-            "cconnect.remotedesktop.control" => self.handle_control(packet, device).await,
-            _ => {
-                warn!("Unknown packet type: {}", packet.packet_type);
-                Ok(())
-            }
+        if packet.is_type("cconnect.remotedesktop.request") {
+            self.handle_request(packet, device).await
+        } else if packet.is_type("cconnect.remotedesktop.control") {
+            self.handle_control(packet, device).await
+        } else {
+            Ok(())
         }
     }
 }
@@ -394,6 +395,8 @@ impl PluginFactory for RemoteDesktopPluginFactory {
         vec![
             "cconnect.remotedesktop.request".to_string(),
             "cconnect.remotedesktop.control".to_string(),
+            "kdeconnect.remotedesktop.request".to_string(),
+            "kdeconnect.remotedesktop.control".to_string(),
         ]
     }
 
@@ -433,9 +436,11 @@ mod tests {
         let plugin = RemoteDesktopPlugin::new();
 
         let incoming = plugin.incoming_capabilities();
-        assert_eq!(incoming.len(), 2);
+        assert_eq!(incoming.len(), 4);
         assert!(incoming.contains(&"cconnect.remotedesktop.request".to_string()));
         assert!(incoming.contains(&"cconnect.remotedesktop.control".to_string()));
+        assert!(incoming.contains(&"kdeconnect.remotedesktop.request".to_string()));
+        assert!(incoming.contains(&"kdeconnect.remotedesktop.control".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 2);
@@ -518,7 +523,7 @@ mod tests {
         let factory = RemoteDesktopPluginFactory;
 
         let incoming = factory.incoming_capabilities();
-        assert_eq!(incoming.len(), 2);
+        assert_eq!(incoming.len(), 4);
 
         let outgoing = factory.outgoing_capabilities();
         assert_eq!(outgoing.len(), 2);

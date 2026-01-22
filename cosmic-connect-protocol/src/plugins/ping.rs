@@ -245,7 +245,7 @@ impl Plugin for PingPlugin {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec!["cconnect.ping".to_string()]
+        vec!["cconnect.ping".to_string(), "kdeconnect.ping".to_string()]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
@@ -273,7 +273,7 @@ impl Plugin for PingPlugin {
     }
 
     async fn handle_packet(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
-        if packet.packet_type == "cconnect.ping" {
+        if packet.is_type("cconnect.ping") {
             self.handle_ping(packet, device);
         }
         Ok(())
@@ -305,7 +305,7 @@ impl PluginFactory for PingPluginFactory {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec!["cconnect.ping".to_string()]
+        vec!["cconnect.ping".to_string(), "kdeconnect.ping".to_string()]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
@@ -340,8 +340,9 @@ mod tests {
         let plugin = PingPlugin::new();
 
         let incoming = plugin.incoming_capabilities();
-        assert_eq!(incoming.len(), 1);
-        assert_eq!(incoming[0], "cconnect.ping");
+        assert_eq!(incoming.len(), 2);
+        assert!(incoming.contains(&"cconnect.ping".to_string()));
+        assert!(incoming.contains(&"kdeconnect.ping".to_string()));
 
         let outgoing = plugin.outgoing_capabilities();
         assert_eq!(outgoing.len(), 1);
