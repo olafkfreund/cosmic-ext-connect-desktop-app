@@ -30,7 +30,6 @@ const SPACE_XXS: f32 = 4.0; // Tight spacing
 const SPACE_XS: f32 = 6.0; // Extra small
 const SPACE_S: f32 = 8.0; // Small (default for most UI elements)
 const SPACE_M: f32 = 12.0; // Medium (sections, groups)
-const SPACE_L: f32 = 16.0; // Large (major sections)
 const SPACE_XL: f32 = 20.0; // Extra large
 const SPACE_XXL: f32 = 24.0; // Double extra large (empty states, major padding)
 
@@ -43,7 +42,6 @@ const ICON_L: u16 = 32;
 const ICON_XL: u16 = 48; // Hero/Empty state
                          // Specific sizes
 const ICON_14: u16 = 14; // Text-aligned small
-const ICON_28: u16 = 28; // Device row icon
 
 fn main() -> cosmic::iced::Result {
     // Initialize logging with environment variable support
@@ -148,6 +146,20 @@ const PLUGINS: &[PluginMetadata] = &[
         description: "Execute remote commands",
         icon: "system-run-symbolic",
         capability: "cconnect.runcommand",
+    },
+    PluginMetadata {
+        id: "contacts",
+        name: "Contacts",
+        description: "Sync contacts",
+        icon: "x-office-address-book-symbolic",
+        capability: "cconnect.contacts.request_all_uids_timestamps",
+    },
+    PluginMetadata {
+        id: "networkshare",
+        name: "Network Share",
+        description: "Mount remote filesystem",
+        icon: "folder-remote-symbolic",
+        capability: "kdeconnect.sftp",
     },
 ];
 
@@ -2411,10 +2423,8 @@ impl CConnectApplet {
         let device_id = &device.info.device_id;
 
         let device_icon = device_type_icon(device.info.device_type);
-        let status_icon = connection_status_icon(device.connection_state, device.pairing_status);
-        let quality_icon = connection_quality_icon(device.connection_state);
 
-        // Device name and status column with last seen for disconnected devices
+        // Device name
         let nickname = self
             .device_configs
             .get(device_id)
@@ -2422,90 +2432,82 @@ impl CConnectApplet {
 
         let display_name = nickname.unwrap_or(&device.info.device_name);
 
-        let mut name_status_col = column![
-            cosmic::widget::text::heading(display_name),
-            connection_status_styled_text(device.connection_state, device.pairing_status),
+        // Metadata row: Status • Battery • Last Seen
+        let mut metadata_row = row![
+            connection_status_styled_text(device.connection_state, device.pairing_status)
         ]
-        .spacing(SPACE_XXXS);
-
-        // Add last seen timestamp for disconnected devices
-        if !device.is_connected() && device.last_seen > 0 {
-            let last_seen_text = format_last_seen(device.last_seen);
-            name_status_col = name_status_col.push(cosmic::widget::text::caption(format!(
-                "Last seen: {}",
-                last_seen_text
-            )));
-        }
-
-        // Info row with optional battery indicator
-        let info_row = match device_state.battery_level {
-            Some(level) => {
-                let battery_icon = battery_icon_name(level, device_state.is_charging);
-                row![
-                    name_status_col,
-                    row![
-                        icon::from_name(battery_icon).size(ICON_14),
-                        cosmic::widget::text::caption(format!("{}%", level)),
-                    ]
-                    .spacing(SPACE_XXS)
-                    .align_y(cosmic::iced::Alignment::Center),
-                ]
-            }
-            None => {
-                if self.loading_battery && device.is_connected() {
-                    row![
-                        name_status_col,
-                        icon::from_name("process-working-symbolic").size(ICON_14)
-                    ]
-                    .spacing(SPACE_S)
-                    .align_y(cosmic::iced::Alignment::Center)
-                } else {
-                    row![name_status_col]
-                }
-            }
-        }
-        .spacing(SPACE_S)
+        .spacing(SPACE_XS)
         .align_y(cosmic::iced::Alignment::Center);
 
-        // Build actions row
+        // Add battery if available
+        if let Some(level) = device_state.battery_level {
+            metadata_row = metadata_row.push(
+                text("•")
+                    .size(ICON_XS)
+                    .class(theme::Text::Color(Color::from_rgb(0.5, 0.5, 0.5))),
+            );
+
+            let battery_icon = battery_icon_name(level, device_state.is_charging);
+            metadata_row = metadata_row.push(
+                row![
+                    icon::from_name(battery_icon).size(ICON_XS),
+                    cosmic::widget::text::caption(format!("{}%", level)),
+                ]
+                .spacing(SPACE_XXXS)
+                .align_y(cosmic::iced::Alignment::Center),
+            );
+        } else if self.loading_battery && device.is_connected() {
+            metadata_row = metadata_row.push(
+                text("•")
+                    .size(ICON_XS)
+                    .class(theme::Text::Color(Color::from_rgb(0.5, 0.5, 0.5))),
+            );
+            metadata_row =
+                metadata_row.push(icon::from_name("process-working-symbolic").size(ICON_XS));
+        }
+
+        // Add last seen if disconnected
+        if !device.is_connected() && device.last_seen > 0 {
+            let last_seen_text = format_last_seen(device.last_seen);
+            metadata_row = metadata_row.push(
+                text("•")
+                    .size(ICON_XS)
+                    .class(theme::Text::Color(Color::from_rgb(0.5, 0.5, 0.5))),
+            );
+            metadata_row = metadata_row.push(cosmic::widget::text::caption(last_seen_text));
+        }
+
+        // Combine Name + Metadata
+        let info_col = column![
+            cosmic::widget::text::heading(display_name),
+            metadata_row
+        ]
+        .spacing(SPACE_XXXS)
+        .width(Length::Fill);
+
+        // Build actions
         let actions_row = self.build_device_actions(device, device_id);
 
-        // Main device row layout with connection quality indicator
+        // Main device row layout
         let mut content = column![
             row![
-                container(icon::from_name(device_icon).size(ICON_28))
-                    .width(Length::Fixed(44.0))
-                    .padding(SPACE_S),
-                container(
-                    column![
-                        icon::from_name(status_icon).size(ICON_14),
-                        icon::from_name(quality_icon).size(ICON_XS),
-                    ]
-                    .spacing(SPACE_XXXS)
+                container(icon::from_name(device_icon).size(ICON_L))
+                    .width(Length::Fixed(48.0))
                     .align_x(Horizontal::Center)
-                )
-                .width(Length::Fixed(22.0))
-                .padding(Padding::new(0.0).right(SPACE_XXS)),
-                container(info_row)
-                    .width(Length::Fill)
-                    .align_x(Horizontal::Left)
-                    .padding(Padding::from([SPACE_XXS, 0.0])),
+                    .padding(Padding::new(SPACE_S)),
+                info_col,
             ]
-            .spacing(SPACE_XXS)
+            .spacing(SPACE_S)
             .align_y(cosmic::iced::Alignment::Center)
             .width(Length::Fill),
+            // Actions row below
             container(actions_row)
                 .width(Length::Fill)
-                .padding(
-                    Padding::new(0.0)
-                        .bottom(SPACE_XXS)
-                        .left(66.0)
-                        .right(SPACE_M)
-                )
+                .padding(Padding::new(0.0).left(48.0 + SPACE_S)) // Indent to align with text
                 .align_x(Horizontal::Left),
         ]
-        .spacing(SPACE_XXS)
-        .padding(Padding::from([SPACE_M, SPACE_L]))
+        .spacing(SPACE_S)
+        .padding(SPACE_M)
         .width(Length::Fill);
 
         // Add settings panel if this device is expanded
@@ -2513,7 +2515,7 @@ impl CConnectApplet {
             if let Some(config) = self.device_configs.get(device_id) {
                 content = content.push(
                     container(self.device_settings_panel(device_id, device, config))
-                        .padding(Padding::from([SPACE_S, 0.0, 0.0, 66.0])), // Indent under device name
+                        .padding(Padding::from([0.0, 0.0, 0.0, 48.0 + SPACE_S])),
                 );
             }
         }
@@ -2523,7 +2525,7 @@ impl CConnectApplet {
             if let Some(settings) = self.remotedesktop_settings.get(device_id) {
                 content = content.push(
                     container(self.remotedesktop_settings_view(device_id, settings))
-                        .padding(Padding::from([SPACE_S, 0.0, 0.0, 66.0])), // Indent under device name
+                        .padding(Padding::from([0.0, 0.0, 0.0, 48.0 + SPACE_S])),
                 );
             }
         }
@@ -2532,7 +2534,15 @@ impl CConnectApplet {
         if self.file_sync_settings_device.as_ref() == Some(device_id) {
             content = content.push(
                 container(self.file_sync_settings_view(device_id))
-                    .padding(Padding::from([SPACE_S, 0.0, 0.0, 66.0])), // Indent under device name
+                    .padding(Padding::from([0.0, 0.0, 0.0, 48.0 + SPACE_S])),
+            );
+        }
+
+        // Add RunCommand settings panel if active
+        if self.run_command_settings_device.as_ref() == Some(device_id) {
+            content = content.push(
+                container(self.run_command_settings_view(device_id))
+                    .padding(Padding::from([0.0, 0.0, 0.0, 48.0 + SPACE_S])),
             );
         }
 
@@ -3459,21 +3469,6 @@ fn device_type_icon(device_type: DeviceType) -> &'static str {
     }
 }
 
-/// Returns the status indicator icon based on connection and pairing state
-fn connection_status_icon(
-    connection_state: ConnectionState,
-    pairing_status: PairingStatus,
-) -> &'static str {
-    match (connection_state, pairing_status) {
-        (ConnectionState::Connected, PairingStatus::Paired) => "emblem-ok-symbolic",
-        (_, PairingStatus::Paired) => "emblem-default-symbolic",
-        (_, PairingStatus::RequestedByPeer | PairingStatus::Requested) => {
-            "emblem-synchronizing-symbolic"
-        }
-        _ => "dialog-question-symbolic",
-    }
-}
-
 /// Returns human-readable status text based on connection and pairing state
 fn connection_status_text(
     connection_state: ConnectionState,
@@ -3519,16 +3514,6 @@ fn battery_icon_name(level: u8, is_charging: bool) -> &'static str {
             20..=49 => "battery-low-symbolic",
             _ => "battery-caution-symbolic",
         }
-    }
-}
-
-/// Returns connection quality indicator (signal strength bars) based on connection state
-fn connection_quality_icon(connection_state: ConnectionState) -> &'static str {
-    match connection_state {
-        ConnectionState::Connected => "network-wireless-signal-excellent-symbolic",
-        ConnectionState::Connecting => "network-wireless-signal-weak-symbolic",
-        ConnectionState::Failed => "network-wireless-signal-none-symbolic",
-        ConnectionState::Disconnected => "network-wireless-offline-symbolic",
     }
 }
 
