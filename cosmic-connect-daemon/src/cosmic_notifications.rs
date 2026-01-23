@@ -250,6 +250,32 @@ impl CosmicNotifier {
         .await
     }
 
+    /// Send a messaging notification with potentially actionable web URL
+    pub async fn notify_messaging(
+        &self,
+        device_name: &str,
+        app_name: &str,
+        sender: &str,
+        message: &str,
+        web_url: Option<&str>,
+    ) -> Result<u32> {
+        let summary = format!("{} ({})", sender, device_name);
+        let body = format!("{}\n{}", app_name, message);
+
+        let mut builder = NotificationBuilder::new(summary)
+            .body(body)
+            .icon("mail-message-new-symbolic")
+            .timeout(15000); // Messaging notifications stay longer
+
+        if let Some(url) = web_url {
+            builder = builder.action(format!("open_web:{}", url), "Open in Web");
+        }
+
+        builder = builder.action("reply", "Reply");
+
+        self.send(builder).await
+    }
+
     /// Send a pairing request notification
     pub async fn notify_pairing_request(&self, device_name: &str) -> Result<u32> {
         self.send(

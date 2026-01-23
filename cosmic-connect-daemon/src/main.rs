@@ -1205,7 +1205,24 @@ impl Daemon {
                                             }
                                         }
                                         _ => {
-                                            warn!("Unknown notification action: {}", action_key);
+                                            if action_key.starts_with("open_web:") {
+                                                let url = action_key.trim_start_matches("open_web:").to_string();
+                                                info!("Opening web URL from notification: {}", url);
+                                                tokio::spawn(async move {
+                                                    if let Err(e) = tokio::process::Command::new("xdg-open")
+                                                        .arg(url)
+                                                        .spawn()
+                                                    {
+                                                        error!("Failed to open web URL: {}", e);
+                                                    }
+                                                });
+                                            } else if action_key == "reply" {
+                                                info!("Quick reply requested (TODO: implement UI)");
+                                                // TODO: This would normally trigger a UI dialog to get user input
+                                                // and then send a cconnect.notification.reply packet.
+                                            } else {
+                                                warn!("Unknown notification action: {}", action_key);
+                                            }
                                         }
                                     }
                                 }
@@ -1606,11 +1623,32 @@ impl Daemon {
                                             .and_then(|v| v.as_str())
                                             .unwrap_or("");
 
-                                        if let Err(e) = notifier
-                                            .notify_from_device(&device_name, app_name, title, text)
-                                            .await
-                                        {
-                                            warn!("Failed to send device notification: {}", e);
+                                        // Check if it's a messaging app
+                                        let is_messaging = packet
+                                            .body
+                                            .get("isMessagingApp")
+                                            .and_then(|v| v.as_bool())
+                                            .unwrap_or(false);
+
+                                        if is_messaging {
+                                            let web_url = packet
+                                                .body
+                                                .get("webUrl")
+                                                .and_then(|v| v.as_str());
+
+                                            if let Err(e) = notifier
+                                                .notify_messaging(&device_name, app_name, title, text, web_url)
+                                                .await
+                                            {
+                                                warn!("Failed to send messaging notification: {}", e);
+                                            }
+                                        } else {
+                                            if let Err(e) = notifier
+                                                .notify_from_device(&device_name, app_name, title, text)
+                                                .await
+                                            {
+                                                warn!("Failed to send device notification: {}", e);
+                                            }
                                         }
                                     }
                                 }

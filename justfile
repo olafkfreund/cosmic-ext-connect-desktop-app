@@ -225,6 +225,13 @@ package: build-release
         kdeconnect-daemon
     @echo "✅ Package created in dist/"
 
+# Deploy to a remote NixOS host (e.g., just deploy-remote user@host)
+deploy-remote TARGET:
+    @echo "🚀 Deploying to {{TARGET}}..."
+    nix copy --to ssh://{{TARGET}} .#default
+    ssh {{TARGET}} "sudo systemctl restart cosmic-connect-daemon || systemctl --user restart cosmic-connect-daemon"
+    @echo "✅ Deployment complete!"
+
 # Print project statistics
 stats:
     @echo "📊 Project Statistics"

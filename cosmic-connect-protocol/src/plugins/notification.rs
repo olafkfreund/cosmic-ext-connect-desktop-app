@@ -195,6 +195,38 @@ pub struct Notification {
     /// MD5 hash of notification icon
     #[serde(rename = "payloadHash", skip_serializing_if = "Option::is_none")]
     pub payload_hash: Option<String>,
+
+    /// Whether this notification is from a messaging app
+    #[serde(rename = "isMessagingApp", default)]
+    pub is_messaging_app: bool,
+
+    /// Package name of the messaging app
+    #[serde(rename = "packageName", skip_serializing_if = "Option::is_none")]
+    pub package_name: Option<String>,
+
+    /// URL for the web interface of the messaging app
+    #[serde(rename = "webUrl", skip_serializing_if = "Option::is_none")]
+    pub web_url: Option<String>,
+
+    /// Unique identifier for the conversation
+    #[serde(rename = "conversationId", skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
+
+    /// Whether this is a group chat
+    #[serde(rename = "isGroupChat", default)]
+    pub is_group_chat: bool,
+
+    /// Name of the group chat
+    #[serde(rename = "groupName", skip_serializing_if = "Option::is_none")]
+    pub group_name: Option<String>,
+
+    /// Whether the notification supports a quick reply action
+    #[serde(rename = "hasReplyAction", default)]
+    pub has_reply_action: bool,
+
+    /// Base64 encoded sender avatar image
+    #[serde(rename = "senderAvatar", skip_serializing_if = "Option::is_none")]
+    pub sender_avatar: Option<String>,
 }
 
 impl Notification {
