@@ -19,8 +19,8 @@
 
 use super::events::ConnectionEvent;
 use crate::{
-    CertificateInfo, DeviceManager, Packet, ProtocolError, Result, TlsConfig, TlsConnection,
-    TlsDeviceInfo, TlsServer,
+    CertificateInfo, Device, DeviceInfo, DeviceManager, Packet, ProtocolError, Result, TlsConfig,
+    TlsConnection, TlsDeviceInfo, TlsServer,
 };
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -154,6 +154,11 @@ impl ConnectionManager {
             server_task: Arc::new(RwLock::new(None)),
             last_connection_time: Arc::new(RwLock::new(HashMap::new())),
         })
+    }
+
+    /// Update local device information (e.g., capabilities)
+    pub fn update_device_info(&mut self, device_info: crate::DeviceInfo) {
+        self.device_info = Arc::new(device_info);
     }
 
     /// Get a receiver for connection events
@@ -458,8 +463,25 @@ impl ConnectionManager {
 
                 info!("Connection identified as device {}", id);
 
-                // Update device manager
+                // Update device manager - register device if not exists before marking connected
                 let mut dm = device_manager.write().await;
+
+                // Bug fix: If device doesn't exist, create it from the identity packet
+                // This handles incoming TLS connections where discovery hasn't occurred yet
+                if dm.get_device(id).is_none() {
+                    info!("Device {} not in registry, creating from identity packet", id);
+                    match DeviceInfo::from_identity_packet(&packet) {
+                        Ok(device_info) => {
+                            let device = Device::from_discovery(device_info);
+                            dm.add_device(device);
+                            info!("Registered new device {} from incoming connection", id);
+                        }
+                        Err(e) => {
+                            warn!("Failed to parse device info from identity packet: {}", e);
+                        }
+                    }
+                }
+
                 if let Err(e) =
                     dm.mark_connected(id, remote_addr.ip().to_string(), remote_addr.port())
                 {

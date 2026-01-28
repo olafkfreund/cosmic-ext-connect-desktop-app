@@ -179,7 +179,7 @@ impl Daemon {
 
         // Create connection config
         let connection_config = ConnectionConfig {
-            listen_addr: format!("0.0.0.0:{}", config.network.discovery_port)
+            listen_addr: format!("[::]:{}", config.network.discovery_port)
                 .parse()
                 .context("Invalid listen address")?,
             keep_alive_interval: Duration::from_secs(30),
@@ -530,17 +530,20 @@ impl Daemon {
         let outgoing = manager.get_all_outgoing_capabilities();
         drop(manager);
 
-        // Create device info with capabilities
-        let mut device_info = self.device_info.clone();
-        device_info.incoming_capabilities = incoming;
-        device_info.outgoing_capabilities = outgoing;
+        // Update self.device_info with capabilities
+        self.device_info.incoming_capabilities = incoming;
+        self.device_info.outgoing_capabilities = outgoing;
 
-        // Create discovery config
+        // Update connection manager with new capabilities
+        self.connection_manager.write().await.update_device_info(self.device_info.clone());
+
+        let device_info = self.device_info.clone();
         let discovery_config = DiscoveryConfig {
             broadcast_interval: Duration::from_secs(config.network.discovery_interval),
             device_timeout: Duration::from_secs(config.network.device_timeout),
             enable_timeout_check: true,
         };
+        drop(config);
 
         // Create discovery service
         let mut discovery_service = DiscoveryService::new(device_info, discovery_config)
@@ -636,6 +639,8 @@ impl Daemon {
         let pairing_notifications = self.pairing_notifications.clone();
         let pending_pairing_requests = self.pending_pairing_requests.clone();
         let error_handler = self.error_handler.clone();
+        let plugin_manager = self.plugin_manager.clone();
+        let packet_sender = self.packet_sender.clone();
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
                 if let Err(e) = Self::handle_pairing_event(
@@ -646,6 +651,8 @@ impl Daemon {
                     &pairing_notifications,
                     &pending_pairing_requests,
                     &error_handler,
+                    &plugin_manager,
+                    &packet_sender,
                 )
                 .await
                 {
@@ -669,6 +676,8 @@ impl Daemon {
         pairing_notifications: &Arc<RwLock<std::collections::HashMap<u32, String>>>,
         pending_pairing_requests: &Arc<RwLock<std::collections::HashMap<String, bool>>>,
         error_handler: &ErrorHandler,
+        plugin_manager: &Arc<RwLock<PluginManager>>,
+        packet_sender: &Sender<(String, Packet)>,
     ) -> Result<()> {
         match event {
             PairingEvent::RequestSent {
@@ -747,6 +756,25 @@ impl Daemon {
                             "Device {} paired with fingerprint: {}",
                             device_id, certificate_fingerprint
                         );
+                    }
+                }
+
+                // Initialize plugins for newly paired device
+                // This handles the case where device connected first, then paired later
+                {
+                    let dev_manager = device_manager.read().await;
+                    if let Some(device) = dev_manager.get_device(&device_id) {
+                        let mut plug_manager = plugin_manager.write().await;
+                        if let Err(e) = plug_manager
+                            .init_device_plugins(&device_id, device, packet_sender.clone())
+                            .await
+                        {
+                            error!("Failed to initialize plugins for device {}: {}", device_id, e);
+                        } else {
+                            info!("Initialized plugins for device {} after pairing", device_id);
+                        }
+                    } else {
+                        warn!("Device {} not found in manager after pairing", device_id);
                     }
                 }
 
@@ -2117,7 +2145,7 @@ impl Daemon {
                 }
 
                 // Auto-connect if paired
-                let should_connect = {
+                let should_connect = false; let _ = {
                     let manager = device_manager.read().await;
                     if let Some(device) = manager.get_device(&device_id) {
                         device.is_paired() && !device.is_connected()
@@ -2126,7 +2154,7 @@ impl Daemon {
                     }
                 };
 
-                if should_connect {
+                if false {
                     // Check backoff
                     let mut attempts = connection_attempts.write().await;
                     let now = std::time::Instant::now();
