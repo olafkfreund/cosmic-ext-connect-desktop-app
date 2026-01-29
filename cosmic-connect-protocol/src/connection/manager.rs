@@ -576,10 +576,9 @@ impl ConnectionManager {
 
             let device_id = device_id.unwrap();
 
-            // DISABLED: Keepalive pings trigger notifications on Android
-            // The phone sends its own pings to keep the connection alive
-            // We don't need to send our own keepalive pings
-            let mut keepalive_timer: Option<tokio::time::Interval> = None;
+            // Keepalive pings to maintain connection stability
+            // Uses "keepalive" flag so Android handles these silently without notifications
+            let mut keepalive_timer = Some(tokio::time::interval(KEEP_ALIVE_INTERVAL));
 
             // Main connection loop
             loop {
@@ -631,8 +630,11 @@ impl ConnectionManager {
                             std::future::pending::<()>().await;
                         }
                     } => {
-                        debug!("Sending keepalive ping to paired device {}", device_id);
-                        let ping_packet = crate::Packet::new("cconnect.ping", serde_json::json!({}));
+                        // Send keepalive ping with silent flag to prevent Android notifications
+                        debug!("Sending keepalive ping to device {}", device_id);
+                        let ping_packet = crate::Packet::new("cconnect.ping", serde_json::json!({
+                            "keepalive": true
+                        }));
                         let core_ping = ping_packet.to_core_packet();
                         if let Err(e) = connection.send_packet(&core_ping).await {
                             error!("Failed to send keepalive ping to {}: {}", device_id, e);
