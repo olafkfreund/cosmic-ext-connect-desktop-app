@@ -173,8 +173,11 @@ pub struct RunCommandPlugin {
     /// Device ID this plugin is attached to
     device_id: Option<String>,
 
-    /// Configuration storage
+    /// Configuration storage (our local commands)
     config: Arc<RwLock<RunCommandConfig>>,
+
+    /// Remote device's commands (received from connected device)
+    remote_commands: Arc<RwLock<HashMap<String, Command>>>,
 
     /// Path to configuration file
     config_path: Option<PathBuf>,
@@ -201,6 +204,7 @@ impl RunCommandPlugin {
         Self {
             device_id: None,
             config: Arc::new(RwLock::new(RunCommandConfig::default())),
+            remote_commands: Arc::new(RwLock::new(HashMap::new())),
             config_path: None,
             commands_executed: Arc::new(RwLock::new(0)),
             packet_sender: None,
@@ -480,6 +484,34 @@ impl RunCommandPlugin {
     pub async fn commands_executed(&self) -> u64 {
         *self.commands_executed.read().await
     }
+
+    /// Handle incoming command list from remote device
+    async fn handle_command_list(&self, packet: &Packet) -> Result<()> {
+        if let Some(command_list_str) = packet.body.get("commandList").and_then(|v| v.as_str()) {
+            // Parse the JSON command list
+            match serde_json::from_str::<HashMap<String, Command>>(command_list_str) {
+                Ok(commands) => {
+                    let count = commands.len();
+                    let mut remote = self.remote_commands.write().await;
+                    *remote = commands;
+                    info!("Received {} commands from remote device", count);
+                }
+                Err(e) => {
+                    warn!("Failed to parse remote command list: {}", e);
+                }
+            }
+        } else {
+            debug!("Received empty command list from remote device");
+            let mut remote = self.remote_commands.write().await;
+            remote.clear();
+        }
+        Ok(())
+    }
+
+    /// Get the remote device's available commands
+    pub async fn get_remote_commands(&self) -> HashMap<String, Command> {
+        self.remote_commands.read().await.clone()
+    }
 }
 
 impl Default for RunCommandPlugin {
@@ -504,13 +536,20 @@ impl Plugin for RunCommandPlugin {
 
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
+            // Request to execute command or request our command list
             "cconnect.runcommand.request".to_string(),
             "kdeconnect.runcommand.request".to_string(),
+            // Remote device's command list (so we can display/execute their commands)
+            "cconnect.runcommand".to_string(),
+            "kdeconnect.runcommand".to_string(),
         ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
-        vec!["cconnect.runcommand".to_string()]
+        vec![
+            "cconnect.runcommand".to_string(),
+            "cconnect.runcommand.request".to_string(),
+        ]
     }
 
     async fn init(&mut self, device: &Device, packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>) -> Result<()> {
@@ -543,7 +582,8 @@ impl Plugin for RunCommandPlugin {
     }
 
     async fn handle_packet(&mut self, packet: &Packet, _device: &mut Device) -> Result<()> {
-        if packet.is_type("cconnect.runcommand.request") {
+        // Handle request packets (execute command or request our command list)
+        if packet.is_type("cconnect.runcommand.request") || packet.is_type("kdeconnect.runcommand.request") {
             if let Some(response) = self.handle_request(packet).await? {
                 if let Some(sender) = &self.packet_sender {
                     if let Some(device_id) = &self.device_id {
@@ -555,6 +595,10 @@ impl Plugin for RunCommandPlugin {
                     }
                 }
             }
+        }
+        // Handle command list packets (remote device's available commands)
+        else if packet.is_type("cconnect.runcommand") || packet.is_type("kdeconnect.runcommand") {
+            self.handle_command_list(packet).await?;
         }
         Ok(())
     }
@@ -583,13 +627,20 @@ impl PluginFactory for RunCommandPluginFactory {
 
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
+            // Request to execute command or request our command list
             "cconnect.runcommand.request".to_string(),
             "kdeconnect.runcommand.request".to_string(),
+            // Remote device's command list (so we can display/execute their commands)
+            "cconnect.runcommand".to_string(),
+            "kdeconnect.runcommand".to_string(),
         ]
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
-        vec!["cconnect.runcommand".to_string()]
+        vec![
+            "cconnect.runcommand".to_string(),
+            "cconnect.runcommand.request".to_string(),
+        ]
     }
 
     fn create(&self) -> Box<dyn Plugin> {
