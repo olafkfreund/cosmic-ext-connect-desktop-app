@@ -49,15 +49,21 @@
 //!
 //! ## Implementation Status
 //!
-//! TODO: Screen capture implementation (X11, Wayland, PipeWire)
-//! TODO: Video encoding (H.264, VP8/VP9)
-//! TODO: Cursor tracking and highlighting
-//! TODO: Annotation overlay system
-//! TODO: Adaptive bitrate control
-//! TODO: Multiple viewer management
+//! - [x] Screen capture implementation (PipeWire for Wayland)
+//! - [x] Video encoding (H.264 via x264enc)
+//! - [x] Video decoding (H.264 via avdec_h264)
+//! - [x] Stream receiver (TCP with custom protocol)
+//! - [x] Stream sender (TCP with custom protocol)
+//! - [ ] XDG Desktop Portal integration for screen selection
+//! - [ ] Cursor tracking and highlighting
+//! - [ ] Annotation overlay system
+//! - [ ] Adaptive bitrate control
+//! - [ ] Multiple viewer management
 
+pub mod capture;
 pub mod decoder;
 pub mod stream_receiver;
+pub mod stream_sender;
 
 use crate::plugins::{Plugin, PluginFactory};
 use crate::{Device, Packet, ProtocolError, Result};

@@ -53,12 +53,20 @@
           expat
 
           # Messaging popup dependencies
-          webkit2gtk
+          webkitgtk_4_1
           glib
           gobject-introspection
 
           # RemoteDesktop plugin dependencies
           pipewire
+
+          # ScreenShare plugin dependencies (GStreamer)
+          gst_all_1.gstreamer
+          gst_all_1.gst-plugins-base
+          gst_all_1.gst-plugins-good
+          gst_all_1.gst-plugins-bad
+          gst_all_1.gst-plugins-ugly
+          gst_all_1.gst-libav
         ];
 
         # Build dependencies
@@ -142,6 +150,12 @@
             echo "  ✓ openssl found: $(pkg-config --modversion openssl)"
           else
             echo "  ✗ openssl NOT FOUND - build will fail!"
+          fi
+
+          if pkg-config --exists gstreamer-1.0; then
+            echo "  ✓ gstreamer found: $(pkg-config --modversion gstreamer-1.0)"
+          else
+            echo "  ℹ gstreamer not found (optional for screenshare feature)"
           fi
 
           echo ""

@@ -5,6 +5,8 @@
 #[cfg(feature = "screenshare")]
 use gstreamer as gst;
 #[cfg(feature = "screenshare")]
+use gstreamer::prelude::*;
+#[cfg(feature = "screenshare")]
 use gstreamer_app as gst_app;
 #[cfg(feature = "screenshare")]
 use crate::Result;
@@ -31,7 +33,7 @@ impl VideoDecoder {
         
         debug!("Creating GStreamer pipeline: {}", pipeline_str);
         
-        let pipeline = gst::parse_launch(pipeline_str)
+        let pipeline = gst::parse::launch(pipeline_str)
             .map_err(|e| crate::ProtocolError::Plugin(format!("Failed to parse pipeline: {}", e)))?
             .downcast::<gst::Pipeline>()
             .map_err(|_| crate::ProtocolError::Plugin("Failed to downcast pipeline".to_string()))?;
@@ -60,8 +62,7 @@ impl VideoDecoder {
 
     /// Start the decoder
     pub fn start(&self) -> Result<()> {
-        use gst::prelude::*;
-        self.pipeline.set_state(gst::State::Playing)
+                self.pipeline.set_state(gst::State::Playing)
             .map_err(|e| crate::ProtocolError::Plugin(format!("Failed to start pipeline: {}", e)))?;
         debug!("Video decoder started");
         Ok(())
@@ -69,8 +70,7 @@ impl VideoDecoder {
 
     /// Stop the decoder
     pub fn stop(&self) -> Result<()> {
-        use gst::prelude::*;
-        self.pipeline.set_state(gst::State::Null)
+                self.pipeline.set_state(gst::State::Null)
             .map_err(|e| crate::ProtocolError::Plugin(format!("Failed to stop pipeline: {}", e)))?;
         debug!("Video decoder stopped");
         Ok(())
@@ -78,8 +78,7 @@ impl VideoDecoder {
 
     /// Push encoded frame data (H.264 NAL unit)
     pub fn push_frame(&self, data: &[u8]) -> Result<()> {
-        use gst::prelude::*;
-        
+                
         // Create buffer
         let buffer = gst::Buffer::from_slice(data.to_vec()); // Copying for now
         
@@ -94,8 +93,7 @@ impl VideoDecoder {
     
     /// Pull decoded frame (RGBA)
     pub fn pull_frame(&self) -> Result<Option<(Vec<u8>, u32, u32)>> {
-        use gst::prelude::*;
-        
+                
         // Try to pull a sample with a small timeout to avoid blocking
         match self.appsink.try_pull_sample(gst::ClockTime::from_mseconds(5)) {
             Some(sample) => {
