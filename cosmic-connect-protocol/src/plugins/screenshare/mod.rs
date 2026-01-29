@@ -638,8 +638,23 @@ impl Plugin for ScreenSharePlugin {
 
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
+            // Base capability
             INCOMING_CAPABILITY.to_string(),
             "kdeconnect.screenshare".to_string(),
+            // Specific packet types that this plugin handles
+            "cconnect.screenshare.start".to_string(),
+            "cconnect.screenshare.frame".to_string(),
+            "cconnect.screenshare.cursor".to_string(),
+            "cconnect.screenshare.annotation".to_string(),
+            "cconnect.screenshare.stop".to_string(),
+            "cconnect.screenshare.ready".to_string(),
+            // KDE Connect compatibility
+            "kdeconnect.screenshare.start".to_string(),
+            "kdeconnect.screenshare.frame".to_string(),
+            "kdeconnect.screenshare.cursor".to_string(),
+            "kdeconnect.screenshare.annotation".to_string(),
+            "kdeconnect.screenshare.stop".to_string(),
+            "kdeconnect.screenshare.ready".to_string(),
         ]
     }
 
@@ -747,9 +762,38 @@ impl Plugin for ScreenSharePlugin {
             // Remote device stopped sharing
             info!("Screen share stopped by {}", device.name());
             self.receiving = false;
-            
+
             // We should probably inform the UI to close the window via DBus signal?
             // Or let the UI detect stream closure.
+        } else if packet.is_type("cconnect.screenshare.ready") {
+            // Receiver is ready to receive screen share
+            // This is sent by the receiving device after it opens its viewer window
+            let tcp_port = packet.body.get("tcpPort")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u16;
+
+            info!(
+                "Receiver {} is ready on port {}",
+                device.name(),
+                tcp_port
+            );
+
+            // Add this device as a viewer
+            if let Err(e) = self.add_viewer(device.id().to_string()) {
+                warn!("Failed to add viewer {}: {}", device.id(), e);
+            }
+
+            // TODO: Start GStreamer capture pipeline and connect to receiver's TCP port
+            // For now, log that we received the ready signal
+            // The actual implementation requires:
+            // 1. Starting the GStreamer capture pipeline
+            // 2. Connecting StreamSender to receiver's tcpPort
+            // 3. Streaming encoded frames
+            debug!(
+                "Screen share ready signal received - capture pipeline should start streaming to {} port {}",
+                device.name(),
+                tcp_port
+            );
         }
 
         Ok(())
@@ -770,8 +814,23 @@ impl PluginFactory for ScreenSharePluginFactory {
 
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
+            // Base capability
             INCOMING_CAPABILITY.to_string(),
             "kdeconnect.screenshare".to_string(),
+            // Specific packet types that this plugin handles
+            "cconnect.screenshare.start".to_string(),
+            "cconnect.screenshare.frame".to_string(),
+            "cconnect.screenshare.cursor".to_string(),
+            "cconnect.screenshare.annotation".to_string(),
+            "cconnect.screenshare.stop".to_string(),
+            "cconnect.screenshare.ready".to_string(),
+            // KDE Connect compatibility
+            "kdeconnect.screenshare.start".to_string(),
+            "kdeconnect.screenshare.frame".to_string(),
+            "kdeconnect.screenshare.cursor".to_string(),
+            "kdeconnect.screenshare.annotation".to_string(),
+            "kdeconnect.screenshare.stop".to_string(),
+            "kdeconnect.screenshare.ready".to_string(),
         ]
     }
 

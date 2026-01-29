@@ -262,12 +262,14 @@ impl Drop for ScreenCapture {
 
 // Stub implementation when screenshare feature is disabled
 #[cfg(not(feature = "screenshare"))]
-pub struct ScreenCapture;
+pub struct ScreenCapture {
+    config: CaptureConfig,
+}
 
 #[cfg(not(feature = "screenshare"))]
 impl ScreenCapture {
-    pub fn new(_config: CaptureConfig) -> Self {
-        Self
+    pub fn new(config: CaptureConfig) -> Self {
+        Self { config }
     }
 
     pub fn init(&mut self) -> crate::Result<()> {
@@ -290,10 +292,12 @@ impl ScreenCapture {
         false
     }
 
-    pub fn set_config(&mut self, _config: CaptureConfig) {}
+    pub fn set_config(&mut self, config: CaptureConfig) {
+        self.config = config;
+    }
 
     pub fn config(&self) -> &CaptureConfig {
-        &CaptureConfig::default()
+        &self.config
     }
 }
 
