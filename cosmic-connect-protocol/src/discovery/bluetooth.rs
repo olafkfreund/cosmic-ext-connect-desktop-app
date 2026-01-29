@@ -1,14 +1,22 @@
 //! Bluetooth Discovery Module
 //!
-//! This module provides Bluetooth Low Energy (BLE) device discovery for CConnect.
-//! It scans for devices advertising the CConnect service UUID and emits discovery events.
+//! This module provides Bluetooth device discovery for CConnect using RFCOMM.
+//! It scans for paired devices and checks if they have the CConnect service
+//! registered via SDP (Service Discovery Protocol).
+//!
+//! ## Discovery Approach
+//!
+//! Unlike BLE which uses advertising, RFCOMM discovery works by:
+//! 1. Enumerating paired Bluetooth devices from BlueZ
+//! 2. Optionally checking SDP for CConnect service UUID
+//! 3. Emitting discovery events for compatible devices
+//!
+//! Note: Android uses `fetchUuidsWithSdp()` for service discovery.
 
 use super::events::DiscoveryEvent;
 use crate::transport::CCONNECT_SERVICE_UUID;
-use crate::{DeviceInfo, ProtocolError, Result};
-use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter};
-use btleplug::platform::{Adapter, Manager, Peripheral};
-
+use crate::{DeviceInfo, DeviceType, ProtocolError, Result};
+use bluer::{Address, Adapter, Session};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -19,7 +27,7 @@ use tracing::{debug, error, info, warn};
 /// Default scan interval (10 seconds)
 pub const DEFAULT_BT_SCAN_INTERVAL: Duration = Duration::from_secs(10);
 
-/// Default device timeout (60 seconds - longer than TCP since BLE is less frequent)
+/// Default device timeout (60 seconds - longer than TCP since Bluetooth is less frequent)
 pub const DEFAULT_BT_DEVICE_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Configuration for Bluetooth discovery
@@ -36,6 +44,9 @@ pub struct BluetoothDiscoveryConfig {
 
     /// Optional filter for device addresses (empty = all devices)
     pub device_filter: Vec<String>,
+
+    /// Whether to only include paired devices
+    pub paired_only: bool,
 }
 
 impl Default for BluetoothDiscoveryConfig {
@@ -45,14 +56,18 @@ impl Default for BluetoothDiscoveryConfig {
             device_timeout: DEFAULT_BT_DEVICE_TIMEOUT,
             enable_timeout_check: true,
             device_filter: Vec::new(),
+            paired_only: true, // Default to paired devices only for RFCOMM
         }
     }
 }
 
 /// Bluetooth discovery service
 ///
-/// Scans for BLE devices advertising the CConnect service UUID
+/// Scans for paired Bluetooth devices that may run CConnect
 pub struct BluetoothDiscoveryService {
+    /// BlueZ session
+    session: Option<Session>,
+
     /// Bluetooth adapter
     adapter: Option<Adapter>,
 
@@ -84,16 +99,17 @@ impl BluetoothDiscoveryService {
     pub async fn new(config: BluetoothDiscoveryConfig) -> Result<Self> {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
 
-        // Try to get Bluetooth adapter
-        let adapter = match Self::get_adapter().await {
-            Ok(adapter) => Some(adapter),
+        // Try to get BlueZ session and adapter
+        let (session, adapter) = match Self::get_session_and_adapter().await {
+            Ok((session, adapter)) => (Some(session), Some(adapter)),
             Err(e) => {
-                warn!("Failed to get Bluetooth adapter: {}", e);
-                None
+                warn!("Failed to get Bluetooth session/adapter: {}", e);
+                (None, None)
             }
         };
 
         Ok(Self {
+            session,
             adapter,
             event_tx,
             event_rx: Arc::new(RwLock::new(event_rx)),
@@ -109,23 +125,29 @@ impl BluetoothDiscoveryService {
         Self::new(BluetoothDiscoveryConfig::default()).await
     }
 
-    /// Get Bluetooth adapter
-    async fn get_adapter() -> Result<Adapter> {
-        let manager = Manager::new()
+    /// Get BlueZ session and adapter
+    async fn get_session_and_adapter() -> Result<(Session, Adapter)> {
+        let session = Session::new()
             .await
             .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
-        let adapters = manager
-            .adapters()
+        let adapter_names = session
+            .adapter_names()
             .await
             .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
-        adapters.into_iter().next().ok_or_else(|| {
+        let adapter_name = adapter_names.into_iter().next().ok_or_else(|| {
             ProtocolError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 "No Bluetooth adapter found",
             ))
-        })
+        })?;
+
+        let adapter = session
+            .adapter(&adapter_name)
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
+
+        Ok((session, adapter))
     }
 
     /// Get a receiver for discovery events
@@ -157,7 +179,7 @@ impl BluetoothDiscoveryService {
             )));
         }
 
-        info!("Starting Bluetooth discovery service");
+        info!("Starting Bluetooth discovery service (RFCOMM mode)");
 
         // Create shutdown channel
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
@@ -180,6 +202,7 @@ impl BluetoothDiscoveryService {
         let event_tx = self.event_tx.clone();
         let scan_interval = self.config.scan_interval;
         let device_filter = self.config.device_filter.clone();
+        let paired_only = self.config.paired_only;
         let last_seen = self.last_seen.clone();
         let device_cache = self.device_cache.clone();
 
@@ -193,6 +216,7 @@ impl BluetoothDiscoveryService {
                             &adapter,
                             &event_tx,
                             &device_filter,
+                            paired_only,
                             &last_seen,
                             &device_cache,
                         ).await {
@@ -213,75 +237,50 @@ impl BluetoothDiscoveryService {
         adapter: &Adapter,
         event_tx: &mpsc::UnboundedSender<DiscoveryEvent>,
         device_filter: &[String],
+        paired_only: bool,
         last_seen: &Arc<RwLock<HashMap<String, u64>>>,
         device_cache: &Arc<RwLock<HashMap<String, DeviceInfo>>>,
     ) -> Result<()> {
-        debug!("Starting Bluetooth scan");
+        debug!("Scanning for Bluetooth devices (paired_only={})", paired_only);
 
-        // Start scanning for CConnect service
-        adapter
-            .start_scan(ScanFilter {
-                services: vec![CCONNECT_SERVICE_UUID],
-            })
+        // Get all device addresses known to the adapter
+        let device_addresses = adapter
+            .device_addresses()
             .await
             .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
 
-        // Wait for scan to complete (scan for 5 seconds)
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        debug!("Found {} known devices", device_addresses.len());
 
-        // Stop scanning
-        adapter
-            .stop_scan()
-            .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
-
-        // Get discovered peripherals
-        let peripherals = adapter
-            .peripherals()
-            .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
-
-        debug!("Found {} potential peripherals", peripherals.len());
-
-        for peripheral in peripherals {
-            if let Err(e) = Self::process_peripheral(
-                &peripheral,
+        for addr in device_addresses {
+            if let Err(e) = Self::process_device(
+                adapter,
+                addr,
                 event_tx,
                 device_filter,
+                paired_only,
                 last_seen,
                 device_cache,
             )
             .await
             {
-                debug!("Error processing peripheral: {}", e);
+                debug!("Error processing device {}: {}", addr, e);
             }
         }
 
         Ok(())
     }
 
-    /// Process a discovered peripheral
-    async fn process_peripheral(
-        peripheral: &Peripheral,
+    /// Process a discovered device
+    async fn process_device(
+        adapter: &Adapter,
+        addr: Address,
         event_tx: &mpsc::UnboundedSender<DiscoveryEvent>,
         device_filter: &[String],
+        paired_only: bool,
         last_seen: &Arc<RwLock<HashMap<String, u64>>>,
         device_cache: &Arc<RwLock<HashMap<String, DeviceInfo>>>,
     ) -> Result<()> {
-        // Get peripheral properties
-        let properties = peripheral
-            .properties()
-            .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?
-            .ok_or_else(|| {
-                ProtocolError::Io(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "No properties available",
-                ))
-            })?;
-
-        // Get Bluetooth address
-        let bt_address = peripheral.address().to_string();
+        let bt_address = addr.to_string();
 
         // Check if device matches filter
         if !device_filter.is_empty() && !device_filter.contains(&bt_address) {
@@ -289,28 +288,67 @@ impl BluetoothDiscoveryService {
             return Ok(());
         }
 
-        // Check if peripheral advertises CConnect service
-        if !properties.service_data.contains_key(&CCONNECT_SERVICE_UUID) {
-            debug!("Device {} doesn't advertise CConnect service", bt_address);
-            return Ok(());
+        // Get device from adapter
+        let device = adapter
+            .device(addr)
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
+
+        // Check if paired (if required)
+        if paired_only {
+            let is_paired = device.is_paired().await.unwrap_or(false);
+            if !is_paired {
+                debug!("Skipping unpaired device: {}", bt_address);
+                return Ok(());
+            }
         }
 
-        // Try to get device name from properties
-        let device_name = properties
-            .local_name
+        // Get device name
+        let device_name = device
+            .name()
+            .await
+            .ok()
+            .flatten()
             .unwrap_or_else(|| format!("BT Device {}", &bt_address[..8]));
 
-        // Try to extract device info from advertising data
-        // For now, create a basic DeviceInfo - full identity exchange would happen on connection
-        let device_info = DeviceInfo::new(&device_name, crate::DeviceType::Phone, 1816);
+        // Get device class to determine type
+        let device_type = match device.class().await.ok().flatten() {
+            Some(class) => device_type_from_class(class),
+            None => DeviceType::Phone, // Default assumption
+        };
+
+        // Check if device has CConnect service UUID
+        // This requires SDP lookup which may not always be available
+        let has_cconnect_service = match device.uuids().await {
+            Ok(Some(uuids)) => {
+                let service_uuid_str = CCONNECT_SERVICE_UUID.to_string();
+                uuids.iter().any(|u| u.to_string() == service_uuid_str)
+            }
+            _ => {
+                // UUIDs not available - include device anyway for user to try
+                debug!("Could not get UUIDs for device {}", bt_address);
+                true
+            }
+        };
+
+        if !has_cconnect_service {
+            debug!(
+                "Device {} doesn't have CConnect service UUID",
+                bt_address
+            );
+            // Still emit the device - user might want to pair/connect manually
+        }
+
+        // Create device info
+        // Use Bluetooth address as device_id since we don't have identity yet
+        let device_info = DeviceInfo::new(&device_name, device_type, 1816);
 
         let current_time = current_timestamp();
         let mut last_seen_map = last_seen.write().await;
         let mut device_cache_map = device_cache.write().await;
 
         // Check if this is a new device or update
-        let is_new = !last_seen_map.contains_key(&device_info.device_id);
-        last_seen_map.insert(device_info.device_id.clone(), current_time);
+        let is_new = !device_cache_map.contains_key(&bt_address);
+        last_seen_map.insert(bt_address.clone(), current_time);
         device_cache_map.insert(bt_address.clone(), device_info.clone());
         drop(last_seen_map);
         drop(device_cache_map);
@@ -318,7 +356,7 @@ impl BluetoothDiscoveryService {
         // Emit appropriate event
         if is_new {
             info!(
-                "Discovered new Bluetooth device: {} ({}) at {}",
+                "Discovered Bluetooth device: {} ({}) at {}",
                 device_info.device_name,
                 device_info.device_type.as_str(),
                 bt_address
@@ -341,6 +379,7 @@ impl BluetoothDiscoveryService {
     /// Spawn timeout checker task
     fn spawn_timeout_checker(&self) {
         let last_seen = self.last_seen.clone();
+        let device_cache = self.device_cache.clone();
         let event_tx = self.event_tx.clone();
         let timeout_duration = self.config.device_timeout;
 
@@ -352,18 +391,23 @@ impl BluetoothDiscoveryService {
 
                 let current_time = current_timestamp();
                 let mut last_seen_map = last_seen.write().await;
+                let mut device_cache_map = device_cache.write().await;
                 let mut timed_out = Vec::new();
 
-                for (device_id, &last_seen_time) in last_seen_map.iter() {
+                for (bt_address, &last_seen_time) in last_seen_map.iter() {
                     if current_time - last_seen_time > timeout_duration.as_secs() {
-                        timed_out.push(device_id.clone());
+                        timed_out.push(bt_address.clone());
                     }
                 }
 
-                for device_id in timed_out {
-                    info!("Bluetooth device timed out: {}", device_id);
-                    last_seen_map.remove(&device_id);
-                    let _ = event_tx.send(DiscoveryEvent::DeviceTimeout { device_id });
+                for bt_address in timed_out {
+                    if let Some(device_info) = device_cache_map.remove(&bt_address) {
+                        info!("Bluetooth device timed out: {} ({})", device_info.device_name, bt_address);
+                        last_seen_map.remove(&bt_address);
+                        let _ = event_tx.send(DiscoveryEvent::DeviceTimeout {
+                            device_id: device_info.device_id,
+                        });
+                    }
                 }
             }
         });
@@ -381,6 +425,58 @@ impl BluetoothDiscoveryService {
     /// Check if Bluetooth is available
     pub fn is_available(&self) -> bool {
         self.adapter.is_some()
+    }
+
+    /// Get list of paired devices
+    pub async fn get_paired_devices(&self) -> Result<Vec<(Address, String)>> {
+        let adapter = self.adapter.as_ref().ok_or_else(|| {
+            ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "No Bluetooth adapter available",
+            ))
+        })?;
+
+        let devices = adapter
+            .device_addresses()
+            .await
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
+
+        let mut paired = Vec::new();
+        for addr in devices {
+            if let Ok(device) = adapter.device(addr) {
+                if device.is_paired().await.unwrap_or(false) {
+                    let name = device
+                        .name()
+                        .await
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| addr.to_string());
+                    paired.push((addr, name));
+                }
+            }
+        }
+
+        Ok(paired)
+    }
+}
+
+/// Determine device type from Bluetooth class
+fn device_type_from_class(class: u32) -> DeviceType {
+    // Bluetooth device class major codes
+    // See https://www.bluetooth.com/specifications/assigned-numbers/baseband/
+    let major_class = (class >> 8) & 0x1F;
+
+    match major_class {
+        0x01 => DeviceType::Desktop,   // Computer
+        0x02 => DeviceType::Phone,     // Phone
+        0x03 => DeviceType::Desktop,   // LAN/Network Access Point
+        0x04 => DeviceType::Desktop,   // Audio/Video
+        0x05 => DeviceType::Desktop,   // Peripheral
+        0x06 => DeviceType::Desktop,   // Imaging
+        0x07 => DeviceType::Desktop,   // Wearable
+        0x08 => DeviceType::Desktop,   // Toy
+        0x09 => DeviceType::Desktop,   // Health
+        _ => DeviceType::Phone,        // Unknown - assume phone
     }
 }
 
@@ -403,11 +499,22 @@ mod tests {
         assert_eq!(config.device_timeout, DEFAULT_BT_DEVICE_TIMEOUT);
         assert!(config.enable_timeout_check);
         assert!(config.device_filter.is_empty());
+        assert!(config.paired_only);
     }
 
     #[tokio::test]
     async fn test_bluetooth_discovery_creation() {
         let service = BluetoothDiscoveryService::with_defaults().await;
         assert!(service.is_ok());
+    }
+
+    #[test]
+    fn test_device_type_from_class() {
+        // Computer
+        assert_eq!(device_type_from_class(0x100), DeviceType::Desktop);
+        // Phone
+        assert_eq!(device_type_from_class(0x200), DeviceType::Phone);
+        // Unknown
+        assert_eq!(device_type_from_class(0x000), DeviceType::Phone);
     }
 }

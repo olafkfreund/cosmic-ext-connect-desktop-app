@@ -428,14 +428,11 @@ impl TransportManager {
                     crate::ProtocolError::Transport("Bluetooth manager not available".to_string())
                 })?;
 
-                let (bt_address, service_uuid) = match address {
+                let bt_address = match address {
                     TransportAddress::Bluetooth {
                         address,
-                        service_uuid,
-                    } => (
-                        address.clone(),
-                        service_uuid.unwrap_or(crate::transport::CCONNECT_SERVICE_UUID),
-                    ),
+                        service_uuid: _,
+                    } => address.clone(),
                     _ => {
                         return Err(crate::ProtocolError::Transport(
                             "Invalid address type for Bluetooth transport".to_string(),
@@ -443,8 +440,9 @@ impl TransportManager {
                     }
                 };
 
+                // Use default RFCOMM channel (None = use default)
                 let bt = bt_mgr.read().await;
-                bt.connect(device_id, &bt_address, service_uuid).await
+                bt.connect(device_id, &bt_address, None).await
             }
         }
     }

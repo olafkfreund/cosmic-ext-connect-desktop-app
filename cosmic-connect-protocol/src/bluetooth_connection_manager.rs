@@ -1,7 +1,9 @@
 //! Bluetooth Connection Manager
 //!
-//! Manages Bluetooth connections to multiple devices using the BluetoothConnection
+//! Manages Bluetooth RFCOMM connections to multiple devices using the BluetoothConnection
 //! transport. This is analogous to ConnectionManager but specifically for Bluetooth.
+//!
+//! Uses RFCOMM (Bluetooth Classic) for compatibility with Android's BluetoothSocket.
 
 use crate::{
     transport::{BluetoothConnection, Transport},
@@ -14,7 +16,6 @@ use std::time::Duration;
 use tokio::sync::{mpsc, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
-use uuid::Uuid;
 
 /// Commands that can be sent to a Bluetooth connection task
 enum BluetoothConnectionCommand {
@@ -69,23 +70,30 @@ impl BluetoothConnectionManager {
 
     /// Start the Bluetooth connection manager
     ///
-    /// For Bluetooth, we don't have a "server" like TCP - devices discover
-    /// each other via BLE advertising and then connect.
+    /// For Bluetooth RFCOMM, we can either listen for incoming connections
+    /// or initiate outgoing connections. Devices are discovered via
+    /// BlueZ's paired device list.
     pub async fn start(&self) -> Result<()> {
-        info!("Bluetooth connection manager started");
+        info!("Bluetooth RFCOMM connection manager started");
         Ok(())
     }
 
-    /// Connect to a remote device via Bluetooth
+    /// Connect to a remote device via Bluetooth RFCOMM
+    ///
+    /// # Arguments
+    ///
+    /// * `device_id` - Device ID for identification
+    /// * `bt_address` - Bluetooth MAC address (e.g., "00:11:22:33:44:55")
+    /// * `channel` - Optional RFCOMM channel (None for default)
     pub async fn connect(
         &self,
         device_id: &str,
         bt_address: &str,
-        service_uuid: Uuid,
+        channel: Option<u8>,
     ) -> Result<()> {
         info!(
-            "Connecting to device {} at Bluetooth address {}",
-            device_id, bt_address
+            "Connecting to device {} at Bluetooth address {} (channel: {:?})",
+            device_id, bt_address, channel
         );
 
         // Check if already connected
@@ -96,8 +104,8 @@ impl BluetoothConnectionManager {
         }
         drop(connections);
 
-        // Create Bluetooth connection
-        let connection = BluetoothConnection::connect(bt_address.to_string(), service_uuid)
+        // Create Bluetooth RFCOMM connection
+        let connection = BluetoothConnection::connect(bt_address.to_string(), channel)
             .await
             .map_err(|e| {
                 ProtocolError::Transport(format!(

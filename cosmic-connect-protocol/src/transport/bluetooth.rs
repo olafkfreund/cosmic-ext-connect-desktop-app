@@ -1,7 +1,20 @@
 //! Bluetooth Transport for CConnect
 //!
 //! Provides Bluetooth RFCOMM connection support for CConnect protocol.
-//! Uses BlueZ on Linux for Bluetooth operations.
+//! Uses BlueZ on Linux for Bluetooth operations via the bluer crate.
+//!
+//! ## Protocol
+//!
+//! RFCOMM provides a stream-based serial port emulation over Bluetooth.
+//! This matches the Android implementation which uses BluetoothSocket (RFCOMM).
+//!
+//! ## Connection Flow
+//!
+//! 1. Desktop registers RFCOMM profile with SERVICE_UUID via BlueZ
+//! 2. Android discovers desktop via SDP lookup for SERVICE_UUID
+//! 3. Android connects via createRfcommSocketToServiceRecord()
+//! 4. Desktop accepts connection via profile handler or listener
+//! 5. Bidirectional stream communication begins
 
 use crate::transport::{
     LatencyCategory, Transport, TransportAddress, TransportCapabilities, TransportFactory,
@@ -9,23 +22,27 @@ use crate::transport::{
 };
 use crate::{Packet, ProtocolError, Result};
 use async_trait::async_trait;
-use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter, WriteType};
-use btleplug::platform::{Adapter, Manager, Peripheral};
-// use futures::StreamExt;
+use bluer::rfcomm::{Listener, SocketAddr, Stream};
+use bluer::{Address, Session};
+use std::str::FromStr;
 use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::time::{timeout, Duration};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 /// CConnect Bluetooth service UUID
 /// Using a custom UUID for CConnect Bluetooth service
+/// This UUID is used for SDP service registration/discovery
 pub const CCONNECT_SERVICE_UUID: Uuid = uuid::uuid!("185f3df4-3268-4e3f-9fca-d4d5059915bd");
 
-/// Bluetooth RFCOMM characteristic UUID (for reading)
+/// Bluetooth RFCOMM characteristic UUID (for reading) - documented for reference
+/// Note: These are not used in RFCOMM mode (only in BLE GATT mode)
 pub const RFCOMM_READ_CHAR_UUID: Uuid = uuid::uuid!("8667556c-9a37-4c91-84ed-54ee27d90049");
 
-/// Bluetooth RFCOMM characteristic UUID (for writing)
+/// Bluetooth RFCOMM characteristic UUID (for writing) - documented for reference
+/// Note: These are not used in RFCOMM mode (only in BLE GATT mode)
 pub const RFCOMM_WRITE_CHAR_UUID: Uuid = uuid::uuid!("d0e8434d-cd29-0996-af41-6c90f4e0eb2a");
 
 /// Default timeout for Bluetooth operations
@@ -35,188 +52,106 @@ const BT_TIMEOUT: Duration = Duration::from_secs(15);
 /// RFCOMM typically has ~512 bytes MTU, we use conservative value
 const MAX_BT_PACKET_SIZE: usize = 512;
 
-/// Bluetooth connection state
+/// RFCOMM channel for CConnect service
+/// Android uses dynamic channel allocation via SDP, but we can use a fixed channel
+/// for direct connections. Channel 1 is commonly available.
+const RFCOMM_CHANNEL: u8 = 1;
+
+/// Bluetooth connection state using RFCOMM stream
 pub struct BluetoothConnection {
-    /// Bluetooth peripheral device
-    peripheral: Peripheral,
+    /// RFCOMM stream for bidirectional communication
+    stream: Stream,
 
     /// Remote Bluetooth address
-    remote_address: String,
+    remote_address: Address,
 
-    /// Service UUID
-    service_uuid: Uuid,
-
-    /// Read characteristic
-    read_char: Option<btleplug::api::Characteristic>,
-
-    /// Write characteristic
-    write_char: Option<btleplug::api::Characteristic>,
+    /// Remote Bluetooth address as string
+    remote_address_str: String,
 
     /// Connection state
     connected: Arc<Mutex<bool>>,
 }
 
 impl BluetoothConnection {
-    /// Connect to a Bluetooth device
+    /// Connect to a Bluetooth device via RFCOMM
     ///
     /// # Arguments
     ///
     /// * `address` - Bluetooth MAC address (e.g., "00:11:22:33:44:55")
-    /// * `service_uuid` - Service UUID to connect to
-    pub async fn connect(address: String, service_uuid: Uuid) -> Result<Self> {
-        debug!("Connecting to Bluetooth device: {}", address);
+    /// * `channel` - Optional RFCOMM channel (defaults to RFCOMM_CHANNEL)
+    pub async fn connect(address: String, channel: Option<u8>) -> Result<Self> {
+        debug!("Connecting to Bluetooth device via RFCOMM: {}", address);
 
-        // Get Bluetooth adapter
-        let manager = Manager::new()
-            .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
-
-        let adapters = manager
-            .adapters()
-            .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
-
-        let adapter = adapters.into_iter().next().ok_or_else(|| {
+        // Parse Bluetooth address
+        let bt_addr = Address::from_str(&address).map_err(|e| {
             ProtocolError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "No Bluetooth adapter found",
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid Bluetooth address '{}': {}", address, e),
             ))
         })?;
 
-        // Find the peripheral
-        let peripheral = Self::find_peripheral(&adapter, &address, service_uuid).await?;
+        // Create socket address with channel
+        let ch = channel.unwrap_or(RFCOMM_CHANNEL);
+        let socket_addr = SocketAddr::new(bt_addr, ch);
 
-        // Connect to peripheral
-        peripheral
-            .connect()
+        debug!(
+            "Connecting to RFCOMM socket: {} channel {}",
+            bt_addr, ch
+        );
+
+        // Connect with timeout
+        let stream = timeout(BT_TIMEOUT, Stream::connect(socket_addr))
             .await
+            .map_err(|_| {
+                ProtocolError::Io(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("Connection timeout to {}", address),
+                ))
+            })?
             .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
-
-        debug!("Connected to peripheral, discovering services...");
-
-        // Discover services
-        peripheral
-            .discover_services()
-            .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
-
-        // Find characteristics
-        let (read_char, write_char) = Self::find_characteristics(&peripheral, service_uuid).await?;
-
-        // Subscribe to notifications for reading
-        if let Some(ref char) = read_char {
-            peripheral
-                .subscribe(char)
-                .await
-                .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
-        }
 
         info!("Successfully connected to Bluetooth device: {}", address);
 
         Ok(Self {
-            peripheral,
-            remote_address: address,
-            service_uuid,
-            read_char,
-            write_char,
+            stream,
+            remote_address: bt_addr,
+            remote_address_str: address,
             connected: Arc::new(Mutex::new(true)),
         })
     }
 
-    /// Find a peripheral by address
-    async fn find_peripheral(
-        adapter: &Adapter,
-        address: &str,
-        service_uuid: Uuid,
-    ) -> Result<Peripheral> {
-        debug!("Scanning for Bluetooth device: {}", address);
+    /// Create a BluetoothConnection from an existing stream
+    ///
+    /// Used when accepting connections from a listener
+    pub fn from_stream(stream: Stream, remote_address: Address) -> Self {
+        let remote_address_str = remote_address.to_string();
+        info!(
+            "Created Bluetooth connection from accepted stream: {}",
+            remote_address_str
+        );
 
-        // Start scanning
-        adapter
-            .start_scan(ScanFilter {
-                services: vec![service_uuid],
-            })
-            .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
-
-        // Wait for device to be discovered (with timeout)
-        let start = std::time::Instant::now();
-        let timeout_duration = Duration::from_secs(10);
-
-        while start.elapsed() < timeout_duration {
-            let peripherals = adapter
-                .peripherals()
-                .await
-                .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
-
-            for peripheral in peripherals {
-                if let Ok(Some(props)) = peripheral.properties().await {
-                    if let Some(local_name) = props.local_name {
-                        if local_name.contains(address) {
-                            adapter
-                                .stop_scan()
-                                .await
-                                .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
-                            return Ok(peripheral);
-                        }
-                    }
-                }
-            }
-
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        Self {
+            stream,
+            remote_address,
+            remote_address_str,
+            connected: Arc::new(Mutex::new(true)),
         }
-
-        adapter
-            .stop_scan()
-            .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
-
-        Err(ProtocolError::Io(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!("Bluetooth device not found: {}", address),
-        )))
-    }
-
-    /// Find read and write characteristics
-    async fn find_characteristics(
-        peripheral: &Peripheral,
-        service_uuid: Uuid,
-    ) -> Result<(
-        Option<btleplug::api::Characteristic>,
-        Option<btleplug::api::Characteristic>,
-    )> {
-        let characteristics = peripheral.characteristics();
-
-        let mut read_char = None;
-        let mut write_char = None;
-
-        for char in characteristics {
-            if char.service_uuid == service_uuid {
-                if char.uuid == RFCOMM_READ_CHAR_UUID {
-                    read_char = Some(char.clone());
-                } else if char.uuid == RFCOMM_WRITE_CHAR_UUID {
-                    write_char = Some(char.clone());
-                }
-            }
-        }
-
-        if read_char.is_none() || write_char.is_none() {
-            warn!("Could not find all required characteristics");
-        }
-
-        Ok((read_char, write_char))
     }
 
     /// Close the connection
-    pub async fn close_conn(self) -> Result<()> {
-        debug!("Closing Bluetooth connection to {}", self.remote_address);
+    pub async fn close_conn(mut self) -> Result<()> {
+        debug!(
+            "Closing Bluetooth connection to {}",
+            self.remote_address_str
+        );
 
         *self.connected.lock().await = false;
 
-        self.peripheral
-            .disconnect()
+        // Shutdown the stream
+        self.stream
+            .shutdown()
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
+            .map_err(|e| ProtocolError::Io(e))?;
 
         Ok(())
     }
@@ -225,8 +160,8 @@ impl BluetoothConnection {
 impl std::fmt::Debug for BluetoothConnection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BluetoothConnection")
-            .field("remote_address", &self.remote_address)
-            .field("service_uuid", &self.service_uuid)
+            .field("remote_address", &self.remote_address_str)
+            .field("connected", &"<state>")
             .finish()
     }
 }
@@ -238,9 +173,9 @@ impl Transport for BluetoothConnection {
         TransportCapabilities {
             // Bluetooth has smaller MTU than TCP
             max_packet_size: MAX_BT_PACKET_SIZE,
-            // Bluetooth is reliable
+            // RFCOMM is reliable (retransmission built-in)
             reliable: true,
-            // Bluetooth is connection-oriented
+            // RFCOMM is connection-oriented
             connection_oriented: true,
             // Bluetooth typically has medium latency
             latency: LatencyCategory::Medium,
@@ -249,8 +184,8 @@ impl Transport for BluetoothConnection {
 
     fn remote_address(&self) -> TransportAddress {
         TransportAddress::Bluetooth {
-            address: self.remote_address.clone(),
-            service_uuid: Some(self.service_uuid),
+            address: self.remote_address_str.clone(),
+            service_uuid: Some(CCONNECT_SERVICE_UUID),
         }
     }
 
@@ -268,78 +203,48 @@ impl Transport for BluetoothConnection {
         debug!(
             "Sending packet ({} bytes) to Bluetooth device {}",
             bytes.len(),
-            self.remote_address
+            self.remote_address_str
         );
 
-        let write_char = self.write_char.as_ref().ok_or_else(|| {
-            ProtocolError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotConnected,
-                "Write characteristic not available",
-            ))
-        })?;
-
-        // Send packet length as 4-byte big-endian
+        // Send packet length as 4-byte big-endian prefix
         let len = bytes.len() as u32;
-        let mut data_to_send = len.to_be_bytes().to_vec();
-        data_to_send.extend_from_slice(&bytes);
+        let len_bytes = len.to_be_bytes();
 
-        // Write data to characteristic
-        self.peripheral
-            .write(write_char, &data_to_send, WriteType::WithResponse)
+        // Write length prefix
+        self.stream
+            .write_all(&len_bytes)
             .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
+            .map_err(|e| ProtocolError::Io(e))?;
 
-        debug!("Packet sent successfully to {}", self.remote_address);
+        // Write packet data
+        self.stream
+            .write_all(&bytes)
+            .await
+            .map_err(|e| ProtocolError::Io(e))?;
+
+        debug!("Packet sent successfully to {}", self.remote_address_str);
         Ok(())
     }
 
     async fn receive_packet(&mut self) -> Result<Packet> {
         debug!(
             "Waiting for packet from Bluetooth device {}",
-            self.remote_address
+            self.remote_address_str
         );
 
-        let _read_char = self.read_char.as_ref().ok_or_else(|| {
-            ProtocolError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotConnected,
-                "Read characteristic not available",
-            ))
-        })?;
-
-        // Read notifications from peripheral
-        let mut notification_stream = self
-            .peripheral
-            .notifications()
-            .await
-            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
-
-        // Wait for notification with timeout
-        use futures::StreamExt;
-        let notification = timeout(BT_TIMEOUT, StreamExt::next(&mut notification_stream))
+        // Read 4-byte length prefix with timeout
+        let mut len_buf = [0u8; 4];
+        timeout(BT_TIMEOUT, self.stream.read_exact(&mut len_buf))
             .await
             .map_err(|_| {
                 ProtocolError::Io(std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
-                    "Read timeout",
+                    "Read timeout waiting for packet length",
                 ))
             })?
-            .ok_or_else(|| {
-                ProtocolError::Io(std::io::Error::new(
-                    std::io::ErrorKind::UnexpectedEof,
-                    "Notification stream ended",
-                ))
-            })?;
+            .map_err(|e| ProtocolError::Io(e))?;
 
-        let data = notification.value;
-
-        // Parse packet length
-        if data.len() < 4 {
-            return Err(ProtocolError::InvalidPacket(
-                "Packet too short (missing length)".to_string(),
-            ));
-        }
-
-        let len = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as usize;
+        let len = u32::from_be_bytes(len_buf) as usize;
 
         if len > MAX_BT_PACKET_SIZE {
             error!("Packet too large: {} bytes", len);
@@ -349,21 +254,22 @@ impl Transport for BluetoothConnection {
             )));
         }
 
-        // Extract packet data (skip length prefix)
-        let packet_data = &data[4..];
+        // Read packet data
+        let mut packet_data = vec![0u8; len];
+        timeout(BT_TIMEOUT, self.stream.read_exact(&mut packet_data))
+            .await
+            .map_err(|_| {
+                ProtocolError::Io(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "Read timeout waiting for packet data",
+                ))
+            })?
+            .map_err(|e| ProtocolError::Io(e))?;
 
-        if packet_data.len() != len {
-            return Err(ProtocolError::InvalidPacket(format!(
-                "Packet size mismatch: expected {} bytes, got {}",
-                len,
-                packet_data.len()
-            )));
-        }
-
-        let packet = Packet::from_bytes(packet_data)?;
+        let packet = Packet::from_bytes(&packet_data)?;
         debug!(
             "Received packet type '{}' from {}",
-            packet.packet_type, self.remote_address
+            packet.packet_type, self.remote_address_str
         );
 
         Ok(packet)
@@ -383,10 +289,91 @@ impl Transport for BluetoothConnection {
     }
 }
 
+/// RFCOMM Listener for accepting incoming Bluetooth connections
+pub struct BluetoothListener {
+    /// The underlying RFCOMM listener
+    listener: Listener,
+
+    /// Local address
+    local_addr: SocketAddr,
+}
+
+impl BluetoothListener {
+    /// Create a new Bluetooth listener on a specific channel
+    ///
+    /// # Arguments
+    ///
+    /// * `channel` - RFCOMM channel to listen on (None for any available)
+    pub async fn bind(channel: Option<u8>) -> Result<Self> {
+        // Use specific channel or any available
+        let addr = if let Some(ch) = channel {
+            SocketAddr::new(Address::any(), ch)
+        } else {
+            SocketAddr::any()
+        };
+
+        debug!("Binding RFCOMM listener to {:?}", addr);
+
+        let listener = Listener::bind(addr)
+            .await
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
+
+        let local_addr = listener
+            .as_ref()
+            .local_addr()
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
+
+        info!(
+            "Bluetooth RFCOMM listener bound on channel {}",
+            local_addr.channel
+        );
+
+        Ok(Self {
+            listener,
+            local_addr,
+        })
+    }
+
+    /// Get the channel this listener is bound to
+    pub fn channel(&self) -> u8 {
+        self.local_addr.channel
+    }
+
+    /// Accept an incoming connection
+    pub async fn accept(&self) -> Result<(BluetoothConnection, Address)> {
+        debug!("Waiting for incoming Bluetooth connection...");
+
+        let (stream, remote_addr) = self
+            .listener
+            .accept()
+            .await
+            .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
+
+        info!(
+            "Accepted Bluetooth connection from {}",
+            remote_addr.addr
+        );
+
+        let connection = BluetoothConnection::from_stream(stream, remote_addr.addr);
+        Ok((connection, remote_addr.addr))
+    }
+}
+
+impl std::fmt::Debug for BluetoothListener {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BluetoothListener")
+            .field("channel", &self.local_addr.channel)
+            .finish()
+    }
+}
+
 /// Factory for creating Bluetooth connections
 #[derive(Debug, Clone)]
 pub struct BluetoothTransportFactory {
-    /// Service UUID to use for connections
+    /// RFCOMM channel to use for connections
+    channel: u8,
+
+    /// Service UUID (for reference/logging)
     service_uuid: Uuid,
 }
 
@@ -398,8 +385,15 @@ impl BluetoothTransportFactory {
     /// * `service_uuid` - Optional service UUID (defaults to CConnect UUID)
     pub fn new(service_uuid: Option<Uuid>) -> Self {
         Self {
+            channel: RFCOMM_CHANNEL,
             service_uuid: service_uuid.unwrap_or(CCONNECT_SERVICE_UUID),
         }
+    }
+
+    /// Create factory with specific channel
+    pub fn with_channel(mut self, channel: u8) -> Self {
+        self.channel = channel;
+        self
     }
 }
 
@@ -415,10 +409,10 @@ impl TransportFactory for BluetoothTransportFactory {
         match address {
             TransportAddress::Bluetooth {
                 address,
-                service_uuid,
+                service_uuid: _,
             } => {
-                let uuid = service_uuid.unwrap_or(self.service_uuid);
-                let connection = BluetoothConnection::connect(address, uuid).await?;
+                let connection =
+                    BluetoothConnection::connect(address, Some(self.channel)).await?;
                 Ok(Box::new(connection))
             }
             _ => Err(ProtocolError::InvalidPacket(
@@ -430,6 +424,62 @@ impl TransportFactory for BluetoothTransportFactory {
     fn transport_type(&self) -> TransportType {
         TransportType::Bluetooth
     }
+}
+
+/// Get available Bluetooth adapters
+pub async fn get_adapters() -> Result<Vec<String>> {
+    let session = Session::new()
+        .await
+        .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
+
+    let adapter_names = session
+        .adapter_names()
+        .await
+        .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
+
+    Ok(adapter_names)
+}
+
+/// Get paired devices from BlueZ
+pub async fn get_paired_devices() -> Result<Vec<(Address, String)>> {
+    let session = Session::new()
+        .await
+        .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
+
+    let adapter_names = session
+        .adapter_names()
+        .await
+        .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
+
+    if adapter_names.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let adapter = session
+        .adapter(&adapter_names[0])
+        .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
+
+    let devices = adapter
+        .device_addresses()
+        .await
+        .map_err(|e| ProtocolError::Io(std::io::Error::other(e)))?;
+
+    let mut paired = Vec::new();
+    for addr in devices {
+        if let Ok(device) = adapter.device(addr) {
+            if device.is_paired().await.unwrap_or(false) {
+                let name = device
+                    .name()
+                    .await
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| addr.to_string());
+                paired.push((addr, name));
+            }
+        }
+    }
+
+    Ok(paired)
 }
 
 #[cfg(test)]
@@ -456,5 +506,16 @@ mod tests {
         let factory = BluetoothTransportFactory::default();
         assert_eq!(factory.transport_type(), TransportType::Bluetooth);
         assert_eq!(factory.service_uuid, CCONNECT_SERVICE_UUID);
+    }
+
+    #[test]
+    fn test_address_parsing() {
+        // Valid address
+        let addr = Address::from_str("00:11:22:33:44:55");
+        assert!(addr.is_ok());
+
+        // Invalid address
+        let addr = Address::from_str("invalid");
+        assert!(addr.is_err());
     }
 }

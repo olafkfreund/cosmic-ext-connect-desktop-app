@@ -23,7 +23,7 @@ uuid = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
 mouse-keyboard-input = { workspace = true }
-btleplug = { workspace = true }
+bluer = { workspace = true }
 futures = { workspace = true }
 
 # Legacy pairing module still uses OpenSSL temporarily
