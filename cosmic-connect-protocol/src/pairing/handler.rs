@@ -478,12 +478,12 @@ impl PairingHandler {
                     Ok((false, None))
                 }
                 PairingStatus::Paired => {
-                    // Already paired
-                    info!(
-                        "Received pairing request from already paired device {}",
+                    // Already paired - just acknowledge, don't respond (avoid pairing loop)
+                    debug!(
+                        "Received pairing request from already paired device {} - ignoring",
                         device_id
                     );
-                    Ok((true, Some(PairingPacket::accept())))
+                    Ok((true, None))
                 }
             }
         } else {
