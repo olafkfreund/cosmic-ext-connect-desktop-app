@@ -54,9 +54,12 @@ struct Daemon {
     /// Error handler for user notifications
     error_handler: Arc<ErrorHandler>,
 
-    /// Device certificate (for future TLS support)
+    /// Device certificate (for TLS support)
     #[allow(dead_code)]
     certificate: CertificateInfo,
+
+    /// TLS configuration for payload transfers
+    tls_config: Arc<cosmic_connect_protocol::TlsConfig>,
 
     /// This device info
     device_info: DeviceInfo,
@@ -177,6 +180,12 @@ impl Daemon {
             .context("Failed to load device configurations")?;
         let device_config_registry = Arc::new(RwLock::new(device_config_registry));
 
+        // Create TLS configuration for payload transfers
+        let tls_config = Arc::new(
+            cosmic_connect_protocol::TlsConfig::new(&certificate)
+                .context("Failed to create TLS configuration")?,
+        );
+
         // Create connection config
         let connection_config = ConnectionConfig {
             listen_addr: format!("[::]:{}", config.network.discovery_port)
@@ -262,6 +271,7 @@ impl Daemon {
             config,
             error_handler,
             certificate,
+            tls_config,
             device_info,
             plugin_manager,
             device_manager,
@@ -642,6 +652,7 @@ impl Daemon {
         let error_handler = self.error_handler.clone();
         let plugin_manager = self.plugin_manager.clone();
         let packet_sender = self.packet_sender.clone();
+        let tls_config = self.tls_config.clone();
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
                 if let Err(e) = Self::handle_pairing_event(
@@ -654,6 +665,7 @@ impl Daemon {
                     &error_handler,
                     &plugin_manager,
                     &packet_sender,
+                    &tls_config,
                 )
                 .await
                 {
@@ -679,6 +691,7 @@ impl Daemon {
         error_handler: &ErrorHandler,
         plugin_manager: &Arc<RwLock<PluginManager>>,
         packet_sender: &Sender<(String, Packet)>,
+        tls_config: &Arc<cosmic_connect_protocol::TlsConfig>,
     ) -> Result<()> {
         match event {
             PairingEvent::RequestSent {
@@ -773,6 +786,15 @@ impl Daemon {
                             error!("Failed to initialize plugins for device {}: {}", device_id, e);
                         } else {
                             info!("Initialized plugins for device {} after pairing", device_id);
+
+                            // Set TLS config on SharePlugin for secure file transfers
+                            if let Some(plugin) = plug_manager.get_device_plugin_mut(&device_id, "share") {
+                                use cosmic_connect_protocol::plugins::share::SharePlugin;
+                                if let Some(share_plugin) = plugin.as_any_mut().downcast_mut::<SharePlugin>() {
+                                    share_plugin.set_tls_config(tls_config.clone());
+                                    debug!("Set TLS config on SharePlugin for device {}", device_id);
+                                }
+                            }
                         }
                     } else {
                         warn!("Device {} not found in manager after pairing", device_id);
@@ -883,6 +905,7 @@ impl Daemon {
             let packet_sender = self.packet_sender.clone();
             let config = self.config.clone();
             let error_handler = Some(self.error_handler.clone());
+            let tls_config = self.tls_config.clone();
             tokio::spawn(async move {
                 while let Some(event) = event_rx.recv().await {
                     // Convert TransportManagerEvent to ConnectionEvent
@@ -952,6 +975,7 @@ impl Daemon {
                         packet_sender.clone(),
                         &config,
                         &error_handler,
+                        &tls_config,
                     )
                     .await
                     {
@@ -993,6 +1017,7 @@ impl Daemon {
             let packet_sender = self.packet_sender.clone();
             let config = self.config.clone();
             let error_handler = Some(self.error_handler.clone());
+            let tls_config = self.tls_config.clone();
             tokio::spawn(async move {
                 while let Some(event) = event_rx.recv().await {
                     if let Err(e) = Self::handle_connection_event(
@@ -1009,6 +1034,7 @@ impl Daemon {
                         packet_sender.clone(),
                         &config,
                         &error_handler,
+                        &tls_config,
                     )
                     .await
                     {
@@ -1287,6 +1313,7 @@ impl Daemon {
         packet_sender: Sender<(String, Packet)>,
         config: &Arc<RwLock<Config>>,
         error_handler: &Option<Arc<ErrorHandler>>,
+        tls_config: &Arc<cosmic_connect_protocol::TlsConfig>,
     ) -> Result<()> {
         match event {
             ConnectionEvent::Connected {
@@ -1320,6 +1347,15 @@ impl Daemon {
                                 );
                             } else {
                                 info!("Initialized plugins for device {}", device_id);
+
+                                // Set TLS config on SharePlugin for secure file transfers
+                                if let Some(plugin) = plug_manager.get_device_plugin_mut(&device_id, "share") {
+                                    use cosmic_connect_protocol::plugins::share::SharePlugin;
+                                    if let Some(share_plugin) = plugin.as_any_mut().downcast_mut::<SharePlugin>() {
+                                        share_plugin.set_tls_config(tls_config.clone());
+                                        debug!("Set TLS config on SharePlugin for device {}", device_id);
+                                    }
+                                }
 
                                 // Load MAC address from config and set it on WOL plugin
                                 let config_registry = device_config_registry.read().await;

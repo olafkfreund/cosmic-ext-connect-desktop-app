@@ -31,6 +31,9 @@ futures = { workspace = true }
 openssl = "0.10"
 pem = "3.0"
 
+# TLS for payload transfers (file sharing)
+tokio-rustls = "0.25"
+
 # System monitoring (Linux)
 nix = { version = "0.27", features = ["fs"] }
 

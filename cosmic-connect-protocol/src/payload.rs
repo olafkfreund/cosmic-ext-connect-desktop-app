@@ -1,16 +1,27 @@
 //! Payload Transfer System
 //!
 //! Handles TCP-based file transfers for the Share plugin.
-//! Implements the CConnect payload transfer protocol.
+//! Implements the CConnect payload transfer protocol with TLS encryption.
 //!
 //! ## Protocol
 //!
-//! File transfers in CConnect use TCP:
+//! File transfers in CConnect use TCP with TLS:
 //! 1. Sender creates a TCP server on an available port (1739+ range)
 //! 2. Sender sends a share packet with file metadata and port
-//! 3. Receiver connects to sender's IP:port
-//! 4. Raw file bytes are streamed
-//! 5. Connection closes when all bytes transferred
+//! 3. Receiver connects to sender's IP:port with TCP
+//! 4. TLS handshake (KDE Connect inverted roles: TCP initiator = TLS SERVER)
+//! 5. Raw file bytes are streamed over TLS
+//! 6. Connection closes when all bytes transferred
+//!
+//! ## TLS Role Quirk (KDE Connect Compatibility)
+//!
+//! KDE Connect uses **inverted TLS roles** compared to standard TLS:
+//! - Device that **accepts** TCP connection acts as **TLS CLIENT**
+//! - Device that **initiates** TCP connection acts as **TLS SERVER**
+//!
+//! For payload transfers:
+//! - Sender (e.g., Android) opens server socket → accepts TCP → TLS CLIENT
+//! - Receiver (e.g., Desktop) connects to port → initiates TCP → TLS SERVER
 //!
 //! ## Usage
 //!
@@ -34,30 +45,31 @@
 //! server.send_file("/path/to/file.pdf").await?;
 //! ```
 //!
-//! ### Receiving a File
+//! ### Receiving a File (with TLS)
 //!
 //! ```rust,ignore
-//! use cosmic_connect_core::payload::PayloadClient;
+//! use cosmic_connect_core::payload::TlsPayloadClient;
 //!
 //! // Extract info from received packet
 //! let filename = packet.body["filename"].as_str().unwrap();
 //! let size = packet.payload_size.unwrap();
 //! let port = packet.payload_transfer_info["port"].as_u64().unwrap() as u16;
 //!
-//! // Connect and receive file
-//! let client = PayloadClient::new(remote_addr, port).await?;
+//! // Connect with TLS and receive file
+//! let client = TlsPayloadClient::new(remote_addr, port, &tls_config).await?;
 //! client.receive_file("/path/to/save/file.pdf", size).await?;
 //! ```
 
 use crate::fs_utils::{cleanup_partial_file, create_file_safe, write_file_safe};
-use crate::{ProtocolError, Result};
+use crate::{ProtocolError, Result, TlsConfig};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::Path;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{timeout, Duration};
-use tracing::{debug, info, warn};
+use tokio_rustls::TlsAcceptor;
+use tracing::{debug, error, info, warn};
 
 /// Default timeout for TCP connections (30 seconds)
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
@@ -103,7 +115,9 @@ impl FileTransferInfo {
     /// Returns error if file doesn't exist or metadata cannot be read.
     pub async fn from_path(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
-        let metadata = tokio::fs::metadata(path).await.map_err(ProtocolError::Io)?;
+        // Use std::fs::metadata instead of tokio::fs to avoid requiring a Tokio runtime
+        // This is needed for compatibility with zbus handlers that run in a different executor
+        let metadata = std::fs::metadata(path).map_err(ProtocolError::Io)?;
 
         let filename = path
             .file_name()
@@ -179,6 +193,44 @@ impl PayloadServer {
             let addr = format!("0.0.0.0:{}", port);
             if let Ok(listener) = TcpListener::bind(&addr).await {
                 info!("Payload server listening on port {}", port);
+                return Ok(Self {
+                    listener,
+                    port,
+                    progress_callback: None,
+                });
+            }
+        }
+
+        Err(ProtocolError::Io(std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            format!(
+                "Failed to bind payload server - all ports in range {}-{} are in use",
+                PORT_RANGE_START, PORT_RANGE_END
+            ),
+        )))
+    }
+
+    /// Create a new payload server using blocking I/O
+    ///
+    /// This variant uses std::net::TcpListener internally and converts to tokio,
+    /// making it safe to call from contexts without an active tokio reactor
+    /// (e.g., zbus DBus handlers).
+    ///
+    /// Binds to 0.0.0.0 in the CConnect port range (1739-1764).
+    ///
+    /// # Errors
+    ///
+    /// Returns error if no ports are available in the range.
+    pub fn new_blocking() -> Result<Self> {
+        // Try to bind to a port in the CConnect range using std::net
+        for port in PORT_RANGE_START..=PORT_RANGE_END {
+            let addr = format!("0.0.0.0:{}", port);
+            if let Ok(std_listener) = std::net::TcpListener::bind(&addr) {
+                // Set non-blocking for tokio compatibility
+                std_listener.set_nonblocking(true).map_err(ProtocolError::Io)?;
+                // Convert to tokio TcpListener
+                let listener = TcpListener::from_std(std_listener).map_err(ProtocolError::Io)?;
+                info!("Payload server listening on port {} (blocking init)", port);
                 return Ok(Self {
                     listener,
                     port,
@@ -516,6 +568,226 @@ impl PayloadClient {
         // Clean up partial file on error
         if result.is_err() {
             warn!("Transfer failed, cleaning up partial file: {:?}", save_path);
+            cleanup_partial_file(save_path).await;
+        }
+
+        result
+    }
+}
+
+/// TLS-enabled TCP client for receiving file payloads
+///
+/// Connects to a remote payload server with TLS encryption.
+/// Uses KDE Connect's inverted TLS roles: TCP initiator acts as TLS SERVER.
+///
+/// ## Security
+///
+/// - Uses TLS 1.2+ with mutual certificate authentication
+/// - Trust-On-First-Use (TOFU) model - certificates are verified at application layer
+/// - Same certificate used for main connection and payload transfers
+///
+/// ## Example
+///
+/// ```rust,ignore
+/// use cosmic_connect_core::payload::TlsPayloadClient;
+///
+/// // Get TLS config (same as main connection)
+/// let tls_config = TlsConfig::new(&certificate)?;
+///
+/// // Connect to payload server with TLS
+/// let client = TlsPayloadClient::new("192.168.1.100", 1739, &tls_config).await?;
+/// client.receive_file("/tmp/received_file.pdf", 1048576).await?;
+/// ```
+pub struct TlsPayloadClient {
+    stream: tokio_rustls::server::TlsStream<TcpStream>,
+    progress_callback: Option<ProgressCallback>,
+}
+
+impl TlsPayloadClient {
+    /// Connect to a remote payload server with TLS
+    ///
+    /// Establishes a TLS connection using KDE Connect's inverted roles:
+    /// - TCP connection initiated by us
+    /// - TLS handshake performed as SERVER (inverted role!)
+    ///
+    /// # Parameters
+    ///
+    /// - `host`: Remote host IP address
+    /// - `port`: Remote port number
+    /// - `tls_config`: TLS configuration with our certificate
+    ///
+    /// # Errors
+    ///
+    /// Returns error if connection fails, times out, or TLS handshake fails.
+    pub async fn new(host: impl ToSocketAddrs, port: u16, tls_config: &TlsConfig) -> Result<Self> {
+        let addrs: Vec<SocketAddr> = host.to_socket_addrs().map_err(ProtocolError::Io)?.collect();
+
+        if addrs.is_empty() {
+            return Err(ProtocolError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "No addresses resolved for host",
+            )));
+        }
+
+        // Try first address with port
+        let addr = SocketAddr::new(addrs[0].ip(), port);
+        info!("Connecting to payload server at {} with TLS", addr);
+
+        // Connect TCP first
+        let tcp_stream = timeout(CONNECTION_TIMEOUT, TcpStream::connect(&addr))
+            .await
+            .map_err(|_| {
+                ProtocolError::Io(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "Connection timeout",
+                ))
+            })?
+            .map_err(ProtocolError::Io)?;
+
+        debug!("TCP connection established to payload server at {}", addr);
+
+        // KDE Connect quirk: TCP initiator acts as TLS SERVER
+        // Create TLS acceptor with SERVER config (inverted role!)
+        let acceptor = TlsAcceptor::from(tls_config.server_config());
+
+        // Perform TLS handshake as SERVER
+        let tls_stream: tokio_rustls::server::TlsStream<TcpStream> =
+            timeout(CONNECTION_TIMEOUT, acceptor.accept(tcp_stream))
+                .await
+                .map_err(|_| {
+                    ProtocolError::Io(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "TLS handshake timeout",
+                    ))
+                })?
+                .map_err(|e| {
+                    error!("TLS handshake failed for payload transfer: {}", e);
+                    ProtocolError::Io(std::io::Error::new(
+                        std::io::ErrorKind::ConnectionRefused,
+                        format!("TLS handshake failed: {}", e),
+                    ))
+                })?;
+
+        info!("TLS connection established to payload server at {} (as TLS SERVER)", addr);
+
+        Ok(Self {
+            stream: tls_stream,
+            progress_callback: None,
+        })
+    }
+
+    /// Set a progress callback for transfer updates
+    ///
+    /// The callback receives (bytes_transferred, total_bytes) and returns
+    /// `true` to continue or `false` to cancel the transfer.
+    pub fn with_progress(mut self, callback: ProgressCallback) -> Self {
+        self.progress_callback = Some(callback);
+        self
+    }
+
+    /// Receive a file from the connected server over TLS
+    ///
+    /// Downloads the specified number of bytes and saves to a file.
+    ///
+    /// # Parameters
+    ///
+    /// - `save_path`: Path where the file should be saved
+    /// - `expected_size`: Expected file size in bytes
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - File cannot be created
+    /// - Transfer fails or times out
+    /// - Size mismatch (received != expected)
+    /// - Transfer is cancelled via progress callback
+    pub async fn receive_file(
+        mut self,
+        save_path: impl AsRef<Path>,
+        expected_size: u64,
+    ) -> Result<()> {
+        let save_path = save_path.as_ref();
+        info!(
+            "Receiving file to {:?} ({} bytes expected) over TLS",
+            save_path, expected_size
+        );
+
+        // Create file with safe error handling
+        let mut file = match create_file_safe(save_path).await {
+            Ok(f) => f,
+            Err(e) => {
+                warn!("Failed to create file {:?}: {}", save_path, e);
+                return Err(e);
+            }
+        };
+
+        // Read and write data
+        let mut buffer = vec![0u8; BUFFER_SIZE];
+        let mut total_bytes = 0u64;
+
+        let result = async {
+            while total_bytes < expected_size {
+                let remaining = expected_size - total_bytes;
+                let to_read = std::cmp::min(remaining, BUFFER_SIZE as u64) as usize;
+
+                // Read from TLS stream
+                let bytes_read: usize =
+                    timeout(TRANSFER_TIMEOUT, self.stream.read(&mut buffer[..to_read]))
+                        .await
+                        .map_err(|_| {
+                            ProtocolError::Timeout(
+                                "TLS stream read timeout during file transfer".to_string(),
+                            )
+                        })?
+                        .map_err(ProtocolError::Io)?;
+
+                if bytes_read == 0 {
+                    return Err(ProtocolError::Io(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        format!(
+                            "TLS connection closed prematurely: received {} bytes, expected {}",
+                            total_bytes, expected_size
+                        ),
+                    )));
+                }
+
+                // Write to file with safe error handling
+                write_file_safe(&mut file, &buffer[..bytes_read]).await?;
+
+                total_bytes += bytes_read as u64;
+
+                debug!(
+                    "Received {} bytes over TLS ({}/{} total)",
+                    bytes_read, total_bytes, expected_size
+                );
+
+                // Call progress callback if set
+                if let Some(ref callback) = self.progress_callback {
+                    if !callback(total_bytes, expected_size) {
+                        info!("Transfer cancelled by progress callback");
+                        return Err(ProtocolError::Io(std::io::Error::new(
+                            std::io::ErrorKind::Interrupted,
+                            "Transfer cancelled",
+                        )));
+                    }
+                }
+            }
+
+            // Flush file
+            file.flush().await.map_err(ProtocolError::Io)?;
+
+            info!(
+                "TLS file transfer complete: {} bytes received to {:?}",
+                total_bytes, save_path
+            );
+
+            Ok(())
+        }
+        .await;
+
+        // Clean up partial file on error
+        if result.is_err() {
+            warn!("TLS transfer failed, cleaning up partial file: {:?}", save_path);
             cleanup_partial_file(save_path).await;
         }
 

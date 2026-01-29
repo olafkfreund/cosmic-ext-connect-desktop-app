@@ -319,13 +319,28 @@ pub struct ShareRecord {
 /// assert_eq!(plugin.name(), "share");
 /// assert_eq!(plugin.share_count(), 0);
 /// ```
-#[derive(Debug)]
+/// Share plugin for file, text, and URL sharing
 pub struct SharePlugin {
     /// Device ID this plugin is attached to
     device_id: Option<String>,
 
     /// History of share operations
     shares: Arc<RwLock<Vec<ShareRecord>>>,
+
+    /// TLS configuration for secure payload transfers
+    /// Required for receiving files from Android (uses TLS for payload transfers)
+    tls_config: Option<Arc<crate::TlsConfig>>,
+}
+
+// Manual Debug impl to skip tls_config (TlsConfig doesn't implement Debug)
+impl std::fmt::Debug for SharePlugin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SharePlugin")
+            .field("device_id", &self.device_id)
+            .field("shares", &"<shares>")
+            .field("tls_config", &self.tls_config.as_ref().map(|_| "<TlsConfig>"))
+            .finish()
+    }
 }
 
 impl SharePlugin {
@@ -343,7 +358,29 @@ impl SharePlugin {
         Self {
             device_id: None,
             shares: Arc::new(RwLock::new(Vec::new())),
+            tls_config: None,
         }
+    }
+
+    /// Set TLS configuration for secure payload transfers
+    ///
+    /// Must be called before receiving files from Android devices, as they
+    /// require TLS encryption for payload transfers.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let mut plugin = SharePlugin::new();
+    /// let tls_config = TlsConfig::new(&certificate)?;
+    /// plugin.set_tls_config(Arc::new(tls_config));
+    /// ```
+    pub fn set_tls_config(&mut self, config: Arc<crate::TlsConfig>) {
+        self.tls_config = Some(config);
+    }
+
+    /// Get a clone of the TLS config (for use in spawned tasks)
+    fn get_tls_config(&self) -> Option<Arc<crate::TlsConfig>> {
+        self.tls_config.clone()
     }
 
     /// Create a file share packet
@@ -642,6 +679,9 @@ impl SharePlugin {
                         let size = file_info.size;
                         let device_name = device.name().to_string();
 
+                        // Get TLS config for secure payload transfer
+                        let tls_config = self.get_tls_config();
+
                         // Spawn background task to download file
                         tokio::spawn(async move {
                             // Create downloads directory
@@ -663,79 +703,88 @@ impl SharePlugin {
                             );
 
                             // Connect to payload server and download file with progress tracking
-                            use crate::PayloadClient;
+                            use crate::TlsPayloadClient;
                             use std::sync::atomic::{AtomicU64, Ordering};
                             use std::sync::Arc;
                             use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-                            match PayloadClient::new(&host_clone, port).await {
-                                Ok(client) => {
-                                    let transfer_start = Instant::now();
-                                    let last_update = Arc::new(AtomicU64::new(0));
-                                    let filename_for_callback = filename_clone.clone();
-                                    let device_name_for_callback = device_name.clone();
+                            // Use TLS for payload transfer (required for Android compatibility)
+                            if let Some(config) = tls_config {
+                                match TlsPayloadClient::new(&host_clone, port, &config).await {
+                                    Ok(client) => {
+                                        let transfer_start = Instant::now();
+                                        let last_update = Arc::new(AtomicU64::new(0));
+                                        let filename_for_callback = filename_clone.clone();
+                                        let device_name_for_callback = device_name.clone();
 
-                                    // Add progress callback with rate limiting (update every 500ms)
-                                    let client_with_progress = client.with_progress(Box::new(move |transferred, total| {
-                                        let now = SystemTime::now()
-                                            .duration_since(UNIX_EPOCH)
-                                            .unwrap()
-                                            .as_millis() as u64;
-                                        let last = last_update.load(Ordering::Relaxed);
+                                        // Add progress callback with rate limiting (update every 500ms)
+                                        let client_with_progress = client.with_progress(Box::new(move |transferred, total| {
+                                            let now = SystemTime::now()
+                                                .duration_since(UNIX_EPOCH)
+                                                .unwrap()
+                                                .as_millis() as u64;
+                                            let last = last_update.load(Ordering::Relaxed);
 
-                                        // Only log progress every 500ms to avoid spam
-                                        if now - last >= 500 {
-                                            last_update.store(now, Ordering::Relaxed);
-                                            let percent = (transferred as f64 / total as f64 * 100.0) as u8;
-                                            let elapsed = transfer_start.elapsed().as_secs_f64();
-                                            let speed = if elapsed > 0.0 {
-                                                transferred as f64 / elapsed
-                                            } else {
-                                                0.0
-                                            };
+                                            // Only log progress every 500ms to avoid spam
+                                            if now - last >= 500 {
+                                                last_update.store(now, Ordering::Relaxed);
+                                                let percent = (transferred as f64 / total as f64 * 100.0) as u8;
+                                                let elapsed = transfer_start.elapsed().as_secs_f64();
+                                                let speed = if elapsed > 0.0 {
+                                                    transferred as f64 / elapsed
+                                                } else {
+                                                    0.0
+                                                };
 
-                                            info!(
-                                                "Download progress '{}' from {}: {} / {} bytes ({}%, {:.2} KB/s)",
-                                                filename_for_callback,
-                                                device_name_for_callback,
-                                                transferred,
-                                                total,
-                                                percent,
-                                                speed / 1024.0
-                                            );
+                                                info!(
+                                                    "Download progress '{}' from {}: {} / {} bytes ({}%, {:.2} KB/s)",
+                                                    filename_for_callback,
+                                                    device_name_for_callback,
+                                                    transferred,
+                                                    total,
+                                                    percent,
+                                                    speed / 1024.0
+                                                );
 
-                                            // TODO: Send progress packet back to device
-                                            // This would require passing a channel or device reference
-                                            // into this callback to send cconnect.share.request.progress packets
-                                        }
+                                                // TODO: Send progress packet back to device
+                                                // This would require passing a channel or device reference
+                                                // into this callback to send cconnect.share.request.progress packets
+                                            }
 
-                                        true // Continue transfer
-                                    }));
+                                            true // Continue transfer
+                                        }));
 
-                                    match client_with_progress
-                                        .receive_file(&file_path, size as u64)
-                                        .await
-                                    {
-                                        Ok(()) => {
-                                            info!(
-                                                "Successfully downloaded file '{}' from {}",
-                                                filename_clone, device_name
-                                            );
-                                        }
-                                        Err(e) => {
-                                            warn!(
-                                                "Failed to download file '{}' from {}: {}",
-                                                filename_clone, device_name, e
-                                            );
+                                        match client_with_progress
+                                            .receive_file(&file_path, size as u64)
+                                            .await
+                                        {
+                                            Ok(()) => {
+                                                info!(
+                                                    "Successfully downloaded file '{}' from {} via TLS",
+                                                    filename_clone, device_name
+                                                );
+                                            }
+                                            Err(e) => {
+                                                warn!(
+                                                    "Failed to download file '{}' from {} via TLS: {}",
+                                                    filename_clone, device_name, e
+                                                );
+                                            }
                                         }
                                     }
+                                    Err(e) => {
+                                        warn!(
+                                            "Failed to connect to TLS payload server {}:{}: {}",
+                                            host_clone, port, e
+                                        );
+                                    }
                                 }
-                                Err(e) => {
-                                    warn!(
-                                        "Failed to connect to payload server {}:{}: {}",
-                                        host_clone, port, e
-                                    );
-                                }
+                            } else {
+                                warn!(
+                                    "Cannot download file '{}' from {}: TLS config not set. \
+                                     Call set_tls_config() on SharePlugin before receiving files.",
+                                    filename_clone, device_name
+                                );
                             }
                         });
                     } else {

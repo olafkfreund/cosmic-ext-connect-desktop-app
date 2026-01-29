@@ -41,7 +41,7 @@ pub use pairing::{
     PairingConfig, PairingEvent, PairingHandler, PairingPacket, PairingService, PairingStatus,
     PAIRING_TIMEOUT,
 };
-pub use payload::{FileTransferInfo, PayloadClient, PayloadServer};
+pub use payload::{FileTransferInfo, PayloadClient, PayloadServer, TlsPayloadClient};
 pub use plugins::{Plugin, PluginManager};
 pub use recovery::{ReconnectionStrategy, RecoveryManager, TransferState};
 pub use recovery_coordinator::RecoveryCoordinator;
