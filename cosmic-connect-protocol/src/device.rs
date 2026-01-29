@@ -467,6 +467,12 @@ impl DeviceManager {
             )
         })?;
         self.devices = serde_json::from_str(&json)?;
+
+        // Reset all connection states to disconnected since no connections are active on startup
+        for device in self.devices.values_mut() {
+            device.mark_disconnected();
+        }
+
         info!("Loaded {} devices from registry", self.devices.len());
         Ok(())
     }

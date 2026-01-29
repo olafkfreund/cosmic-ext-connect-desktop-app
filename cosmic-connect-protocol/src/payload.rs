@@ -401,24 +401,32 @@ impl PayloadClient {
     ///
     /// # Parameters
     ///
-    /// - `host`: Remote host IP address
+    /// - `host`: Remote host IP address or hostname
     /// - `port`: Remote port number
     ///
     /// # Errors
     ///
     /// Returns error if connection fails or times out.
-    pub async fn new(host: impl ToSocketAddrs, port: u16) -> Result<Self> {
-        let addrs: Vec<SocketAddr> = host.to_socket_addrs().map_err(ProtocolError::Io)?.collect();
+    pub async fn new(host: &str, port: u16) -> Result<Self> {
+        use std::net::IpAddr;
+        use std::str::FromStr;
 
-        if addrs.is_empty() {
-            return Err(ProtocolError::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "No addresses resolved for host",
-            )));
-        }
+        // Try to parse as IP address first, otherwise do DNS resolution
+        let addr = if let Ok(ip) = IpAddr::from_str(host) {
+            SocketAddr::new(ip, port)
+        } else {
+            // Fall back to DNS resolution with "host:port" format
+            let addr_str = format!("{}:{}", host, port);
+            let addrs: Vec<SocketAddr> = addr_str.to_socket_addrs().map_err(ProtocolError::Io)?.collect();
+            if addrs.is_empty() {
+                return Err(ProtocolError::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "No addresses resolved for host",
+                )));
+            }
+            addrs[0]
+        };
 
-        // Try first address with port
-        let addr = SocketAddr::new(addrs[0].ip(), port);
         info!("Connecting to payload server at {}", addr);
 
         let stream = timeout(CONNECTION_TIMEOUT, TcpStream::connect(&addr))
@@ -612,25 +620,33 @@ impl TlsPayloadClient {
     ///
     /// # Parameters
     ///
-    /// - `host`: Remote host IP address
+    /// - `host`: Remote host IP address or hostname
     /// - `port`: Remote port number
     /// - `tls_config`: TLS configuration with our certificate
     ///
     /// # Errors
     ///
     /// Returns error if connection fails, times out, or TLS handshake fails.
-    pub async fn new(host: impl ToSocketAddrs, port: u16, tls_config: &TlsConfig) -> Result<Self> {
-        let addrs: Vec<SocketAddr> = host.to_socket_addrs().map_err(ProtocolError::Io)?.collect();
+    pub async fn new(host: &str, port: u16, tls_config: &TlsConfig) -> Result<Self> {
+        use std::net::IpAddr;
+        use std::str::FromStr;
 
-        if addrs.is_empty() {
-            return Err(ProtocolError::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "No addresses resolved for host",
-            )));
-        }
+        // Try to parse as IP address first, otherwise do DNS resolution
+        let addr = if let Ok(ip) = IpAddr::from_str(host) {
+            SocketAddr::new(ip, port)
+        } else {
+            // Fall back to DNS resolution with "host:port" format
+            let addr_str = format!("{}:{}", host, port);
+            let addrs: Vec<SocketAddr> = addr_str.to_socket_addrs().map_err(ProtocolError::Io)?.collect();
+            if addrs.is_empty() {
+                return Err(ProtocolError::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "No addresses resolved for host",
+                )));
+            }
+            addrs[0]
+        };
 
-        // Try first address with port
-        let addr = SocketAddr::new(addrs[0].ip(), port);
         info!("Connecting to payload server at {} with TLS", addr);
 
         // Connect TCP first

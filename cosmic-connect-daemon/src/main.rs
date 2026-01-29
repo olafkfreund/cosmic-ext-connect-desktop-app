@@ -1646,11 +1646,22 @@ impl Daemon {
                     if let Some(notifier) = &cosmic_notifier {
                         match packet.packet_type.as_str() {
                             "cconnect.ping" => {
-                                // Show notification for ping
-                                let message = packet.body.get("message").and_then(|v| v.as_str());
+                                // Skip notification for keepalive pings (silent pings)
+                                let is_keepalive = packet
+                                    .body
+                                    .get("keepalive")
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
 
-                                if let Err(e) = notifier.notify_ping(&device_name, message).await {
-                                    warn!("Failed to send ping notification: {}", e);
+                                if !is_keepalive {
+                                    // Show notification for regular pings only
+                                    let message = packet.body.get("message").and_then(|v| v.as_str());
+
+                                    if let Err(e) = notifier.notify_ping(&device_name, message).await {
+                                        warn!("Failed to send ping notification: {}", e);
+                                    }
+                                } else {
+                                    debug!("Received keepalive ping from {} - suppressing notification", device_name);
                                 }
                             }
                             "cconnect.notification" => {
@@ -2182,7 +2193,7 @@ impl Daemon {
                 }
 
                 // Auto-connect if paired
-                let should_connect = false; let _ = {
+                let should_connect = {
                     let manager = device_manager.read().await;
                     if let Some(device) = manager.get_device(&device_id) {
                         device.is_paired() && !device.is_connected()
@@ -2191,7 +2202,7 @@ impl Daemon {
                     }
                 };
 
-                if false {
+                if should_connect {
                     // Check backoff
                     let mut attempts = connection_attempts.write().await;
                     let now = std::time::Instant::now();
