@@ -102,7 +102,6 @@ impl Plugin for ConnectivityReportPlugin {
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
             PACKET_TYPE_CONNECTIVITY_REPORT.to_string(),
-            "kdeconnect.telephony".to_string(),
         ]
     }
 
@@ -144,7 +143,6 @@ impl PluginFactory for ConnectivityReportPluginFactory {
     fn incoming_capabilities(&self) -> Vec<String> {
         vec![
             PACKET_TYPE_CONNECTIVITY_REPORT.to_string(),
-            "kdeconnect.telephony".to_string(),
         ]
     }
 
