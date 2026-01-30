@@ -275,15 +275,17 @@
 //! - [Valent Protocol Documentation](https://valent.andyholmes.ca/documentation/protocol.html)
 //! - [MPRIS2 Specification](https://specifications.freedesktop.org/mpris-spec/latest/)
 
-use crate::{Device, Packet, Result};
+use crate::{Device, Packet, ProtocolError, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
 use tokio::sync::RwLock;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
+use super::mpris_backend::MprisBackend;
 use super::{Plugin, PluginFactory};
 
 /// Loop status for media playback
@@ -520,16 +522,25 @@ pub struct PlayerState {
 /// let plugin = MprisPlugin::new();
 /// assert_eq!(plugin.name(), "mpris");
 /// ```
-#[derive(Debug)]
+/// MPRIS plugin for media player control
 pub struct MprisPlugin {
     /// Device ID this plugin is attached to
     device_id: Option<String>,
+
+    /// Whether the plugin is enabled
+    enabled: bool,
 
     /// Map of player name to player state
     players: Arc<RwLock<HashMap<String, PlayerState>>>,
 
     /// Whether album art payloads are supported
     support_album_art: bool,
+
+    /// MPRIS DBus backend for local player control
+    backend: MprisBackend,
+
+    /// Packet sender for sending responses
+    packet_sender: Option<Sender<(String, Packet)>>,
 }
 
 impl MprisPlugin {
@@ -545,8 +556,11 @@ impl MprisPlugin {
     pub fn new() -> Self {
         Self {
             device_id: None,
+            enabled: false,
             players: Arc::new(RwLock::new(HashMap::new())),
             support_album_art: true,
+            backend: MprisBackend::new(),
+            packet_sender: None,
         }
     }
 
@@ -1215,32 +1229,36 @@ impl MprisPlugin {
     }
 
     /// Handle incoming MPRIS request packet
-    fn handle_mpris_request(&self, packet: &Packet, device: &Device) {
-        // Log the request for now (actual handling would be in application layer)
+    async fn handle_mpris_request(&mut self, packet: &Packet, device: &Device) -> Result<()> {
+        let player = packet
+            .body
+            .get("player")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        // Handle player list request
         if packet.body.get("requestPlayerList").is_some() {
             info!(
                 "Received player list request from {} ({})",
                 device.name(),
                 device.id()
             );
-        } else if packet.body.get("requestNowPlaying").is_some() {
-            let player = packet
-                .body
-                .get("player")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
+            return self.send_player_list().await;
+        }
+
+        // Handle now playing request
+        if packet.body.get("requestNowPlaying").is_some() {
             info!(
                 "Received now playing request from {} ({}) for player: {}",
                 device.name(),
                 device.id(),
                 player
             );
-        } else if let Some(action) = packet.body.get("action").and_then(|v| v.as_str()) {
-            let player = packet
-                .body
-                .get("player")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
+            return self.send_now_playing(player).await;
+        }
+
+        // Handle playback control action
+        if let Some(action) = packet.body.get("action").and_then(|v| v.as_str()) {
             info!(
                 "Received control action '{}' from {} ({}) for player: {}",
                 action,
@@ -1248,7 +1266,152 @@ impl MprisPlugin {
                 device.id(),
                 player
             );
+            if let Err(e) = self.backend.call_method(player, action).await {
+                warn!("Failed to execute action '{}' on {}: {}", action, player, e);
+            }
+            return Ok(());
         }
+
+        // Handle seek
+        if let Some(offset) = packet.body.get("Seek").and_then(|v| v.as_i64()) {
+            info!("Received seek request for {} (offset: {})", player, offset);
+            if let Err(e) = self.backend.seek(player, offset).await {
+                warn!("Failed to seek on {}: {}", player, e);
+            }
+            return Ok(());
+        }
+
+        // Handle set position (convert ms to microseconds)
+        if let Some(position_ms) = packet.body.get("SetPosition").and_then(|v| v.as_i64()) {
+            info!(
+                "Received set position request for {} (pos: {} ms)",
+                player, position_ms
+            );
+            // Need track ID for SetPosition - use a default path if not available
+            let track_id = "/org/mpris/MediaPlayer2/TrackList/NoTrack";
+            let position_us = position_ms * 1000;
+            if let Err(e) = self
+                .backend
+                .set_position(player, track_id, position_us)
+                .await
+            {
+                warn!("Failed to set position on {}: {}", player, e);
+            }
+            return Ok(());
+        }
+
+        // Handle set volume (convert 0-100 to 0.0-1.0)
+        if let Some(volume) = packet.body.get("setVolume").and_then(|v| v.as_i64()) {
+            info!(
+                "Received set volume request for {} (vol: {})",
+                player, volume
+            );
+            if let Err(e) = self.backend.set_volume(player, volume as f64 / 100.0).await {
+                warn!("Failed to set volume on {}: {}", player, e);
+            }
+            return Ok(());
+        }
+
+        // Handle set loop status
+        if let Some(loop_status) = packet.body.get("setLoopStatus").and_then(|v| v.as_str()) {
+            info!(
+                "Received set loop status request for {} (status: {})",
+                player, loop_status
+            );
+            if let Err(e) = self.backend.set_loop_status(player, loop_status).await {
+                warn!("Failed to set loop status on {}: {}", player, e);
+            }
+            return Ok(());
+        }
+
+        // Handle set shuffle
+        if let Some(shuffle) = packet.body.get("setShuffle").and_then(|v| v.as_bool()) {
+            info!(
+                "Received set shuffle request for {} (shuffle: {})",
+                player, shuffle
+            );
+            if let Err(e) = self.backend.set_shuffle(player, shuffle).await {
+                warn!("Failed to set shuffle on {}: {}", player, e);
+            }
+            return Ok(());
+        }
+
+        Ok(())
+    }
+
+    /// Send a packet to the connected device
+    async fn send_packet(&self, packet: Packet) -> Result<()> {
+        let sender = self
+            .packet_sender
+            .as_ref()
+            .ok_or_else(|| ProtocolError::Plugin("Packet sender not initialized".to_string()))?;
+
+        let device_id = self
+            .device_id
+            .as_ref()
+            .ok_or_else(|| ProtocolError::Plugin("Device ID not set".to_string()))?;
+
+        sender
+            .send((device_id.clone(), packet))
+            .await
+            .map_err(|e| ProtocolError::Plugin(format!("Failed to send packet: {}", e)))
+    }
+
+    /// Discover local players and send player list
+    async fn send_player_list(&mut self) -> Result<()> {
+        let players = self.backend.discover_players().await.unwrap_or_else(|e| {
+            warn!("Failed to discover players: {}", e);
+            vec![]
+        });
+
+        info!("Sending player list: {:?}", players);
+        let packet = self.create_player_list_packet(players);
+        self.send_packet(packet).await
+    }
+
+    /// Query player state and send now playing info
+    async fn send_now_playing(&mut self, player: &str) -> Result<()> {
+        let state = match self.backend.query_player_state(player).await {
+            Ok(s) => s,
+            Err(e) => {
+                warn!("Failed to query player state for {}: {}", player, e);
+                return Ok(());
+            }
+        };
+
+        // Convert backend state to protocol types (microseconds to milliseconds)
+        let status = PlayerStatus {
+            is_playing: state.playback_status.is_playing(),
+            position: state.position / 1000,
+            length: state.metadata.length / 1000,
+            volume: (state.volume * 100.0) as i32,
+            loop_status: LoopStatus::parse_str(&state.loop_status),
+            shuffle: state.shuffle,
+            capabilities: PlayerCapabilities {
+                can_play: state.can_play,
+                can_pause: state.can_pause,
+                can_go_next: state.can_go_next,
+                can_go_previous: state.can_go_previous,
+                can_seek: state.can_seek,
+            },
+        };
+
+        let metadata = PlayerMetadata {
+            artist: state.metadata.artist,
+            title: state.metadata.title,
+            album: state.metadata.album,
+            album_art_url: state.metadata.album_art_url,
+        };
+
+        info!(
+            "Sending now playing for {}: {} - {}",
+            player,
+            metadata.artist.as_deref().unwrap_or("Unknown"),
+            metadata.title.as_deref().unwrap_or("Unknown")
+        );
+
+        let packet = self.create_status_packet(player.to_string(), status, metadata);
+        self.send_packet(packet).await
     }
 }
 
@@ -1288,28 +1451,54 @@ impl Plugin for MprisPlugin {
         ]
     }
 
-    async fn init(&mut self, device: &Device, _packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>) -> Result<()> {
+    async fn init(&mut self, device: &Device, packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>) -> Result<()> {
         self.device_id = Some(device.id().to_string());
+        self.packet_sender = Some(packet_sender);
         info!("MPRIS plugin initialized for device {}", device.name());
         Ok(())
     }
 
     async fn start(&mut self) -> Result<()> {
+        info!("MPRIS plugin starting");
+        self.enabled = true;
+
+        // Connect to DBus
+        if let Err(e) = self.backend.connect().await {
+            warn!("Failed to connect MPRIS backend: {}", e);
+            // Continue anyway - will try to connect on first use
+        }
+
+        // Discover initial players
+        match self.backend.discover_players().await {
+            Ok(players) => {
+                info!("Discovered {} local MPRIS players: {:?}", players.len(), players);
+            }
+            Err(e) => {
+                warn!("Failed to discover MPRIS players: {}", e);
+            }
+        }
+
         info!("MPRIS plugin started");
         Ok(())
     }
 
     async fn stop(&mut self) -> Result<()> {
+        self.enabled = false;
         let player_count = self.players.read().await.len();
         info!("MPRIS plugin stopped - {} players tracked", player_count);
         Ok(())
     }
 
     async fn handle_packet(&mut self, packet: &Packet, device: &mut Device) -> Result<()> {
-        if packet.is_type("cconnect.mpris") {
+        if !self.enabled {
+            debug!("MPRIS plugin is disabled, ignoring packet");
+            return Ok(());
+        }
+
+        if packet.is_type("cconnect.mpris") || packet.is_type("kdeconnect.mpris") {
             self.handle_mpris_status(packet, device).await;
-        } else if packet.is_type("cconnect.mpris.request") {
-            self.handle_mpris_request(packet, device);
+        } else if packet.is_type("cconnect.mpris.request") || packet.is_type("kdeconnect.mpris.request") {
+            self.handle_mpris_request(packet, device).await?;
         }
         Ok(())
     }
@@ -1572,6 +1761,7 @@ mod tests {
         let mut plugin = MprisPlugin::new();
         let device = create_test_device();
         plugin.init(&device, tokio::sync::mpsc::channel(100).0).await.unwrap();
+        plugin.start().await.unwrap();
 
         let mut device = create_test_device();
         let packet = Packet::new(
@@ -1591,6 +1781,7 @@ mod tests {
         let mut plugin = MprisPlugin::new();
         let device = create_test_device();
         plugin.init(&device, tokio::sync::mpsc::channel(100).0).await.unwrap();
+        plugin.start().await.unwrap();
 
         let mut device = create_test_device();
         let packet = Packet::new(
@@ -1674,6 +1865,7 @@ mod tests {
         let mut plugin = MprisPlugin::new();
         let device = create_test_device();
         plugin.init(&device, tokio::sync::mpsc::channel(100).0).await.unwrap();
+        plugin.start().await.unwrap();
 
         let mut device = create_test_device();
         let packet = Packet::new(
@@ -1685,6 +1877,6 @@ mod tests {
         );
 
         plugin.handle_packet(&packet, &mut device).await.unwrap();
-        // Request logged
+        // Request logged - actual player control requires DBus which may not be available
     }
 }

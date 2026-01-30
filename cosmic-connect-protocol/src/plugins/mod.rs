@@ -116,6 +116,7 @@ pub mod logind_backend;
 pub mod r#macro;
 pub mod mousekeyboardshare;
 pub mod mpris;
+pub mod mpris_backend;
 pub mod networkshare;
 pub mod notification;
 pub mod ping;
