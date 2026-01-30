@@ -288,6 +288,9 @@ struct CConnectApplet {
     daemon_connected: bool,
     // Keyboard navigation state
     focus_target: FocusTarget,
+    // Drag-and-drop state
+    drag_hover_device: Option<String>, // device_id being hovered with files
+    dragging_files: bool,              // whether files are being dragged over window
 }
 
 #[derive(Debug, Clone)]
@@ -437,6 +440,11 @@ enum Message {
     FocusRight,
     ActivateFocused,
     SetFocus(FocusTarget),
+    // Drag-and-drop file events
+    FileDragEnter,
+    FileDragLeave,
+    FileDropped(std::path::PathBuf),
+    SetDragHoverDevice(Option<String>),
     // File Transfer events
     TransferProgress(
         String,
@@ -718,6 +726,8 @@ impl cosmic::Application for CConnectApplet {
             notification_progress: 0.0,
             daemon_connected: true,
             focus_target: FocusTarget::None,
+            drag_hover_device: None,
+            dragging_files: false,
         };
         (app, Task::none())
     }
@@ -1468,6 +1478,47 @@ impl cosmic::Application for CConnectApplet {
                 self.focus_target = target;
                 Task::none()
             }
+            // Drag-and-drop file events
+            Message::FileDragEnter => {
+                self.dragging_files = true;
+                Task::none()
+            }
+            Message::FileDragLeave => {
+                self.dragging_files = false;
+                self.drag_hover_device = None;
+                Task::none()
+            }
+            Message::FileDropped(path) => {
+                self.dragging_files = false;
+                let path_str = path.to_string_lossy().into_owned();
+
+                // Determine target device: explicit selection or single connected device
+                let target_device = self.drag_hover_device.take().or_else(|| {
+                    let connected: Vec<_> = self
+                        .devices
+                        .iter()
+                        .filter(|d| d.device.is_connected() && d.device.is_paired())
+                        .collect();
+                    (connected.len() == 1).then(|| connected[0].device.id().to_string())
+                });
+
+                match target_device {
+                    Some(device_id) => {
+                        tracing::info!("File dropped on device {}: {}", device_id, path_str);
+                        cosmic::task::message(cosmic::Action::App(Message::FileSelected(
+                            device_id, path_str,
+                        )))
+                    }
+                    None => {
+                        tracing::debug!("File dropped but no target device selected");
+                        Task::none()
+                    }
+                }
+            }
+            Message::SetDragHoverDevice(device_id) => {
+                self.drag_hover_device = device_id;
+                Task::none()
+            }
             // File Transfer events
             Message::TransferProgress(tid, device_id, filename, cur, tot, dir) => {
                 self.active_transfers.insert(
@@ -1703,16 +1754,25 @@ impl cosmic::Application for CConnectApplet {
     fn subscription(&self) -> cosmic::iced::Subscription<Self::Message> {
         struct DbusSubscription;
 
-        let key_sub = cosmic::iced::event::listen_with(|event, _status, _window_id| {
-            if let cosmic::iced::Event::Keyboard(cosmic::iced::keyboard::Event::KeyPressed {
-                key,
-                modifiers,
-                ..
-            }) = event
-            {
-                Some(Message::KeyPress(key, modifiers))
-            } else {
-                None
+        let event_sub = cosmic::iced::event::listen_with(|event, _status, _window_id| {
+            match event {
+                // Keyboard events
+                cosmic::iced::Event::Keyboard(cosmic::iced::keyboard::Event::KeyPressed {
+                    key,
+                    modifiers,
+                    ..
+                }) => Some(Message::KeyPress(key, modifiers)),
+                // File drag-and-drop events
+                cosmic::iced::Event::Window(cosmic::iced::window::Event::FileHovered(_path)) => {
+                    Some(Message::FileDragEnter)
+                }
+                cosmic::iced::Event::Window(cosmic::iced::window::Event::FileDropped(path)) => {
+                    Some(Message::FileDropped(path))
+                }
+                cosmic::iced::Event::Window(cosmic::iced::window::Event::FilesHoveredLeft) => {
+                    Some(Message::FileDragLeave)
+                }
+                _ => None,
             }
         });
 
@@ -1789,7 +1849,7 @@ impl cosmic::Application for CConnectApplet {
 
         let tick_sub = cosmic::iced::window::frames().map(|(_, instant)| Message::Tick(instant));
 
-        cosmic::iced::Subscription::batch(vec![dbus_sub, key_sub, tick_sub])
+        cosmic::iced::Subscription::batch(vec![dbus_sub, event_sub, tick_sub])
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
@@ -2620,16 +2680,57 @@ impl CConnectApplet {
             );
         }
 
-        // Apply focus indicator styling
-        let card_container = container(content)
-            .width(Length::Fill)
-            .class(if is_focused {
-                cosmic::theme::Container::Primary
-            } else {
-                cosmic::theme::Container::Card
-            });
+        // Check if this device is a valid drop target
+        let can_receive_files = device.is_connected()
+            && device.is_paired()
+            && device.has_incoming_capability("cconnect.share");
+        let show_drop_zone = self.dragging_files && can_receive_files;
+        let is_drag_target = show_drop_zone
+            && self.drag_hover_device.as_ref() == Some(device_id);
 
-        card_container.into()
+        // Add drop zone indicator when dragging files
+        if show_drop_zone {
+            content = content.push(
+                container(
+                    row![
+                        icon::from_name("document-save-symbolic").size(ICON_S),
+                        cosmic::widget::text::body("Drop file here"),
+                    ]
+                    .spacing(SPACE_S)
+                    .align_y(cosmic::iced::Alignment::Center),
+                )
+                .padding(SPACE_S)
+                .width(Length::Fill)
+                .align_x(Horizontal::Center)
+                .class(cosmic::theme::Container::Secondary),
+            );
+        }
+
+        // Apply focus/drag indicator styling
+        let container_class = if is_drag_target || is_focused {
+            cosmic::theme::Container::Primary
+        } else {
+            cosmic::theme::Container::Card
+        };
+
+        // Wrap in button for click-to-select as drop target when dragging
+        if show_drop_zone {
+            button::custom(
+                container(content)
+                    .width(Length::Fill)
+                    .class(container_class),
+            )
+            .on_press(Message::SetDragHoverDevice(Some(device_id.to_string())))
+            .padding(0)
+            .class(cosmic::theme::Button::Transparent)
+            .width(Length::Fill)
+            .into()
+        } else {
+            container(content)
+                .width(Length::Fill)
+                .class(container_class)
+                .into()
+        }
     }
 
     fn build_device_actions<'a>(
