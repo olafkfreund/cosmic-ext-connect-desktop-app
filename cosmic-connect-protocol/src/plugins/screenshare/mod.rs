@@ -57,8 +57,9 @@
 //! - [x] XDG Desktop Portal integration for screen selection
 //! - [x] Adaptive bitrate control (adjusts encoder based on network throughput)
 //! - [x] Multiple viewer management (broadcast channel architecture)
-//! - [ ] Cursor tracking and highlighting (packets parsed, UI integration needed)
-//! - [ ] Annotation overlay system (packets parsed, UI integration needed)
+//! - [x] Cursor tracking (DBus signals emitted, mirror UI receives updates)
+//! - [x] Annotation system (DBus signals emitted, mirror UI receives updates)
+//! - [x] Canvas-based cursor/annotation rendering (Stack + Canvas overlay on video)
 
 pub mod capture;
 pub mod decoder;

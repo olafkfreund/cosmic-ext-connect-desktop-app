@@ -301,6 +301,24 @@ pub enum DaemonEvent {
     ScreenShareRequested {
         device_id: String,
     },
+    /// Screen share cursor position update
+    ScreenShareCursorUpdate {
+        device_id: String,
+        x: i32,
+        y: i32,
+        visible: bool,
+    },
+    /// Screen share annotation received
+    ScreenShareAnnotation {
+        device_id: String,
+        annotation_type: String,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        color: String,
+        width: u8,
+    },
 }
 
 /// DBus proxy for COSMIC Connect daemon interface
@@ -506,6 +524,28 @@ trait CConnect {
     /// Signal: Screen share requested
     #[zbus(signal)]
     fn screen_share_requested(device_id: &str) -> zbus::fdo::Result<()>;
+
+    /// Signal: Screen share cursor update
+    #[zbus(signal)]
+    fn screen_share_cursor_update(
+        device_id: &str,
+        x: i32,
+        y: i32,
+        visible: bool,
+    ) -> zbus::fdo::Result<()>;
+
+    /// Signal: Screen share annotation
+    #[zbus(signal)]
+    fn screen_share_annotation(
+        device_id: &str,
+        annotation_type: &str,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        color: &str,
+        width: u8,
+    ) -> zbus::fdo::Result<()>;
 }
 
 /// DBus client for communicating with the daemon
@@ -690,6 +730,40 @@ impl DbusClient {
                 if let Ok(args) = signal.args() {
                     let device_id = args.device_id().to_string();
                     let _ = event_tx.send(DaemonEvent::ScreenShareRequested { device_id });
+                }
+            }
+        });
+
+        let event_tx = self.event_tx.clone();
+        let mut cursor_stream = self.proxy.receive_screen_share_cursor_update().await?;
+        tokio::spawn(async move {
+            while let Some(signal) = cursor_stream.next().await {
+                if let Ok(args) = signal.args() {
+                    let _ = event_tx.send(DaemonEvent::ScreenShareCursorUpdate {
+                        device_id: args.device_id().to_string(),
+                        x: *args.x(),
+                        y: *args.y(),
+                        visible: *args.visible(),
+                    });
+                }
+            }
+        });
+
+        let event_tx = self.event_tx.clone();
+        let mut annotation_stream = self.proxy.receive_screen_share_annotation().await?;
+        tokio::spawn(async move {
+            while let Some(signal) = annotation_stream.next().await {
+                if let Ok(args) = signal.args() {
+                    let _ = event_tx.send(DaemonEvent::ScreenShareAnnotation {
+                        device_id: args.device_id().to_string(),
+                        annotation_type: args.annotation_type().to_string(),
+                        x1: *args.x1(),
+                        y1: *args.y1(),
+                        x2: *args.x2(),
+                        y2: *args.y2(),
+                        color: args.color().to_string(),
+                        width: *args.width(),
+                    });
                 }
             }
         });
