@@ -71,7 +71,14 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashSet;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
+
+#[cfg(feature = "screenshare")]
+use capture::{CaptureConfig, ScreenCapture};
+#[cfg(feature = "screenshare")]
+use stream_sender::StreamSender;
 
 const PLUGIN_NAME: &str = "screenshare";
 const INCOMING_CAPABILITY: &str = "cconnect.screenshare";
@@ -414,6 +421,9 @@ pub struct ShareStats {
     pub avg_bitrate_kbps: u64,
 }
 
+/// Handle to a running streaming task
+type StreamingHandle = tokio::task::JoinHandle<()>;
+
 /// Screen Share plugin
 pub struct ScreenSharePlugin {
     /// Device ID this plugin is associated with
@@ -433,6 +443,12 @@ pub struct ScreenSharePlugin {
 
     /// Local port to receive stream (set by UI)
     local_port: Option<u16>,
+
+    /// Handle to the streaming task (for cleanup)
+    streaming_task: Option<StreamingHandle>,
+
+    /// Shared flag to signal streaming stop
+    stop_streaming: Arc<Mutex<bool>>,
 }
 
 impl ScreenSharePlugin {
@@ -445,6 +461,8 @@ impl ScreenSharePlugin {
             receiving: false,
             packet_sender: None,
             local_port: None,
+            streaming_task: None,
+            stop_streaming: Arc::new(Mutex::new(false)),
         }
     }
 
@@ -477,6 +495,9 @@ impl ScreenSharePlugin {
 
     /// Stop screen sharing session
     pub async fn stop_sharing(&mut self) -> Result<()> {
+        // Stop streaming task first
+        self.stop_streaming().await;
+
         if let Some(session) = self.active_session.take() {
             let stats = session.get_stats();
             info!(
@@ -486,10 +507,6 @@ impl ScreenSharePlugin {
                 stats.viewer_count,
                 stats.duration_secs
             );
-
-            // TODO: Stop screen capture
-            // TODO: Stop encoding thread
-            // TODO: Stop frame sender thread
         }
 
         Ok(())
@@ -613,6 +630,142 @@ impl ScreenSharePlugin {
         } else {
             Err(ProtocolError::Plugin("No packet sender available".to_string()))
         }
+    }
+
+    /// Start streaming to a remote device
+    ///
+    /// This initializes the GStreamer capture pipeline and connects to the
+    /// receiver's TCP port to stream encoded video frames.
+    #[cfg(feature = "screenshare")]
+    pub async fn start_streaming_to_device(&mut self, host: String, port: u16) -> Result<()> {
+        // Get config from active session
+        let config = if let Some(session) = &self.active_session {
+            session.config.clone()
+        } else {
+            return Err(ProtocolError::Plugin("No active sharing session".to_string()));
+        };
+
+        info!("Starting stream to {}:{} with {} fps, {} kbps",
+            host, port, config.fps, config.bitrate_kbps);
+
+        // Reset stop flag
+        {
+            let mut stop = self.stop_streaming.lock().await;
+            *stop = false;
+        }
+
+        // Clone Arc for the spawned task
+        let stop_flag = self.stop_streaming.clone();
+
+        // Create capture config
+        let capture_config = CaptureConfig {
+            fps: config.fps as u32,
+            bitrate_kbps: config.bitrate_kbps,
+            width: 0,  // Auto
+            height: 0, // Auto
+            pipewire_node_id: None, // TODO: Get from portal
+            pipewire_fd: None,      // TODO: Get from portal
+        };
+
+        // Spawn streaming task
+        let handle = tokio::spawn(async move {
+            // Initialize capture
+            let mut capture = ScreenCapture::new(capture_config);
+            if let Err(e) = capture.init() {
+                error!("Failed to initialize screen capture: {}", e);
+                return;
+            }
+
+            // Start capture
+            if let Err(e) = capture.start() {
+                error!("Failed to start screen capture: {}", e);
+                return;
+            }
+
+            // Connect to receiver
+            let mut sender = StreamSender::new();
+            if let Err(e) = sender.connect(&host, port).await {
+                error!("Failed to connect to receiver {}:{}: {}", host, port, e);
+                let _ = capture.stop();
+                return;
+            }
+
+            info!("Streaming started to {}:{}", host, port);
+
+            // Frame pulling loop
+            let frame_interval = std::time::Duration::from_millis(1000 / 30); // Target interval
+            let mut last_frame = std::time::Instant::now();
+
+            loop {
+                // Check stop flag
+                {
+                    let stop = stop_flag.lock().await;
+                    if *stop {
+                        info!("Streaming stop requested");
+                        break;
+                    }
+                }
+
+                // Pull frame from capture
+                match capture.pull_frame() {
+                    Ok(Some(frame)) => {
+                        // Send frame
+                        if let Err(e) = sender.send_video_frame(&frame.data, frame.pts).await {
+                            error!("Failed to send frame: {}", e);
+                            break;
+                        }
+                        last_frame = std::time::Instant::now();
+                    }
+                    Ok(None) => {
+                        // No frame available, wait a bit
+                        let elapsed = last_frame.elapsed();
+                        if elapsed < frame_interval {
+                            tokio::time::sleep(frame_interval - elapsed).await;
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to pull frame: {}", e);
+                        break;
+                    }
+                }
+            }
+
+            // Cleanup
+            info!("Streaming ended, cleaning up");
+            let _ = sender.send_end_of_stream().await;
+            sender.close().await;
+            let _ = capture.stop();
+
+            let (frames, bytes) = sender.stats();
+            info!("Stream stats: {} frames, {} bytes sent", frames, bytes);
+        });
+
+        self.streaming_task = Some(handle);
+        Ok(())
+    }
+
+    /// Start streaming - stub when screenshare feature is disabled
+    #[cfg(not(feature = "screenshare"))]
+    pub async fn start_streaming_to_device(&mut self, _host: String, _port: u16) -> Result<()> {
+        Err(ProtocolError::Plugin("screenshare feature not enabled".to_string()))
+    }
+
+    /// Stop the streaming task
+    pub async fn stop_streaming(&mut self) {
+        // Signal stop
+        {
+            let mut stop = self.stop_streaming.lock().await;
+            *stop = true;
+        }
+
+        // Wait for task to finish
+        if let Some(handle) = self.streaming_task.take() {
+            // Give it a moment to clean up
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            handle.abort();
+        }
+
+        info!("Streaming stopped");
     }
 }
 
@@ -783,17 +936,23 @@ impl Plugin for ScreenSharePlugin {
                 warn!("Failed to add viewer {}: {}", device.id(), e);
             }
 
-            // TODO: Start GStreamer capture pipeline and connect to receiver's TCP port
-            // For now, log that we received the ready signal
-            // The actual implementation requires:
-            // 1. Starting the GStreamer capture pipeline
-            // 2. Connecting StreamSender to receiver's tcpPort
-            // 3. Streaming encoded frames
-            debug!(
-                "Screen share ready signal received - capture pipeline should start streaming to {} port {}",
-                device.name(),
-                tcp_port
-            );
+            // Get the device's host address for TCP connection
+            let host = if let Some(h) = &device.host {
+                h.clone()
+            } else {
+                error!("Cannot stream to device {}: no host address available", device.name());
+                return Err(ProtocolError::Plugin(
+                    "Device has no host address for streaming".to_string()
+                ));
+            };
+
+            // Start streaming to the device
+            if let Err(e) = self.start_streaming_to_device(host.clone(), tcp_port).await {
+                error!("Failed to start streaming to {}:{}: {}", host, tcp_port, e);
+                return Err(e);
+            }
+
+            info!("Started streaming screen share to {} ({}:{})", device.name(), host, tcp_port);
         }
 
         Ok(())

@@ -5,7 +5,7 @@
 use crate::Result;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 // Magic header "CSMR" (Cosmic Screen Mirroring)
 const MAGIC_HEADER: &[u8; 4] = b"CSMR";

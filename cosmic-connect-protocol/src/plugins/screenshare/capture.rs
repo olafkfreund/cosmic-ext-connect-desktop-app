@@ -12,7 +12,7 @@ use gstreamer::prelude::*;
 #[cfg(feature = "screenshare")]
 use crate::Result;
 #[cfg(feature = "screenshare")]
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 #[cfg(feature = "screenshare")]
 use std::sync::Arc;
 #[cfg(feature = "screenshare")]
