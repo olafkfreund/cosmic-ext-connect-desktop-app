@@ -54,6 +54,25 @@ impl Modifiers {
     pub fn any(&self) -> bool {
         self.shift || self.ctrl || self.alt || self.meta
     }
+
+    /// Create Ctrl+Alt modifier combination
+    pub fn ctrl_alt() -> Self {
+        Self {
+            ctrl: true,
+            alt: true,
+            ..Default::default()
+        }
+    }
+
+    /// Create Ctrl+Alt+Shift modifier combination
+    pub fn ctrl_alt_shift() -> Self {
+        Self {
+            ctrl: true,
+            alt: true,
+            shift: true,
+            ..Default::default()
+        }
+    }
 }
 
 /// Screen/monitor geometry information
@@ -195,6 +214,24 @@ mod tests {
             ..Default::default()
         };
         assert!(mods.any());
+    }
+
+    #[test]
+    fn test_modifiers_ctrl_alt() {
+        let mods = Modifiers::ctrl_alt();
+        assert!(mods.ctrl);
+        assert!(mods.alt);
+        assert!(!mods.shift);
+        assert!(!mods.meta);
+    }
+
+    #[test]
+    fn test_modifiers_ctrl_alt_shift() {
+        let mods = Modifiers::ctrl_alt_shift();
+        assert!(mods.ctrl);
+        assert!(mods.alt);
+        assert!(mods.shift);
+        assert!(!mods.meta);
     }
 
     #[test]
