@@ -108,6 +108,7 @@ use serde_json::json;
 use std::any::Any;
 use tracing::{debug, info, warn};
 
+use super::systemd_inhibitor::{InhibitMode, InhibitType, InhibitorLock, SystemdInhibitor};
 use super::{Plugin, PluginFactory};
 
 /// Power management plugin for remote power control
@@ -123,6 +124,12 @@ pub struct PowerPlugin {
 
     /// Inhibition reason
     inhibit_reason: Option<String>,
+
+    /// Systemd inhibitor manager
+    inhibitor: SystemdInhibitor,
+
+    /// Active inhibitor lock (held to prevent sleep)
+    inhibitor_lock: Option<InhibitorLock>,
 }
 
 impl PowerPlugin {
@@ -133,6 +140,8 @@ impl PowerPlugin {
             enabled: false,
             sleep_inhibited: false,
             inhibit_reason: None,
+            inhibitor: SystemdInhibitor::new(),
+            inhibitor_lock: None,
         }
     }
 
@@ -266,16 +275,37 @@ impl PowerPlugin {
             );
 
             if inhibit {
-                self.sleep_inhibited = true;
-                self.inhibit_reason = Some(reason.to_string());
-                info!("Sleep inhibited: {}", reason);
-                // TODO: Implement actual systemd inhibitor lock
-                // Requires DBus call to org.freedesktop.login1.Manager.Inhibit
+                // Acquire systemd inhibitor lock
+                match self
+                    .inhibitor
+                    .inhibit(
+                        InhibitType::Sleep,
+                        "COSMIC Connect",
+                        reason,
+                        InhibitMode::Block,
+                    )
+                    .await
+                {
+                    Ok(lock) => {
+                        self.inhibitor_lock = Some(lock);
+                        self.sleep_inhibited = true;
+                        self.inhibit_reason = Some(reason.to_string());
+                        info!("Sleep inhibited via systemd: {}", reason);
+                    }
+                    Err(e) => {
+                        warn!("Failed to acquire systemd inhibitor lock: {}", e);
+                        // Still track the request even if lock fails
+                        self.sleep_inhibited = true;
+                        self.inhibit_reason = Some(reason.to_string());
+                    }
+                }
             } else {
+                // Release inhibitor lock by dropping it
+                if self.inhibitor_lock.take().is_some() {
+                    info!("Sleep inhibition removed via systemd");
+                }
                 self.sleep_inhibited = false;
                 self.inhibit_reason = None;
-                info!("Sleep inhibition removed");
-                // TODO: Release systemd inhibitor lock
             }
         }
 
@@ -446,9 +476,11 @@ impl Plugin for PowerPlugin {
 
         // Release any sleep inhibitors
         if self.sleep_inhibited {
+            if self.inhibitor_lock.take().is_some() {
+                info!("Released systemd inhibitor lock on plugin stop");
+            }
             self.sleep_inhibited = false;
             self.inhibit_reason = None;
-            // TODO: Release systemd inhibitor lock
         }
 
         Ok(())

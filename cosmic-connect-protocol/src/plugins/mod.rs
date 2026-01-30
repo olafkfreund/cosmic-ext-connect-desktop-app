@@ -124,6 +124,7 @@ pub mod runcommand;
 pub mod screenshare;
 pub mod screenshot;
 pub mod share;
+pub mod systemd_inhibitor;
 pub mod systemmonitor;
 pub mod systemvolume;
 pub mod telephony;

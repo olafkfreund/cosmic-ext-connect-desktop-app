@@ -1737,6 +1737,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "walkdir",
+ "zbus 5.13.1",
 ]
 
 [[package]]
