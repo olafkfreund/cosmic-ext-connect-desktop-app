@@ -244,6 +244,96 @@ impl LogindBackend {
         Ok(state.is_locked)
     }
 
+    // ========== Power Actions ==========
+    // These methods call the Manager interface on /org/freedesktop/login1
+    // rather than the Session interface
+
+    /// Execute a power action via logind Manager interface
+    async fn execute_power_action(&mut self, method: &str, interactive: bool) -> Result<(), String> {
+        self.ensure_connected().await?;
+        let conn = self.connection.as_ref().ok_or("Not connected")?;
+
+        info!("{} system via logind DBus", method);
+
+        conn.call_method(
+            Some(LOGIND_SERVICE),
+            LOGIND_MANAGER_PATH,
+            Some(LOGIND_MANAGER_INTERFACE),
+            method,
+            &(interactive,),
+        )
+        .await
+        .map_err(|e| format!("Failed to {}: {}", method.to_lowercase(), e))?;
+
+        info!("{} initiated", method);
+        Ok(())
+    }
+
+    /// Power off the system
+    pub async fn power_off(&mut self, interactive: bool) -> Result<(), String> {
+        self.execute_power_action("PowerOff", interactive).await
+    }
+
+    /// Reboot the system
+    pub async fn reboot(&mut self, interactive: bool) -> Result<(), String> {
+        self.execute_power_action("Reboot", interactive).await
+    }
+
+    /// Suspend the system (suspend to RAM)
+    pub async fn suspend(&mut self, interactive: bool) -> Result<(), String> {
+        self.execute_power_action("Suspend", interactive).await
+    }
+
+    /// Hibernate the system (suspend to disk)
+    pub async fn hibernate(&mut self, interactive: bool) -> Result<(), String> {
+        self.execute_power_action("Hibernate", interactive).await
+    }
+
+    /// Check if the system can power off
+    pub async fn can_power_off(&mut self) -> Result<bool, String> {
+        self.can_action("CanPowerOff").await
+    }
+
+    /// Check if the system can reboot
+    pub async fn can_reboot(&mut self) -> Result<bool, String> {
+        self.can_action("CanReboot").await
+    }
+
+    /// Check if the system can suspend
+    pub async fn can_suspend(&mut self) -> Result<bool, String> {
+        self.can_action("CanSuspend").await
+    }
+
+    /// Check if the system can hibernate
+    pub async fn can_hibernate(&mut self) -> Result<bool, String> {
+        self.can_action("CanHibernate").await
+    }
+
+    /// Check if a power action is available
+    async fn can_action(&mut self, method: &str) -> Result<bool, String> {
+        self.ensure_connected().await?;
+        let conn = self.connection.as_ref().ok_or("Not connected")?;
+
+        let msg = conn
+            .call_method(
+                Some(LOGIND_SERVICE),
+                LOGIND_MANAGER_PATH,
+                Some(LOGIND_MANAGER_INTERFACE),
+                method,
+                &(),
+            )
+            .await
+            .map_err(|e| format!("Failed to check {}: {}", method, e))?;
+
+        let result: String = msg
+            .body()
+            .deserialize()
+            .map_err(|e| format!("Failed to parse {} result: {}", method, e))?;
+
+        // logind returns "yes", "no", "challenge", or "na"
+        Ok(result == "yes" || result == "challenge")
+    }
+
     /// Get a DBus property as OwnedValue
     async fn get_property_raw(
         &self,

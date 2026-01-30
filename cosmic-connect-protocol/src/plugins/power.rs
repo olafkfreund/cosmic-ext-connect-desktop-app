@@ -79,11 +79,11 @@
 //!
 //! ## System Integration
 //!
-//! Uses systemd/logind for power management:
-//! - `systemctl poweroff` - Shutdown
-//! - `systemctl reboot` - Reboot
-//! - `systemctl suspend` - Suspend to RAM
-//! - `systemctl hibernate` - Suspend to disk
+//! Uses systemd-logind DBus interface for power management:
+//! - `PowerOff()` - Shutdown the system
+//! - `Reboot()` - Reboot the system
+//! - `Suspend()` - Suspend to RAM
+//! - `Hibernate()` - Suspend to disk
 //! - DBus inhibitor locks for sleep prevention
 //!
 //! ## Example
@@ -108,6 +108,7 @@ use serde_json::json;
 use std::any::Any;
 use tracing::{debug, info, warn};
 
+use super::logind_backend::LogindBackend;
 use super::systemd_inhibitor::{InhibitMode, InhibitType, InhibitorLock, SystemdInhibitor};
 use super::upower_backend::UPowerBackend;
 use super::{Plugin, PluginFactory};
@@ -134,6 +135,9 @@ pub struct PowerPlugin {
 
     /// UPower backend for power state detection
     upower: UPowerBackend,
+
+    /// Logind backend for power actions (shutdown, reboot, suspend, hibernate)
+    logind: LogindBackend,
 }
 
 impl PowerPlugin {
@@ -147,6 +151,7 @@ impl PowerPlugin {
             inhibitor: SystemdInhibitor::new(),
             inhibitor_lock: None,
             upower: UPowerBackend::new(),
+            logind: LogindBackend::new(),
         }
     }
 
@@ -392,92 +397,29 @@ impl PowerPlugin {
         }
     }
 
-    /// Shutdown the system
-    async fn shutdown(&self) -> Result<()> {
-        info!("Shutting down system via systemctl");
-
-        let output = tokio::process::Command::new("systemctl")
-            .arg("poweroff")
-            .output()
-            .await
-            .map_err(|e| crate::ProtocolError::Io(e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            warn!("systemctl poweroff failed: {}", stderr);
-            return Err(crate::ProtocolError::invalid_state(format!(
-                "Failed to shutdown: {}",
-                stderr
-            )));
-        }
-
-        Ok(())
+    /// Convert logind error to protocol error
+    fn logind_error(action: &str, e: String) -> crate::ProtocolError {
+        crate::ProtocolError::invalid_state(format!("Failed to {}: {}", action, e))
     }
 
-    /// Reboot the system
-    async fn reboot(&self) -> Result<()> {
-        info!("Rebooting system via systemctl");
-
-        let output = tokio::process::Command::new("systemctl")
-            .arg("reboot")
-            .output()
-            .await
-            .map_err(|e| crate::ProtocolError::Io(e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            warn!("systemctl reboot failed: {}", stderr);
-            return Err(crate::ProtocolError::invalid_state(format!(
-                "Failed to reboot: {}",
-                stderr
-            )));
-        }
-
-        Ok(())
+    /// Shutdown the system via logind DBus
+    async fn shutdown(&mut self) -> Result<()> {
+        self.logind.power_off(false).await.map_err(|e| Self::logind_error("shutdown", e))
     }
 
-    /// Suspend the system (suspend to RAM)
-    async fn suspend(&self) -> Result<()> {
-        info!("Suspending system via systemctl");
-
-        let output = tokio::process::Command::new("systemctl")
-            .arg("suspend")
-            .output()
-            .await
-            .map_err(|e| crate::ProtocolError::Io(e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            warn!("systemctl suspend failed: {}", stderr);
-            return Err(crate::ProtocolError::invalid_state(format!(
-                "Failed to suspend: {}",
-                stderr
-            )));
-        }
-
-        Ok(())
+    /// Reboot the system via logind DBus
+    async fn reboot(&mut self) -> Result<()> {
+        self.logind.reboot(false).await.map_err(|e| Self::logind_error("reboot", e))
     }
 
-    /// Hibernate the system (suspend to disk)
-    async fn hibernate(&self) -> Result<()> {
-        info!("Hibernating system via systemctl");
+    /// Suspend the system (suspend to RAM) via logind DBus
+    async fn suspend(&mut self) -> Result<()> {
+        self.logind.suspend(false).await.map_err(|e| Self::logind_error("suspend", e))
+    }
 
-        let output = tokio::process::Command::new("systemctl")
-            .arg("hibernate")
-            .output()
-            .await
-            .map_err(|e| crate::ProtocolError::Io(e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            warn!("systemctl hibernate failed: {}", stderr);
-            return Err(crate::ProtocolError::invalid_state(format!(
-                "Failed to hibernate: {}",
-                stderr
-            )));
-        }
-
-        Ok(())
+    /// Hibernate the system (suspend to disk) via logind DBus
+    async fn hibernate(&mut self) -> Result<()> {
+        self.logind.hibernate(false).await.map_err(|e| Self::logind_error("hibernate", e))
     }
 }
 
@@ -550,14 +492,11 @@ impl Plugin for PowerPlugin {
             return Ok(());
         }
 
-        if packet.is_type("cconnect.power.request") {
-            self.handle_power_request(packet, device).await
-        } else if packet.is_type("cconnect.power.inhibit") {
-            self.handle_inhibit_request(packet, device).await
-        } else if packet.is_type("cconnect.power.query") {
-            self.handle_status_query(packet, device).await
-        } else {
-            Ok(())
+        match packet.packet_type.as_str() {
+            "cconnect.power.request" => self.handle_power_request(packet, device).await,
+            "cconnect.power.inhibit" => self.handle_inhibit_request(packet, device).await,
+            "cconnect.power.query" => self.handle_status_query(packet, device).await,
+            _ => Ok(()),
         }
     }
 }
