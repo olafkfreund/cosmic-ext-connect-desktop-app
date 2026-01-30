@@ -111,12 +111,16 @@
 //! - **macOS**: Limited support (screencapture utility)
 //! - **Windows**: Limited support (would need Windows API)
 
+use crate::payload::PayloadServer;
 use crate::{Device, Packet, ProtocolError, Result};
 use async_trait::async_trait;
+use serde_json::json;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tokio::sync::mpsc::Sender;
 use tracing::{debug, error, info, warn};
 
 use super::{Plugin, PluginFactory};
@@ -124,7 +128,6 @@ use super::{Plugin, PluginFactory};
 /// Screenshot plugin for remote screen capture
 ///
 /// Handles `cconnect.screenshot.*` packets for screenshot capture and transfer.
-#[derive(Debug)]
 pub struct ScreenshotPlugin {
     /// Device ID this plugin is attached to
     device_id: Option<String>,
@@ -134,6 +137,9 @@ pub struct ScreenshotPlugin {
 
     /// Temporary directory for screenshots
     temp_dir: PathBuf,
+
+    /// Packet sender for sending responses back to the device
+    packet_sender: Option<Sender<(String, Packet)>>,
 }
 
 impl ScreenshotPlugin {
@@ -145,6 +151,7 @@ impl ScreenshotPlugin {
             device_id: None,
             enabled: true,
             temp_dir,
+            packet_sender: None,
         }
     }
 
@@ -187,6 +194,51 @@ impl ScreenshotPlugin {
         let height = u32::from_be_bytes([header[20], header[21], header[22], header[23]]);
 
         Some((width, height))
+    }
+
+    /// Create a screenshot response packet
+    ///
+    /// Creates a `cconnect.screenshot.data` packet with payload transfer info.
+    fn create_screenshot_response(
+        filename: &str,
+        width: u32,
+        height: u32,
+        file_size: u64,
+        port: u16,
+    ) -> Packet {
+        let timestamp = chrono::Utc::now().timestamp();
+
+        let body = json!({
+            "filename": filename,
+            "format": "png",
+            "width": width,
+            "height": height,
+            "timestamp": timestamp
+        });
+
+        let transfer_info = HashMap::from([("port".to_string(), json!(port))]);
+
+        Packet::new("cconnect.screenshot.data", body)
+            .with_payload_size(file_size as i64)
+            .with_payload_transfer_info(transfer_info)
+    }
+
+    /// Send a packet to the connected device
+    async fn send_packet(&self, packet: Packet) -> Result<()> {
+        let sender = self
+            .packet_sender
+            .as_ref()
+            .ok_or_else(|| ProtocolError::Plugin("Packet sender not initialized".to_string()))?;
+
+        let device_id = self
+            .device_id
+            .as_ref()
+            .ok_or_else(|| ProtocolError::Plugin("Device ID not set".to_string()))?;
+
+        sender
+            .send((device_id.clone(), packet))
+            .await
+            .map_err(|e| ProtocolError::Plugin(format!("Failed to send packet: {}", e)))
     }
 
     /// Capture a screenshot
@@ -387,17 +439,44 @@ impl ScreenshotPlugin {
             filename, file_size, width, height
         );
 
-        // TODO: In a real implementation, this would:
-        // 1. Create a response packet with payloadSize and payloadTransferInfo
-        // 2. Set up a TCP server on an available port
-        // 3. Send the packet with transfer info
-        // 4. Wait for connection and transfer the file
-        // For now, just log the info
+        // Create payload server for file transfer
+        let server = PayloadServer::new()
+            .await
+            .map_err(|e| ProtocolError::Plugin(format!("Failed to create payload server: {}", e)))?;
+
+        let port = server.port();
+        info!(
+            "Payload server listening on port {} for screenshot transfer",
+            port
+        );
+
+        // Create and send response packet with transfer info
+        let response_packet = Self::create_screenshot_response(filename, width, height, file_size, port);
+        self.send_packet(response_packet).await?;
 
         info!(
-            "Screenshot ready for transfer: {} ({} bytes)",
-            filename, file_size
+            "Sent screenshot response to {} (port: {}, size: {} bytes)",
+            device.name(),
+            port,
+            file_size
         );
+
+        // Spawn a task to handle the file transfer
+        let path_for_transfer = screenshot_path.clone();
+        tokio::spawn(async move {
+            match server.send_file(&path_for_transfer).await {
+                Ok(()) => {
+                    info!("Screenshot transfer completed successfully");
+                    // Clean up the temporary file after successful transfer
+                    if let Err(e) = std::fs::remove_file(&path_for_transfer) {
+                        debug!("Failed to cleanup screenshot file: {}", e);
+                    }
+                }
+                Err(e) => {
+                    warn!("Screenshot transfer failed: {}", e);
+                }
+            }
+        });
 
         Ok(())
     }
@@ -525,8 +604,9 @@ impl Plugin for ScreenshotPlugin {
         vec!["cconnect.screenshot.data".to_string()]
     }
 
-    async fn init(&mut self, device: &Device, _packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>) -> Result<()> {
+    async fn init(&mut self, device: &Device, packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>) -> Result<()> {
         self.device_id = Some(device.id().to_string());
+        self.packet_sender = Some(packet_sender);
         info!("Screenshot plugin initialized for device {}", device.name());
 
         // Ensure temp directory exists
