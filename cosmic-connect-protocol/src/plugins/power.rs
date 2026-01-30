@@ -404,22 +404,34 @@ impl PowerPlugin {
 
     /// Shutdown the system via logind DBus
     async fn shutdown(&mut self) -> Result<()> {
-        self.logind.power_off(false).await.map_err(|e| Self::logind_error("shutdown", e))
+        self.logind
+            .power_off(false)
+            .await
+            .map_err(|e| Self::logind_error("shutdown", e))
     }
 
     /// Reboot the system via logind DBus
     async fn reboot(&mut self) -> Result<()> {
-        self.logind.reboot(false).await.map_err(|e| Self::logind_error("reboot", e))
+        self.logind
+            .reboot(false)
+            .await
+            .map_err(|e| Self::logind_error("reboot", e))
     }
 
     /// Suspend the system (suspend to RAM) via logind DBus
     async fn suspend(&mut self) -> Result<()> {
-        self.logind.suspend(false).await.map_err(|e| Self::logind_error("suspend", e))
+        self.logind
+            .suspend(false)
+            .await
+            .map_err(|e| Self::logind_error("suspend", e))
     }
 
     /// Hibernate the system (suspend to disk) via logind DBus
     async fn hibernate(&mut self) -> Result<()> {
-        self.logind.hibernate(false).await.map_err(|e| Self::logind_error("hibernate", e))
+        self.logind
+            .hibernate(false)
+            .await
+            .map_err(|e| Self::logind_error("hibernate", e))
     }
 }
 
@@ -458,7 +470,11 @@ impl Plugin for PowerPlugin {
         vec!["cconnect.power.status".to_string()]
     }
 
-    async fn init(&mut self, device: &Device, _packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>) -> Result<()> {
+    async fn init(
+        &mut self,
+        device: &Device,
+        _packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>,
+    ) -> Result<()> {
         self.device_id = Some(device.id().to_string());
         info!("Power plugin initialized for device {}", device.name());
         Ok(())
@@ -492,11 +508,18 @@ impl Plugin for PowerPlugin {
             return Ok(());
         }
 
-        match packet.packet_type.as_str() {
-            "cconnect.power.request" => self.handle_power_request(packet, device).await,
-            "cconnect.power.inhibit" => self.handle_inhibit_request(packet, device).await,
-            "cconnect.power.query" => self.handle_status_query(packet, device).await,
-            _ => Ok(()),
+        if packet.is_type("cconnect.power.request") || packet.is_type("kdeconnect.power.request") {
+            self.handle_power_request(packet, device).await
+        } else if packet.is_type("cconnect.power.inhibit")
+            || packet.is_type("kdeconnect.power.inhibit")
+        {
+            self.handle_inhibit_request(packet, device).await
+        } else if packet.is_type("cconnect.power.query")
+            || packet.is_type("kdeconnect.power.query")
+        {
+            self.handle_status_query(packet, device).await
+        } else {
+            Ok(())
         }
     }
 }
@@ -599,10 +622,14 @@ mod tests {
         assert_eq!(packet.body.get("battery_present"), Some(&json!(true)));
         assert_eq!(packet.body.get("on_battery"), Some(&json!(true)));
         assert_eq!(packet.body.get("battery_percentage"), Some(&json!(75.5)));
-        assert_eq!(packet.body.get("battery_state"), Some(&json!("discharging")));
+        assert_eq!(
+            packet.body.get("battery_state"),
+            Some(&json!("discharging"))
+        );
 
         // Test without battery
-        let packet2 = plugin.create_status_response("running", false, false, false, None, "unknown");
+        let packet2 =
+            plugin.create_status_response("running", false, false, false, None, "unknown");
         assert_eq!(packet2.body.get("battery_present"), Some(&json!(false)));
         assert!(packet2.body.get("battery_percentage").is_none());
     }
@@ -630,7 +657,10 @@ mod tests {
         let mut plugin = PowerPlugin::new();
         let device = create_test_device();
 
-        assert!(plugin.init(&device, tokio::sync::mpsc::channel(100).0).await.is_ok());
+        assert!(plugin
+            .init(&device, tokio::sync::mpsc::channel(100).0)
+            .await
+            .is_ok());
         assert_eq!(plugin.device_id, Some("test_device".to_string()));
 
         assert!(plugin.start().await.is_ok());
