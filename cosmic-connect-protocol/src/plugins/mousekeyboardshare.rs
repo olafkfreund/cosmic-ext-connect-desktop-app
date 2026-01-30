@@ -56,13 +56,21 @@
 //! TODO: Hotkey registration and handling
 //! TODO: COSMIC compositor integration for Wayland
 
+use crate::plugins::mkshare::{
+    HotkeyAction, HotkeyEvent, HotkeyManager, InputBackendFactory, InputInjection,
+    Modifiers as MkShareModifiers, MouseButton, WaylandInputBackend,
+};
 use crate::plugins::{Plugin, PluginFactory};
 use crate::{Device, Packet, ProtocolError, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
-use tracing::{debug, info};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
+use tokio::sync::RwLock;
+use tracing::{debug, info, warn};
 
 const PLUGIN_NAME: &str = "mousekeyboardshare";
 const INCOMING_CAPABILITY: &str = "cconnect.mkshare";
@@ -349,6 +357,19 @@ pub struct MouseKeyboardSharePlugin {
 
     /// Last mouse position
     last_mouse_pos: (i32, i32),
+
+    // === mkshare integration ===
+    /// Input backend for injection (Wayland/uinput)
+    input_backend: Option<Arc<RwLock<WaylandInputBackend>>>,
+
+    /// Hotkey manager for manual switching
+    hotkey_manager: Option<Arc<HotkeyManager>>,
+
+    /// Packet sender for proactive communication
+    packet_sender: Option<Sender<(String, Packet)>>,
+
+    /// Whether sharing is currently active (forwarding input to remote)
+    sharing_active: Arc<AtomicBool>,
 }
 
 impl MouseKeyboardSharePlugin {
@@ -361,6 +382,10 @@ impl MouseKeyboardSharePlugin {
             state: ShareState::Local,
             remote_configs: HashMap::new(),
             last_mouse_pos: (0, 0),
+            input_backend: None,
+            hotkey_manager: None,
+            packet_sender: None,
+            sharing_active: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -476,6 +501,96 @@ impl MouseKeyboardSharePlugin {
     pub fn is_remote(&self) -> bool {
         matches!(self.state, ShareState::Remote { .. })
     }
+
+    /// Check if sharing is active (forwarding input to remote)
+    pub fn is_sharing_active(&self) -> bool {
+        self.sharing_active.load(Ordering::SeqCst)
+    }
+
+    /// Handle hotkey event (static method for async context)
+    fn handle_hotkey_event(
+        event: HotkeyEvent,
+        sharing_active: &AtomicBool,
+        _device_id: Option<&str>,
+    ) {
+        match event.action {
+            HotkeyAction::ToggleSharing => {
+                let was_active = sharing_active.fetch_xor(true, Ordering::SeqCst);
+                info!(
+                    "Hotkey toggle: sharing {} -> {}",
+                    if was_active { "active" } else { "inactive" },
+                    if !was_active { "active" } else { "inactive" }
+                );
+            }
+            HotkeyAction::SwitchToEdge(edge) => {
+                info!("Hotkey switch to edge: {:?}", edge);
+                // TODO: Send hotkey switch packet to device at that edge
+            }
+            HotkeyAction::SwitchToDevice(target_device) => {
+                info!("Hotkey switch to device: {}", target_device);
+                // TODO: Send hotkey switch packet to specific device
+            }
+            HotkeyAction::Custom(action) => {
+                debug!("Custom hotkey action: {}", action);
+            }
+        }
+    }
+
+    /// Inject a mouse event into the local system
+    async fn inject_mouse_event(&self, event: &MouseEvent) -> Result<()> {
+        let backend = self
+            .input_backend
+            .as_ref()
+            .ok_or_else(|| ProtocolError::Plugin("Input backend not initialized".to_string()))?;
+
+        let guard = backend.read().await;
+
+        // Inject mouse movement
+        guard.inject_mouse_move(event.x, event.y).await?;
+
+        // Inject scroll if present
+        if event.scroll_x != 0 || event.scroll_y != 0 {
+            guard
+                .inject_scroll(event.scroll_x as f64, event.scroll_y as f64)
+                .await?;
+        }
+
+        // Inject button click if specified
+        if event.button > 0 {
+            let button = match event.button {
+                1 => MouseButton::Left,
+                2 => MouseButton::Middle,
+                3 => MouseButton::Right,
+                4 => MouseButton::Side,
+                _ => MouseButton::Extra,
+            };
+            guard.inject_mouse_button(button, event.pressed).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Inject a keyboard event into the local system
+    async fn inject_keyboard_event(&self, event: &KeyboardEvent) -> Result<()> {
+        let backend = self
+            .input_backend
+            .as_ref()
+            .ok_or_else(|| ProtocolError::Plugin("Input backend not initialized".to_string()))?;
+
+        let modifiers = MkShareModifiers {
+            shift: (event.modifiers & 0x01) != 0,
+            ctrl: (event.modifiers & 0x02) != 0,
+            alt: (event.modifiers & 0x04) != 0,
+            meta: (event.modifiers & 0x08) != 0,
+        };
+
+        backend
+            .read()
+            .await
+            .inject_key(event.key_code as u16, event.pressed, modifiers)
+            .await
+    }
+
 }
 
 impl Default for MouseKeyboardSharePlugin {
@@ -509,15 +624,45 @@ impl Plugin for MouseKeyboardSharePlugin {
         vec![OUTGOING_CAPABILITY.to_string()]
     }
 
-    async fn init(&mut self, device: &Device, _packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>) -> Result<()> {
+    async fn init(
+        &mut self,
+        device: &Device,
+        packet_sender: Sender<(String, Packet)>,
+    ) -> Result<()> {
         info!(
             "Initializing MouseKeyboardShare plugin for device {}",
             device.name()
         );
         self.device_id = Some(device.id().to_string());
+        self.packet_sender = Some(packet_sender);
 
-        // TODO: Detect screen geometry
-        // TODO: Initialize input capture framework
+        // Initialize input backend (Wayland/uinput)
+        if InputBackendFactory::is_supported() {
+            match WaylandInputBackend::new().await {
+                Ok(mut backend) => {
+                    // Try to initialize the virtual device
+                    if let Err(e) = backend.initialize().await {
+                        warn!(
+                            "Failed to initialize input backend (uinput): {}. \
+                             Input injection will not work. Ensure user is in 'input' group.",
+                            e
+                        );
+                    } else {
+                        info!("Input backend initialized successfully");
+                    }
+                    self.input_backend = Some(Arc::new(RwLock::new(backend)));
+                }
+                Err(e) => {
+                    warn!("Failed to create input backend: {}. Plugin will have limited functionality.", e);
+                }
+            }
+        } else {
+            warn!("No supported display server detected. MouseKeyboardShare requires Wayland.");
+        }
+
+        // Initialize hotkey manager with defaults
+        let hotkey_manager = HotkeyManager::with_defaults();
+        self.hotkey_manager = Some(Arc::new(hotkey_manager));
 
         Ok(())
     }
@@ -526,23 +671,52 @@ impl Plugin for MouseKeyboardSharePlugin {
         info!("Starting MouseKeyboardShare plugin");
         self.enabled = true;
 
-        // TODO: Start global input monitoring
-        // TODO: Register hotkeys
-        // TODO: Start edge detection
+        // Start hotkey manager
+        if let Some(ref hotkey_manager) = self.hotkey_manager {
+            hotkey_manager.start();
 
+            // Subscribe to hotkey events and handle them
+            let mut hotkey_rx = hotkey_manager.subscribe();
+            let sharing_active = Arc::clone(&self.sharing_active);
+            let device_id = self.device_id.clone();
+
+            tokio::spawn(async move {
+                while let Ok(event) = hotkey_rx.recv().await {
+                    Self::handle_hotkey_event(event, &sharing_active, device_id.as_deref());
+                }
+            });
+        }
+
+        // Note: Edge detector requires input backend with cursor position tracking,
+        // which is limited on Wayland. Edge detection is handled in handle_mouse_move()
+        // for now using the config-based approach.
+
+        info!("MouseKeyboardShare plugin started");
         Ok(())
     }
 
     async fn stop(&mut self) -> Result<()> {
         info!("Stopping MouseKeyboardShare plugin");
         self.enabled = false;
+        self.sharing_active.store(false, Ordering::SeqCst);
 
         // Return to local control
         self.return_to_local();
 
-        // TODO: Stop input monitoring
-        // TODO: Unregister hotkeys
+        // Stop hotkey manager
+        if let Some(ref hotkey_manager) = self.hotkey_manager {
+            hotkey_manager.stop();
+        }
 
+        // Cleanup input backend
+        if let Some(ref backend) = self.input_backend {
+            let mut guard = backend.write().await;
+            if let Err(e) = guard.cleanup().await {
+                warn!("Error cleaning up input backend: {}", e);
+            }
+        }
+
+        info!("MouseKeyboardShare plugin stopped");
         Ok(())
     }
 
@@ -568,42 +742,56 @@ impl Plugin for MouseKeyboardSharePlugin {
             let mouse_event: MouseEvent = serde_json::from_value(packet.body.clone())
                 .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
 
-            // TODO: Inject mouse event into local system
-            // TODO: Use RemoteInput plugin for actual injection
-
             debug!(
                 "Received mouse event: ({}, {}), button: {}, pressed: {}",
                 mouse_event.x, mouse_event.y, mouse_event.button, mouse_event.pressed
             );
+
+            // Inject mouse event into local system using uinput
+            if let Err(e) = self.inject_mouse_event(&mouse_event).await {
+                warn!("Failed to inject mouse event: {}", e);
+            }
         } else if packet.is_type("cconnect.mkshare.keyboard") {
             // Receive keyboard event from remote
             let kbd_event: KeyboardEvent = serde_json::from_value(packet.body.clone())
                 .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
 
-            // TODO: Inject keyboard event into local system
-            // TODO: Use RemoteInput plugin for actual injection
-
             debug!(
                 "Received keyboard event: key_code: {}, pressed: {}, modifiers: {}",
                 kbd_event.key_code, kbd_event.pressed, kbd_event.modifiers
             );
+
+            // Inject keyboard event into local system using uinput
+            if let Err(e) = self.inject_keyboard_event(&kbd_event).await {
+                warn!("Failed to inject keyboard event: {}", e);
+            }
         } else if packet.is_type("cconnect.mkshare.enter") {
             // Remote desktop's cursor entered this screen
             info!("Remote cursor entered from {}", device.name());
 
-            // TODO: Show cursor at entry point
-            // TODO: Start forwarding local input to remote
+            // Mark that we're receiving input from remote
+            self.state = ShareState::Remote {
+                device_id: device.id().to_string(),
+                entry_edge: ScreenEdge::Left, // TODO: get from packet
+            };
+            self.sharing_active.store(true, Ordering::SeqCst);
         } else if packet.is_type("cconnect.mkshare.leave") {
             // Remote desktop's cursor left this screen
             info!("Remote cursor left to {}", device.name());
 
-            // TODO: Hide cursor
-            // TODO: Stop forwarding input
+            // Return to local control
+            self.return_to_local();
+            self.sharing_active.store(false, Ordering::SeqCst);
         } else if packet.is_type("cconnect.mkshare.hotkey") {
             // Hotkey-triggered switch
             info!("Hotkey switch requested by {}", device.name());
 
-            // TODO: Switch control to requesting device
+            // Switch control to the requesting device
+            self.state = ShareState::Remote {
+                device_id: device.id().to_string(),
+                entry_edge: ScreenEdge::Left,
+            };
+            self.sharing_active.store(true, Ordering::SeqCst);
         }
 
         Ok(())
@@ -750,7 +938,10 @@ mod tests {
         let factory = MouseKeyboardSharePluginFactory;
         let mut plugin = factory.create();
 
-        plugin.init(&device, tokio::sync::mpsc::channel(100).0).await.unwrap();
+        plugin
+            .init(&device, tokio::sync::mpsc::channel(100).0)
+            .await
+            .unwrap();
         plugin.start().await.unwrap();
 
         let config = MkShareConfig::default();
@@ -767,7 +958,10 @@ mod tests {
         let factory = MouseKeyboardSharePluginFactory;
         let mut plugin = factory.create();
 
-        plugin.init(&device, tokio::sync::mpsc::channel(100).0).await.unwrap();
+        plugin
+            .init(&device, tokio::sync::mpsc::channel(100).0)
+            .await
+            .unwrap();
         plugin.start().await.unwrap();
 
         let mouse_event = MouseEvent {
