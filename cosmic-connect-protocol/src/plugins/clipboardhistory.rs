@@ -140,10 +140,10 @@
 //!
 //! // Create and register plugin
 //! let mut manager = PluginManager::new();
-//! manager.register(Box::new(ClipboardHistoryPlugin::new().await?))?;
+//! manager.register(Box::new(ClipboardHistoryPlugin::new()))?;
 //!
 //! // Add item to history
-//! let plugin = ClipboardHistoryPlugin::new().await?;
+//! let plugin = ClipboardHistoryPlugin::new();
 //! plugin.add_item("New clipboard content".to_string()).await?;
 //!
 //! // Search history
@@ -156,17 +156,16 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::any::Any;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+use super::clipboard_storage::ClipboardSqliteStorage;
 use super::{Plugin, PluginFactory};
 
 /// Maximum content size (10MB)
-#[allow(dead_code)]
 const MAX_CONTENT_SIZE: usize = 10 * 1024 * 1024;
 
 /// Default maximum items to keep
-#[allow(dead_code)]
 const DEFAULT_MAX_ITEMS: usize = 100;
 
 /// Default retention period in days
@@ -223,6 +222,17 @@ impl ClipboardHistoryItem {
     pub fn matches_query(&self, query: &str) -> bool {
         self.content.to_lowercase().contains(&query.to_lowercase())
     }
+
+    /// Convert to JSON value for protocol packets
+    fn to_json(&self) -> serde_json::Value {
+        json!({
+            "id": self.id,
+            "content": self.content,
+            "timestamp": self.timestamp,
+            "pinned": self.pinned,
+            "contentType": self.content_type
+        })
+    }
 }
 
 /// Configuration for clipboard history
@@ -252,7 +262,7 @@ impl Default for ClipboardHistoryConfig {
     }
 }
 
-/// Clipboard history storage (in-memory for now, TODO: SQLite)
+/// Clipboard history storage (in-memory fallback when SQLite unavailable)
 #[derive(Debug, Clone)]
 struct ClipboardHistoryStorage {
     items: Vec<ClipboardHistoryItem>,
@@ -409,8 +419,14 @@ pub struct ClipboardHistoryPlugin {
     /// Whether the plugin is enabled
     enabled: bool,
 
-    /// In-memory storage (TODO: SQLite)
-    storage: ClipboardHistoryStorage,
+    /// In-memory storage fallback
+    memory_storage: ClipboardHistoryStorage,
+
+    /// SQLite storage (primary when available)
+    sqlite_storage: Option<ClipboardSqliteStorage>,
+
+    /// Configuration
+    config: ClipboardHistoryConfig,
 }
 
 impl ClipboardHistoryPlugin {
@@ -426,27 +442,54 @@ impl ClipboardHistoryPlugin {
             config.max_items, config.retention_days
         );
 
+        // Try to initialize SQLite storage
+        let sqlite_storage = match ClipboardSqliteStorage::new(config.clone()) {
+            Ok(storage) => {
+                info!("ClipboardHistory using SQLite storage");
+                Some(storage)
+            }
+            Err(e) => {
+                warn!("ClipboardHistory falling back to memory storage: {}", e);
+                None
+            }
+        };
+
         Self {
             device_id: None,
             enabled: false,
-            storage: ClipboardHistoryStorage::new(config),
+            memory_storage: ClipboardHistoryStorage::new(config.clone()),
+            sqlite_storage,
+            config,
         }
     }
 
-    /// Add item to clipboard history
-    ///
-    /// # Parameters
-    ///
-    /// - `content`: Clipboard text content
-    ///
-    /// # Returns
-    ///
-    /// The created item's ID
+    /// Create with memory-only storage (for testing)
+    #[cfg(test)]
+    pub fn new_memory_only() -> Self {
+        Self::with_config_memory_only(ClipboardHistoryConfig::default())
+    }
+
+    /// Create with custom config and memory-only storage (for testing)
+    #[cfg(test)]
+    pub fn with_config_memory_only(config: ClipboardHistoryConfig) -> Self {
+        Self {
+            device_id: None,
+            enabled: false,
+            memory_storage: ClipboardHistoryStorage::new(config.clone()),
+            sqlite_storage: None,
+            config,
+        }
+    }
+
+    /// Add item to clipboard history and return the created item's ID
     pub fn add_item(&mut self, content: String) -> Result<String> {
         let item = ClipboardHistoryItem::new(content);
         let id = item.id.clone();
 
-        self.storage.add(item)?;
+        match &self.sqlite_storage {
+            Some(sqlite) => { sqlite.add(&item).map_err(ProtocolError::invalid_state)?; }
+            None => self.memory_storage.add(item)?,
+        }
 
         debug!("Added clipboard item: {}", id);
         Ok(id)
@@ -454,70 +497,54 @@ impl ClipboardHistoryPlugin {
 
     /// Pin or unpin an item
     pub fn set_pinned(&mut self, id: &str, pinned: bool) -> Result<()> {
-        self.storage.set_pinned(id, pinned)?;
+        match &self.sqlite_storage {
+            Some(sqlite) => { sqlite.set_pinned(id, pinned).map_err(ProtocolError::invalid_state)?; }
+            None => self.memory_storage.set_pinned(id, pinned)?,
+        }
         info!("Item {} pinned status: {}", id, pinned);
         Ok(())
     }
 
     /// Delete an item
     pub fn delete_item(&mut self, id: &str) -> Result<()> {
-        self.storage.delete(id)?;
+        match &self.sqlite_storage {
+            Some(sqlite) => { sqlite.delete(id).map_err(ProtocolError::invalid_state)?; }
+            None => self.memory_storage.delete(id)?,
+        }
         info!("Deleted clipboard item: {}", id);
         Ok(())
     }
 
     /// Search clipboard history
     pub fn search(&self, query: &str, limit: usize) -> Vec<ClipboardHistoryItem> {
-        self.storage.search(query, limit)
+        match &self.sqlite_storage {
+            Some(sqlite) => sqlite.search(query, limit).unwrap_or_default(),
+            None => self.memory_storage.search(query, limit),
+        }
     }
 
     /// Get all items
     pub fn get_all(&self) -> Vec<ClipboardHistoryItem> {
-        self.storage.all()
+        match &self.sqlite_storage {
+            Some(sqlite) => sqlite.all().unwrap_or_default(),
+            None => self.memory_storage.all(),
+        }
     }
 
     /// Create sync packet with all items
     pub fn create_sync_packet(&self) -> Packet {
-        let items: Vec<serde_json::Value> = self
-            .storage
-            .all()
-            .into_iter()
-            .map(|item| {
-                json!({
-                    "id": item.id,
-                    "content": item.content,
-                    "timestamp": item.timestamp,
-                    "pinned": item.pinned,
-                    "content_type": item.content_type
-                })
-            })
-            .collect();
-
+        let items: Vec<_> = self.get_all().into_iter().map(|i| i.to_json()).collect();
         Packet::new("cconnect.cliphistory.sync", json!({ "items": items }))
     }
 
     /// Create add item packet
     pub fn create_add_packet(&self, item: &ClipboardHistoryItem) -> Packet {
-        Packet::new(
-            "cconnect.cliphistory.add",
-            json!({
-                "id": item.id,
-                "content": item.content,
-                "timestamp": item.timestamp,
-                "contentType": item.content_type
-            }),
-        )
+        Packet::new("cconnect.cliphistory.add", item.to_json())
     }
 
     /// Create pin packet
     pub fn create_pin_packet(&self, id: &str, pinned: bool) -> Packet {
-        Packet::new(
-            "cconnect.cliphistory.pin",
-            json!({
-                "id": id,
-                "pinned": pinned
-            }),
-        )
+        Packet::new("cconnect.cliphistory.pin", json!({ "id": id, "pinned": pinned }))
     }
 
     /// Create delete packet
@@ -527,63 +554,33 @@ impl ClipboardHistoryPlugin {
 
     /// Create search result packet
     pub fn create_result_packet(&self, query: &str, items: Vec<ClipboardHistoryItem>) -> Packet {
-        let items_json: Vec<serde_json::Value> = items
-            .into_iter()
-            .map(|item| {
-                json!({
-                    "id": item.id,
-                    "content": item.content,
-                    "timestamp": item.timestamp,
-                    "pinned": item.pinned,
-                    "contentType": item.content_type
-                })
-            })
-            .collect();
+        let items_json: Vec<_> = items.into_iter().map(|i| i.to_json()).collect();
+        Packet::new("cconnect.cliphistory.result", json!({ "query": query, "items": items_json }))
+    }
 
-        Packet::new(
-            "cconnect.cliphistory.result",
-            json!({
-                "query": query,
-                "items": items_json
-            }),
-        )
+    /// Extract required string field from packet body
+    fn get_required_str<'a>(body: &'a serde_json::Value, field: &str) -> Result<&'a str> {
+        body.get(field)
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ProtocolError::invalid_state(format!("Missing {}", field)))
     }
 
     /// Handle sync packet
     async fn handle_sync(&mut self, packet: &Packet, device: &Device) -> Result<()> {
-        info!(
-            "Received clipboard history sync from {} ({})",
-            device.name(),
-            device.id()
-        );
+        info!("Received clipboard history sync from {} ({})", device.name(), device.id());
 
-        let items_json = packet
-            .body
-            .get("items")
+        let items_json = packet.body.get("items")
             .and_then(|v| v.as_array())
             .ok_or_else(|| ProtocolError::invalid_state("Missing items array"))?;
 
-        let mut items = Vec::new();
+        let mut items = Vec::with_capacity(items_json.len());
         for item_json in items_json {
-            let id = item_json
-                .get("id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| ProtocolError::invalid_state("Missing item id"))?;
-
-            let content = item_json
-                .get("content")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| ProtocolError::invalid_state("Missing item content"))?;
-
-            let timestamp = item_json
-                .get("timestamp")
+            let id = Self::get_required_str(item_json, "id")?;
+            let content = Self::get_required_str(item_json, "content")?;
+            let timestamp = item_json.get("timestamp")
                 .and_then(|v| v.as_i64())
-                .ok_or_else(|| ProtocolError::invalid_state("Missing item timestamp"))?;
-
-            let pinned = item_json
-                .get("pinned")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+                .ok_or_else(|| ProtocolError::invalid_state("Missing timestamp"))?;
+            let pinned = item_json.get("pinned").and_then(|v| v.as_bool()).unwrap_or(false);
 
             let mut item = ClipboardHistoryItem::with_id_and_timestamp(
                 id.to_string(),
@@ -591,11 +588,13 @@ impl ClipboardHistoryPlugin {
                 timestamp,
             );
             item.pinned = pinned;
-
             items.push(item);
         }
 
-        self.storage.merge(items);
+        match &self.sqlite_storage {
+            Some(sqlite) => { sqlite.merge(items).map_err(ProtocolError::invalid_state)?; }
+            None => self.memory_storage.merge(items),
+        }
 
         info!("Merged {} clipboard history items", items_json.len());
         Ok(())
@@ -603,30 +602,13 @@ impl ClipboardHistoryPlugin {
 
     /// Handle add item packet
     async fn handle_add(&mut self, packet: &Packet, device: &Device) -> Result<()> {
-        let id = packet
-            .body
-            .get("id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ProtocolError::invalid_state("Missing id"))?;
-
-        let content = packet
-            .body
-            .get("content")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ProtocolError::invalid_state("Missing content"))?;
-
-        let timestamp = packet
-            .body
-            .get("timestamp")
+        let id = Self::get_required_str(&packet.body, "id")?;
+        let content = Self::get_required_str(&packet.body, "content")?;
+        let timestamp = packet.body.get("timestamp")
             .and_then(|v| v.as_i64())
             .ok_or_else(|| ProtocolError::invalid_state("Missing timestamp"))?;
 
-        info!(
-            "Received clipboard item add from {} ({}): {} chars",
-            device.name(),
-            device.id(),
-            content.len()
-        );
+        info!("Received clipboard item add from {} ({}): {} chars", device.name(), device.id(), content.len());
 
         let mut item = ClipboardHistoryItem::with_id_and_timestamp(
             id.to_string(),
@@ -638,82 +620,51 @@ impl ClipboardHistoryPlugin {
             item.content_type = content_type.to_string();
         }
 
-        self.storage.add(item)?;
+        match &self.sqlite_storage {
+            Some(sqlite) => { sqlite.add(&item).map_err(ProtocolError::invalid_state)?; }
+            None => self.memory_storage.add(item)?,
+        }
 
         Ok(())
     }
 
     /// Handle pin packet
     async fn handle_pin(&mut self, packet: &Packet, device: &Device) -> Result<()> {
-        let id = packet
-            .body
-            .get("id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ProtocolError::invalid_state("Missing id"))?;
+        let id = Self::get_required_str(&packet.body, "id")?;
+        let pinned = packet.body.get("pinned").and_then(|v| v.as_bool()).unwrap_or(false);
 
-        let pinned = packet
-            .body
-            .get("pinned")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        info!("Received pin request from {} ({}): {} -> {}", device.name(), device.id(), id, pinned);
 
-        info!(
-            "Received pin request from {} ({}): {} -> {}",
-            device.name(),
-            device.id(),
-            id,
-            pinned
-        );
-
-        self.storage.set_pinned(id, pinned)?;
+        match &self.sqlite_storage {
+            Some(sqlite) => { sqlite.set_pinned(id, pinned).map_err(ProtocolError::invalid_state)?; }
+            None => self.memory_storage.set_pinned(id, pinned)?,
+        }
 
         Ok(())
     }
 
     /// Handle delete packet
     async fn handle_delete(&mut self, packet: &Packet, device: &Device) -> Result<()> {
-        let id = packet
-            .body
-            .get("id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ProtocolError::invalid_state("Missing id"))?;
+        let id = Self::get_required_str(&packet.body, "id")?;
 
-        info!(
-            "Received delete request from {} ({}): {}",
-            device.name(),
-            device.id(),
-            id
-        );
+        info!("Received delete request from {} ({}): {}", device.name(), device.id(), id);
 
-        self.storage.delete(id)?;
+        match &self.sqlite_storage {
+            Some(sqlite) => { sqlite.delete(id).map_err(ProtocolError::invalid_state)?; }
+            None => self.memory_storage.delete(id)?,
+        }
 
         Ok(())
     }
 
     /// Handle search packet
     async fn handle_search(&mut self, packet: &Packet, device: &Device) -> Result<()> {
-        let query = packet
-            .body
-            .get("query")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let query = packet.body.get("query").and_then(|v| v.as_str()).unwrap_or("");
+        let limit = packet.body.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
-        let limit = packet
-            .body
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(10) as usize;
+        info!("Received search request from {} ({}): '{}' (limit: {})", device.name(), device.id(), query, limit);
 
-        info!(
-            "Received search request from {} ({}): '{}' (limit: {})",
-            device.name(),
-            device.id(),
-            query,
-            limit
-        );
-
-        let results = self.storage.search(query, limit);
-
+        let results = self.search(query, limit);
         info!("Found {} matching items", results.len());
 
         // TODO: Send result packet back to device
@@ -782,7 +733,11 @@ impl Plugin for ClipboardHistoryPlugin {
         self.enabled = true;
 
         // Cleanup on start
-        self.storage.cleanup();
+        if let Some(ref sqlite) = self.sqlite_storage {
+            let _ = sqlite.cleanup();
+        } else {
+            self.memory_storage.cleanup();
+        }
 
         Ok(())
     }
@@ -881,14 +836,14 @@ mod tests {
 
     #[test]
     fn test_plugin_creation() {
-        let plugin = ClipboardHistoryPlugin::new();
+        let plugin = ClipboardHistoryPlugin::new_memory_only();
         assert_eq!(plugin.name(), "clipboardhistory");
         assert!(!plugin.enabled);
     }
 
     #[test]
     fn test_add_item() {
-        let mut plugin = ClipboardHistoryPlugin::new();
+        let mut plugin = ClipboardHistoryPlugin::new_memory_only();
         let id = plugin.add_item("Test content".to_string()).unwrap();
         assert!(!id.is_empty());
 
@@ -899,7 +854,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_prevention() {
-        let mut plugin = ClipboardHistoryPlugin::new();
+        let mut plugin = ClipboardHistoryPlugin::new_memory_only();
         plugin.add_item("Same content".to_string()).unwrap();
         plugin.add_item("Same content".to_string()).unwrap();
 
@@ -909,7 +864,7 @@ mod tests {
 
     #[test]
     fn test_pin_unpin() {
-        let mut plugin = ClipboardHistoryPlugin::new();
+        let mut plugin = ClipboardHistoryPlugin::new_memory_only();
         let id = plugin.add_item("Test content".to_string()).unwrap();
 
         plugin.set_pinned(&id, true).unwrap();
@@ -923,7 +878,7 @@ mod tests {
 
     #[test]
     fn test_delete_item() {
-        let mut plugin = ClipboardHistoryPlugin::new();
+        let mut plugin = ClipboardHistoryPlugin::new_memory_only();
         let id = plugin.add_item("Test content".to_string()).unwrap();
 
         assert_eq!(plugin.get_all().len(), 1);
@@ -934,7 +889,7 @@ mod tests {
 
     #[test]
     fn test_search() {
-        let mut plugin = ClipboardHistoryPlugin::new();
+        let mut plugin = ClipboardHistoryPlugin::new_memory_only();
         plugin.add_item("Hello World".to_string()).unwrap();
         plugin.add_item("Goodbye World".to_string()).unwrap();
         plugin.add_item("Test content".to_string()).unwrap();
@@ -955,7 +910,7 @@ mod tests {
             sync_on_connect: true,
         };
 
-        let mut plugin = ClipboardHistoryPlugin::with_config(config);
+        let mut plugin = ClipboardHistoryPlugin::with_config_memory_only(config);
 
         plugin.add_item("Item 1".to_string()).unwrap();
         plugin.add_item("Item 2".to_string()).unwrap();
@@ -978,7 +933,7 @@ mod tests {
             sync_on_connect: true,
         };
 
-        let mut plugin = ClipboardHistoryPlugin::with_config(config);
+        let mut plugin = ClipboardHistoryPlugin::with_config_memory_only(config);
 
         let id1 = plugin.add_item("Pinned item".to_string()).unwrap();
         plugin.set_pinned(&id1, true).unwrap();
@@ -994,7 +949,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_plugin_lifecycle() {
-        let mut plugin = ClipboardHistoryPlugin::new();
+        let mut plugin = ClipboardHistoryPlugin::new_memory_only();
         let device = create_test_device();
 
         assert!(plugin.init(&device, tokio::sync::mpsc::channel(100).0).await.is_ok());
@@ -1009,7 +964,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_add_packet() {
-        let mut plugin = ClipboardHistoryPlugin::new();
+        let mut plugin = ClipboardHistoryPlugin::new_memory_only();
         let device = create_test_device();
         plugin.init(&device, tokio::sync::mpsc::channel(100).0).await.unwrap();
         plugin.start().await.unwrap();
@@ -1035,7 +990,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_pin_packet() {
-        let mut plugin = ClipboardHistoryPlugin::new();
+        let mut plugin = ClipboardHistoryPlugin::new_memory_only();
         let device = create_test_device();
         plugin.init(&device, tokio::sync::mpsc::channel(100).0).await.unwrap();
         plugin.start().await.unwrap();
@@ -1059,7 +1014,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_delete_packet() {
-        let mut plugin = ClipboardHistoryPlugin::new();
+        let mut plugin = ClipboardHistoryPlugin::new_memory_only();
         let device = create_test_device();
         plugin.init(&device, tokio::sync::mpsc::channel(100).0).await.unwrap();
         plugin.start().await.unwrap();
@@ -1077,7 +1032,7 @@ mod tests {
 
     #[test]
     fn test_capabilities() {
-        let plugin = ClipboardHistoryPlugin::new();
+        let plugin = ClipboardHistoryPlugin::new_memory_only();
 
         let incoming = plugin.incoming_capabilities();
         assert_eq!(incoming.len(), 10);

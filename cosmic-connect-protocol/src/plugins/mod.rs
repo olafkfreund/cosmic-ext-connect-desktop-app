@@ -105,6 +105,7 @@ pub mod battery;
 pub mod chat;
 pub mod chat_storage;
 pub mod clipboard;
+pub mod clipboard_storage;
 pub mod clipboardhistory;
 pub mod connectivity_report;
 pub mod contacts;
