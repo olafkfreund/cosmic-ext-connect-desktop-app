@@ -128,6 +128,7 @@ pub mod screenshot;
 pub mod share;
 pub mod systemd_inhibitor;
 pub mod systemmonitor;
+pub mod upower_backend;
 pub mod systemvolume;
 pub mod telephony;
 pub mod wol;

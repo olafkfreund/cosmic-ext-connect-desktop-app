@@ -109,6 +109,7 @@ use std::any::Any;
 use tracing::{debug, info, warn};
 
 use super::systemd_inhibitor::{InhibitMode, InhibitType, InhibitorLock, SystemdInhibitor};
+use super::upower_backend::UPowerBackend;
 use super::{Plugin, PluginFactory};
 
 /// Power management plugin for remote power control
@@ -130,6 +131,9 @@ pub struct PowerPlugin {
 
     /// Active inhibitor lock (held to prevent sleep)
     inhibitor_lock: Option<InhibitorLock>,
+
+    /// UPower backend for power state detection
+    upower: UPowerBackend,
 }
 
 impl PowerPlugin {
@@ -142,6 +146,7 @@ impl PowerPlugin {
             inhibit_reason: None,
             inhibitor: SystemdInhibitor::new(),
             inhibitor_lock: None,
+            upower: UPowerBackend::new(),
         }
     }
 
@@ -206,10 +211,12 @@ impl PowerPlugin {
     ///
     /// # Parameters
     ///
-    /// - `state`: Current power state ("running", "suspended", etc.)
+    /// - `state`: Current power state ("running", "charging", "discharging", etc.)
     /// - `inhibited`: Whether sleep is inhibited
     /// - `battery_present`: Whether system has a battery
     /// - `on_battery`: Whether system is running on battery
+    /// - `battery_percentage`: Battery charge level (0-100) if available
+    /// - `battery_state`: Battery charging state string
     ///
     /// # Returns
     ///
@@ -220,16 +227,23 @@ impl PowerPlugin {
         inhibited: bool,
         battery_present: bool,
         on_battery: bool,
+        battery_percentage: Option<f64>,
+        battery_state: &str,
     ) -> Packet {
-        Packet::new(
-            "cconnect.power.status",
-            json!({
-                "state": state,
-                "inhibited": inhibited,
-                "battery_present": battery_present,
-                "on_battery": on_battery
-            }),
-        )
+        let mut body = json!({
+            "state": state,
+            "inhibited": inhibited,
+            "battery_present": battery_present,
+            "on_battery": on_battery,
+            "battery_state": battery_state
+        });
+
+        // Add battery percentage if available
+        if let Some(percentage) = battery_percentage {
+            body["battery_percentage"] = json!(percentage);
+        }
+
+        Packet::new("cconnect.power.status", body)
     }
 
     /// Handle power action request
@@ -320,18 +334,62 @@ impl PowerPlugin {
             device.id()
         );
 
-        // Query current power state
-        // TODO: Implement actual power state detection
-        let _state = "running";
-        let _battery_present = false;
-        let _on_battery = false;
+        // Query current power state via UPower
+        let (state, battery_present, on_battery, battery_percentage, battery_state) =
+            match self.upower.get_power_status().await {
+                Ok(status) => {
+                    let battery_state_str = status.battery_state.as_str();
+                    let state = if status.battery_present {
+                        battery_state_str
+                    } else {
+                        "running"
+                    };
+                    (
+                        state,
+                        status.battery_present,
+                        status.on_battery,
+                        status.battery_percentage,
+                        battery_state_str,
+                    )
+                }
+                Err(e) => {
+                    warn!("Failed to query UPower: {}", e);
+                    ("running", false, false, None, "unknown")
+                }
+            };
+
+        debug!(
+            "Power status: state={}, battery_present={}, on_battery={}, percentage={:?}",
+            state, battery_present, on_battery, battery_percentage
+        );
+
+        // Create status response packet
+        let _response = self.create_status_response(
+            state,
+            self.sleep_inhibited,
+            battery_present,
+            on_battery,
+            battery_percentage,
+            battery_state,
+        );
 
         // TODO: Send status response packet back to device
-        // Need to implement packet sending infrastructure
-        // let response = self.create_status_response(state, self.sleep_inhibited, battery_present, on_battery);
         // device.send_packet(&response).await?;
 
         Ok(())
+    }
+
+    /// Get current power status (for external access)
+    pub async fn get_power_status(&mut self) -> (bool, bool, Option<f64>, &'static str) {
+        match self.upower.get_power_status().await {
+            Ok(status) => (
+                status.on_battery,
+                status.battery_present,
+                status.battery_percentage,
+                status.battery_state.as_str(),
+            ),
+            Err(_) => (false, false, None, "unknown"),
+        }
     }
 
     /// Shutdown the system
@@ -587,12 +645,27 @@ mod tests {
     fn test_create_status_response() {
         let plugin = PowerPlugin::new();
 
-        let packet = plugin.create_status_response("running", false, true, false);
+        // Test with battery
+        let packet = plugin.create_status_response(
+            "discharging",
+            false,
+            true,
+            true,
+            Some(75.5),
+            "discharging",
+        );
         assert_eq!(packet.packet_type, "cconnect.power.status");
-        assert_eq!(packet.body.get("state"), Some(&json!("running")));
+        assert_eq!(packet.body.get("state"), Some(&json!("discharging")));
         assert_eq!(packet.body.get("inhibited"), Some(&json!(false)));
         assert_eq!(packet.body.get("battery_present"), Some(&json!(true)));
-        assert_eq!(packet.body.get("on_battery"), Some(&json!(false)));
+        assert_eq!(packet.body.get("on_battery"), Some(&json!(true)));
+        assert_eq!(packet.body.get("battery_percentage"), Some(&json!(75.5)));
+        assert_eq!(packet.body.get("battery_state"), Some(&json!("discharging")));
+
+        // Test without battery
+        let packet2 = plugin.create_status_response("running", false, false, false, None, "unknown");
+        assert_eq!(packet2.body.get("battery_present"), Some(&json!(false)));
+        assert!(packet2.body.get("battery_percentage").is_none());
     }
 
     #[test]
