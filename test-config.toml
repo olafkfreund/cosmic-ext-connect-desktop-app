@@ -7,9 +7,9 @@ device_type = "desktop"
 # device_id will be auto-generated if not set
 
 [network]
-discovery_port = 1716
-transfer_port_start = 1739
-transfer_port_end = 1764
+discovery_port = 1816
+transfer_port_start = 1839
+transfer_port_end = 1864
 discovery_interval = 5  # seconds
 device_timeout = 30     # seconds
 

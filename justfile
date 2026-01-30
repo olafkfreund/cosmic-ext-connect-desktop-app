@@ -1,4 +1,4 @@
-# cosmic-applet-kdeconnect - Build Commands
+# cosmic-applet-connect - Build Commands
 # https://github.com/casey/just
 
 # Default recipe (runs when you just type 'just')
@@ -19,27 +19,27 @@ build-protocol:
 
 # Build only the applet
 build-applet:
-    cargo build -p cosmic-applet-kdeconnect
+    cargo build -p cosmic-applet-connect
 
 # Build only the full application
 build-app:
-    cargo build -p cosmic-kdeconnect
+    cargo build -p cosmic-connect-daemon
 
 # Build only the daemon
 build-daemon:
-    cargo build -p kdeconnect-daemon
+    cargo build -p cosmic-connect-daemon
 
 # Run the applet in development mode
 run-applet:
-    RUST_LOG=debug cargo run -p cosmic-applet-kdeconnect
+    RUST_LOG=debug cargo run -p cosmic-applet-connect
 
 # Run the full application
 run-app:
-    RUST_LOG=debug cargo run -p cosmic-kdeconnect
+    RUST_LOG=debug cargo run -p cosmic-connect-daemon
 
 # Run the daemon
 run-daemon:
-    RUST_LOG=debug cargo run -p kdeconnect-daemon
+    RUST_LOG=debug cargo run -p cosmic-connect-daemon
 
 # Run all tests
 test:
@@ -109,40 +109,40 @@ doc-protocol:
 
 # Install all components (requires sudo)
 install: build-release
-    sudo install -Dm755 target/release/cosmic-applet-kdeconnect \
-        /usr/bin/cosmic-applet-kdeconnect
-    sudo install -Dm755 target/release/cosmic-kdeconnect \
-        /usr/bin/cosmic-kdeconnect
-    sudo install -Dm755 target/release/kdeconnect-daemon \
-        /usr/bin/kdeconnect-daemon
-    sudo install -Dm644 cosmic-applet-kdeconnect/data/cosmic-applet-kdeconnect.desktop \
-        /usr/share/applications/cosmic-applet-kdeconnect.desktop
+    sudo install -Dm755 target/release/cosmic-applet-connect \
+        /usr/bin/cosmic-applet-connect
+    sudo install -Dm755 target/release/cosmic-connect-daemon \
+        /usr/bin/cosmic-connect-daemon
+    sudo install -Dm755 target/release/cosmic-connect-daemon \
+        /usr/bin/cosmic-connect-daemon
+    sudo install -Dm644 cosmic-applet-connect/data/cosmic-applet-connect.desktop \
+        /usr/share/applications/cosmic-applet-connect.desktop
     @echo "✅ Installed successfully!"
 
 # Install only the applet
 install-applet: build-release
-    sudo install -Dm755 target/release/cosmic-applet-kdeconnect \
-        /usr/bin/cosmic-applet-kdeconnect
-    sudo install -Dm644 cosmic-applet-kdeconnect/data/cosmic-applet-kdeconnect.desktop \
-        /usr/share/applications/cosmic-applet-kdeconnect.desktop
+    sudo install -Dm755 target/release/cosmic-applet-connect \
+        /usr/bin/cosmic-applet-connect
+    sudo install -Dm644 cosmic-applet-connect/data/cosmic-applet-connect.desktop \
+        /usr/share/applications/cosmic-applet-connect.desktop
 
 # Install to local directory (no sudo required)
 install-local PREFIX="$HOME/.local": build-release
-    install -Dm755 target/release/cosmic-applet-kdeconnect \
-        {{PREFIX}}/bin/cosmic-applet-kdeconnect
-    install -Dm755 target/release/cosmic-kdeconnect \
-        {{PREFIX}}/bin/cosmic-kdeconnect
-    install -Dm755 target/release/kdeconnect-daemon \
-        {{PREFIX}}/bin/kdeconnect-daemon
-    install -Dm644 cosmic-applet-kdeconnect/data/cosmic-applet-kdeconnect.desktop \
-        {{PREFIX}}/share/applications/cosmic-applet-kdeconnect.desktop
+    install -Dm755 target/release/cosmic-applet-connect \
+        {{PREFIX}}/bin/cosmic-applet-connect
+    install -Dm755 target/release/cosmic-connect-daemon \
+        {{PREFIX}}/bin/cosmic-connect-daemon
+    install -Dm755 target/release/cosmic-connect-daemon \
+        {{PREFIX}}/bin/cosmic-connect-daemon
+    install -Dm644 cosmic-applet-connect/data/cosmic-applet-connect.desktop \
+        {{PREFIX}}/share/applications/cosmic-applet-connect.desktop
 
 # Uninstall all components
 uninstall:
-    sudo rm -f /usr/bin/cosmic-applet-kdeconnect
-    sudo rm -f /usr/bin/cosmic-kdeconnect
-    sudo rm -f /usr/bin/kdeconnect-daemon
-    sudo rm -f /usr/share/applications/cosmic-applet-kdeconnect.desktop
+    sudo rm -f /usr/bin/cosmic-applet-connect
+    sudo rm -f /usr/bin/cosmic-connect-daemon
+    sudo rm -f /usr/bin/cosmic-connect-daemon
+    sudo rm -f /usr/share/applications/cosmic-applet-connect.desktop
 
 # Setup development environment
 setup:
@@ -192,7 +192,7 @@ watch-test:
 
 # Watch and run applet
 watch-applet:
-    cargo watch -x 'run -p cosmic-applet-kdeconnect'
+    cargo watch -x 'run -p cosmic-applet-connect'
 
 # Benchmark performance
 bench:
@@ -218,11 +218,11 @@ release VERSION:
 package: build-release
     @echo "📦 Creating distribution package..."
     mkdir -p dist
-    tar czf dist/cosmic-applet-kdeconnect-$(cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "cosmic-applet-kdeconnect") | .version').tar.gz \
+    tar czf dist/cosmic-applet-connect-$(cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "cosmic-applet-connect") | .version').tar.gz \
         -C target/release \
-        cosmic-applet-kdeconnect \
-        cosmic-kdeconnect \
-        kdeconnect-daemon
+        cosmic-applet-connect \
+        cosmic-connect-daemon \
+        cosmic-connect-daemon
     @echo "✅ Package created in dist/"
 
 # Deploy to a remote NixOS host (e.g., just deploy-remote user@host)
@@ -243,7 +243,7 @@ stats:
     @cargo tree | head -20
     @echo ""
     @echo "Binary sizes:"
-    @ls -lh target/release/cosmic-applet-kdeconnect target/release/cosmic-kdeconnect target/release/kdeconnect-daemon 2>/dev/null || echo "  (not built yet)"
+    @ls -lh target/release/cosmic-applet-connect target/release/cosmic-connect-daemon target/release/cosmic-connect-daemon 2>/dev/null || echo "  (not built yet)"
 
 # Development helpers
 dev-server:
@@ -254,7 +254,7 @@ dev-server:
 
 # Validate desktop entries
 validate-desktop:
-    desktop-file-validate cosmic-applet-kdeconnect/data/cosmic-applet-kdeconnect.desktop
+    desktop-file-validate cosmic-applet-connect/data/cosmic-applet-connect.desktop
 
 # Generate a new plugin template
 new-plugin NAME:
@@ -299,18 +299,18 @@ list-plugins:
 
 # Run with specific log level
 run-debug LEVEL="debug":
-    RUST_LOG={{LEVEL}} cargo run -p cosmic-applet-kdeconnect
+    RUST_LOG={{LEVEL}} cargo run -p cosmic-applet-connect
 
 # Memory profiling with valgrind
 profile-memory:
     cargo build --release
     valgrind --leak-check=full --show-leak-kinds=all \
-        target/release/cosmic-applet-kdeconnect
+        target/release/cosmic-applet-connect
 
 # CPU profiling with perf
 profile-cpu:
     cargo build --release
-    perf record -g target/release/cosmic-applet-kdeconnect
+    perf record -g target/release/cosmic-applet-connect
     perf report
 
 # Display help for firewall configuration

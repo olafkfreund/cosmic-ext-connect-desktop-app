@@ -1,12 +1,9 @@
-
-use libcosmic::app::{Core, Task};
-use libcosmic::iced::{window, Alignment};
-use libcosmic::widget::{self, column, container, row, text, button};
-use libcosmic::{Element, Length};
+use cosmic::app::{Core, Task};
+use cosmic::iced::Length;
+use cosmic::widget::{self, container, text, button};
+use cosmic::Element;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc;
-use wry::WebViewBuilder;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MessengerType {
@@ -63,8 +60,8 @@ pub enum Message {
     WebViewCreated,
 }
 
-impl libcosmic::Application for CosmicMessages {
-    type Executor = libcosmic::executor::Default;
+impl cosmic::Application for CosmicMessages {
+    type Executor = cosmic::executor::Default;
     type Flags = ();
     type Message = Message;
     const APP_ID: &'static str = "org.cosmicde.Messages";
@@ -74,11 +71,11 @@ impl libcosmic::Application for CosmicMessages {
 
     fn init(core: Core, _flags: Self::Flags) -> (Self, Task<Message>) {
         (
-            Self { 
-                core, 
+            Self {
+                core,
                 current_messenger: MessengerType::GoogleMessages,
                 webview: Some(Arc::new(Mutex::new(None))),
-            }, 
+            },
             Task::none()
         )
     }
@@ -88,7 +85,7 @@ impl libcosmic::Application for CosmicMessages {
             Message::SwitchMessenger(m) => {
                 self.current_messenger = m;
                 if let Some(ref wv_arc) = self.webview {
-                    if let Ok(mut guard) = wv_arc.lock() {
+                    if let Ok(guard) = wv_arc.lock() {
                         if let Some(ref wv) = *guard {
                             let _ = wv.load_url(m.web_url());
                         }
@@ -99,7 +96,7 @@ impl libcosmic::Application for CosmicMessages {
             Message::NotificationReceived(notif) => {
                 self.current_messenger = notif.messenger;
                 if let Some(ref wv_arc) = self.webview {
-                    if let Ok(mut guard) = wv_arc.lock() {
+                    if let Ok(guard) = wv_arc.lock() {
                         if let Some(ref wv) = *guard {
                             let _ = wv.load_url(notif.messenger.web_url());
                         }
@@ -112,23 +109,25 @@ impl libcosmic::Application for CosmicMessages {
     }
 
     fn view(&self) -> Element<Message> {
-        let tabs = row![
-            button::text("Google Messages").on_press(Message::SwitchMessenger(MessengerType::GoogleMessages)),
-            button::text("WhatsApp").on_press(Message::SwitchMessenger(MessengerType::WhatsApp)),
-            button::text("Telegram").on_press(Message::SwitchMessenger(MessengerType::Telegram)),
-        ].spacing(10).padding(10);
+        let tabs = widget::row::with_children(vec![
+            button::text("Google Messages").on_press(Message::SwitchMessenger(MessengerType::GoogleMessages)).into(),
+            button::text("WhatsApp").on_press(Message::SwitchMessenger(MessengerType::WhatsApp)).into(),
+            button::text("Telegram").on_press(Message::SwitchMessenger(MessengerType::Telegram)).into(),
+        ])
+        .spacing(10)
+        .padding(10);
 
-        column![
-            tabs,
-            container(text("WebView would be here (requires window handle integration)"))
+        widget::column::with_children(vec![
+            tabs.into(),
+            container(text::body("WebView would be here (requires window handle integration)"))
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .center_x()
-                .center_y()
-        ].into()
+                .center(Length::Fill)
+                .into(),
+        ]).into()
     }
 }
 
-fn main() -> libcosmic::iced::Result {
-    libcosmic::app::run::<CosmicMessages>(libcosmic::app::Settings::default(), ())
+fn main() -> cosmic::iced::Result {
+    cosmic::app::run::<CosmicMessages>(cosmic::app::Settings::default(), ())
 }

@@ -31,7 +31,7 @@
   gdk-pixbuf,
   atk,
   pipewire,
-  webkit2gtk,
+  webkitgtk_4_1,
   gobject-introspection,
   stdenv,
 }:
@@ -99,7 +99,7 @@ rustPlatform.buildRustPackage rec {
     gdk-pixbuf
     atk
     pipewire # RemoteDesktop plugin dependency
-    webkit2gtk
+    webkitgtk_4_1
     gobject-introspection
   ];
 
@@ -165,6 +165,9 @@ rustPlatform.buildRustPackage rec {
     SystemdService=cosmic-connect-daemon.service
     EOF
 
+    # Install desktop entries
+    mkdir -p $out/share/applications
+
     # Install desktop entry for cosmic-messages
     cat > $out/share/applications/org.cosmicde.Messages.desktop << EOF
     [Desktop Entry]
@@ -178,7 +181,6 @@ rustPlatform.buildRustPackage rec {
     EOF
 
     # Install desktop entry for applet
-    mkdir -p $out/share/applications
     cat > $out/share/applications/cosmic-applet-connect.desktop << EOF
     [Desktop Entry]
     Type=Application
