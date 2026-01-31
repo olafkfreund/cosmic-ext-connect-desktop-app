@@ -373,7 +373,9 @@ enum Message {
     RefreshDevices,
     SendPing(String),
     SendFile(String),
-    FileSelected(String, String), // device_id, file_path
+    SendFiles(String),            // device_id - opens picker for multiple files
+    FileSelected(String, String), // device_id, file_path (single file)
+    FilesSelected(String, Vec<String>), // device_id, file_paths (multiple files)
     FindPhone(String),
     ShareText(String),            // device_id
     ShareUrl(String),             // device_id
@@ -584,24 +586,33 @@ async fn fetch_mpris_players() -> Vec<String> {
     }
 }
 
-/// Opens a file picker dialog and returns device_id and selected file path
-async fn open_file_picker(device_id: String) -> Option<(String, String)> {
+/// Opens a file picker dialog and returns device_id with selected file paths
+async fn open_file_picker(device_id: String, multiple: bool) -> Option<(String, Vec<String>)> {
     use ashpd::desktop::file_chooser::OpenFileRequest;
 
+    let title = if multiple {
+        "Select files to send"
+    } else {
+        "Select file to send"
+    };
+
     let response = OpenFileRequest::default()
-        .title("Select file to send")
+        .title(title)
         .modal(true)
-        .multiple(false)
+        .multiple(multiple)
         .send()
         .await
         .ok()?
         .response()
         .ok()?;
 
-    response
+    let paths: Vec<String> = response
         .uris()
-        .first()
-        .map(|uri| (device_id, uri.path().to_string()))
+        .iter()
+        .map(|uri| uri.path().to_string())
+        .collect();
+
+    (!paths.is_empty()).then_some((device_id, paths))
 }
 
 /// Gets text from the system clipboard
@@ -889,14 +900,26 @@ impl cosmic::Application for CConnectApplet {
             }
             Message::SendFile(device_id) => {
                 tracing::info!("Opening file picker for device: {}", device_id);
-                Task::perform(open_file_picker(device_id), |result| match result {
-                    Some((device_id, path)) => {
-                        cosmic::Action::App(Message::FileSelected(device_id, path))
-                    }
-                    None => {
+                Task::perform(open_file_picker(device_id, false), |result| {
+                    let Some((device_id, mut paths)) = result else {
                         tracing::debug!("File picker cancelled or no file selected");
-                        cosmic::Action::App(Message::RefreshDevices)
+                        return cosmic::Action::App(Message::RefreshDevices);
+                    };
+                    // Single file selection returns vector with one element
+                    match paths.pop() {
+                        Some(path) => cosmic::Action::App(Message::FileSelected(device_id, path)),
+                        None => cosmic::Action::App(Message::RefreshDevices),
                     }
+                })
+            }
+            Message::SendFiles(device_id) => {
+                tracing::info!("Opening multi-file picker for device: {}", device_id);
+                Task::perform(open_file_picker(device_id, true), |result| {
+                    let Some((device_id, paths)) = result else {
+                        tracing::debug!("File picker cancelled or no files selected");
+                        return cosmic::Action::App(Message::RefreshDevices);
+                    };
+                    cosmic::Action::App(Message::FilesSelected(device_id, paths))
                 })
             }
             Message::FileSelected(device_id, file_path) => {
@@ -904,6 +927,22 @@ impl cosmic::Application for CConnectApplet {
                 device_operation_task(device_id, "share file", move |client, id| async move {
                     client.share_file(&id, &file_path).await
                 })
+            }
+            Message::FilesSelected(device_id, file_paths) => {
+                tracing::info!(
+                    "Sending {} files to device: {}",
+                    file_paths.len(),
+                    device_id
+                );
+
+                let tasks = file_paths.into_iter().map(|path| {
+                    let id = device_id.clone();
+                    device_operation_task(id, "share file", move |client, device_id| async move {
+                        client.share_file(&device_id, &path).await
+                    })
+                });
+
+                Task::batch(tasks)
             }
             Message::FindPhone(device_id) => {
                 let id = device_id.clone();
@@ -3328,6 +3367,12 @@ impl CConnectApplet {
                     "document-send-symbolic",
                     "Send file...",
                     Message::SendFile(device_id.to_string()),
+                    cosmic::theme::Button::MenuItem,
+                ));
+                menu_items.push(menu_item(
+                    "folder-documents-symbolic",
+                    "Send multiple files...",
+                    Message::SendFiles(device_id.to_string()),
                     cosmic::theme::Button::MenuItem,
                 ));
             }
