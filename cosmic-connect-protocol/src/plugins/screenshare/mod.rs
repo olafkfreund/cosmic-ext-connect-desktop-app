@@ -489,6 +489,9 @@ pub struct ScreenSharePlugin {
 
     /// Shared flag to signal streaming stop
     stop_streaming: Arc<Mutex<bool>>,
+
+    /// Shared flag to signal streaming pause
+    pause_streaming: Arc<Mutex<bool>>,
 }
 
 impl ScreenSharePlugin {
@@ -505,6 +508,7 @@ impl ScreenSharePlugin {
             sender_tasks: std::collections::HashMap::new(),
             frame_sender: None,
             stop_streaming: Arc::new(Mutex::new(false)),
+            pause_streaming: Arc::new(Mutex::new(false)),
         }
     }
 
@@ -551,6 +555,38 @@ impl ScreenSharePlugin {
         }
 
         Ok(())
+    }
+
+    /// Pause screen sharing session
+    ///
+    /// The capture pipeline is paused but the session remains active.
+    /// Viewers will see a frozen frame until resumed.
+    pub async fn pause_sharing(&mut self) -> Result<()> {
+        self.set_pause_state(true, "pause").await
+    }
+
+    /// Resume screen sharing session after pause
+    pub async fn resume_sharing(&mut self) -> Result<()> {
+        self.set_pause_state(false, "resume").await
+    }
+
+    /// Set the pause state for the active session
+    async fn set_pause_state(&mut self, paused: bool, action: &str) -> Result<()> {
+        if self.active_session.is_none() {
+            return Err(ProtocolError::Plugin(format!(
+                "No active screen share session to {}",
+                action
+            )));
+        }
+
+        *self.pause_streaming.lock().await = paused;
+        info!("Screen share {}d", action);
+        Ok(())
+    }
+
+    /// Check if screen sharing is currently paused
+    pub async fn is_paused(&self) -> bool {
+        *self.pause_streaming.lock().await
     }
 
     /// Add viewer to active session
@@ -616,16 +652,20 @@ impl ScreenSharePlugin {
     /// Set the local port for receiving the stream
     pub async fn set_local_port(&mut self, port: u16) -> Result<()> {
         self.local_port = Some(port);
-        
+
         // If we were already waiting for this (received start), send ready packet
         if self.receiving {
-             if let Some(sender) = &self.packet_sender {
+            if let Some(sender) = &self.packet_sender {
                 let body = serde_json::json!({ "tcpPort": port });
                 let packet = Packet::new("cconnect.screenshare.ready", body);
                 // We need device_id
                 if let Some(device_id) = &self.device_id {
-                    sender.send((device_id.clone(), packet)).await
-                        .map_err(|_| ProtocolError::Plugin("Failed to send ready packet".to_string()))?;
+                    sender
+                        .send((device_id.clone(), packet))
+                        .await
+                        .map_err(|_| {
+                            ProtocolError::Plugin("Failed to send ready packet".to_string())
+                        })?;
                 }
             }
         }
@@ -656,12 +696,17 @@ impl ScreenSharePlugin {
         // Send start packet to remote device
         if let Some(sender) = &self.packet_sender {
             if let Some(device_id) = &self.device_id {
-                let body = serde_json::to_value(&config)
-                    .map_err(|e| ProtocolError::Plugin(format!("Failed to serialize config: {}", e)))?;
+                let body = serde_json::to_value(&config).map_err(|e| {
+                    ProtocolError::Plugin(format!("Failed to serialize config: {}", e))
+                })?;
                 let packet = Packet::new("cconnect.screenshare.start", body);
 
-                sender.send((device_id.clone(), packet)).await
-                    .map_err(|_| ProtocolError::Plugin("Failed to send start packet".to_string()))?;
+                sender
+                    .send((device_id.clone(), packet))
+                    .await
+                    .map_err(|_| {
+                        ProtocolError::Plugin("Failed to send start packet".to_string())
+                    })?;
 
                 info!("Sent screen share start to {}", device_id);
                 Ok(())
@@ -669,7 +714,9 @@ impl ScreenSharePlugin {
                 Err(ProtocolError::Plugin("No device ID set".to_string()))
             }
         } else {
-            Err(ProtocolError::Plugin("No packet sender available".to_string()))
+            Err(ProtocolError::Plugin(
+                "No packet sender available".to_string(),
+            ))
         }
     }
 
@@ -679,11 +726,19 @@ impl ScreenSharePlugin {
     /// - First viewer: initializes capture and starts broadcasting frames
     /// - Additional viewers: spawn new sender tasks subscribed to the broadcast
     #[cfg(feature = "screenshare")]
-    pub async fn start_streaming_to_device(&mut self, host: String, port: u16, viewer_id: String) -> Result<()> {
+    pub async fn start_streaming_to_device(
+        &mut self,
+        host: String,
+        port: u16,
+        viewer_id: String,
+    ) -> Result<()> {
         // Get config from active session
-        let config = self.active_session.as_ref()
+        let config = self
+            .active_session
+            .as_ref()
             .ok_or_else(|| ProtocolError::Plugin("No active sharing session".to_string()))?
-            .config.clone();
+            .config
+            .clone();
 
         info!("Adding viewer {} at {}:{}", viewer_id, host, port);
 
@@ -692,8 +747,10 @@ impl ScreenSharePlugin {
 
         if is_first_viewer {
             // First viewer - initialize capture and broadcast channel
-            info!("First viewer - starting capture with {} fps, {} kbps",
-                config.fps, config.bitrate_kbps);
+            info!(
+                "First viewer - starting capture with {} fps, {} kbps",
+                config.fps, config.bitrate_kbps
+            );
 
             // Reset stop flag
             *self.stop_streaming.lock().await = false;
@@ -705,13 +762,17 @@ impl ScreenSharePlugin {
             // Request screen share permission via XDG Desktop Portal
             let portal_session = portal::request_screencast().await.ok();
             if let Some(ref session) = portal_session {
-                info!("Portal session acquired: node_id={}", session.pipewire_node_id);
+                info!(
+                    "Portal session acquired: node_id={}",
+                    session.pipewire_node_id
+                );
             } else {
                 warn!("Portal request failed, falling back to test source");
             }
 
             // Extract PipeWire parameters from portal session
-            let (pipewire_fd, pipewire_node_id) = portal_session.as_ref()
+            let (pipewire_fd, pipewire_node_id) = portal_session
+                .as_ref()
                 .map(|s| (Some(s.fd()), Some(s.pipewire_node_id)))
                 .unwrap_or((None, None));
 
@@ -731,6 +792,7 @@ impl ScreenSharePlugin {
             let max_bitrate_kbps = target_bitrate_kbps.saturating_mul(2).min(50000);
 
             let stop_flag = self.stop_streaming.clone();
+            let pause_flag = self.pause_streaming.clone();
             let frame_tx = tx.clone();
 
             // Spawn capture task
@@ -754,12 +816,37 @@ impl ScreenSharePlugin {
                 let mut last_bitrate_check = std::time::Instant::now();
                 let bitrate_check_interval = std::time::Duration::from_secs(2);
                 let mut frames_captured: u64 = 0;
+                let mut was_paused = false;
 
                 loop {
                     // Check stop flag
                     if *stop_flag.lock().await {
                         info!("Capture stop requested");
                         break;
+                    }
+
+                    // Check pause flag
+                    let is_paused = *pause_flag.lock().await;
+                    if is_paused && !was_paused {
+                        // Transition to paused state
+                        if let Err(e) = capture.pause() {
+                            error!("Failed to pause capture: {}", e);
+                        }
+                        was_paused = true;
+                        debug!("Capture paused");
+                    } else if !is_paused && was_paused {
+                        // Transition to resumed state
+                        if let Err(e) = capture.resume() {
+                            error!("Failed to resume capture: {}", e);
+                        }
+                        was_paused = false;
+                        debug!("Capture resumed");
+                    }
+
+                    // While paused, just sleep and continue checking flags
+                    if is_paused {
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        continue;
                     }
 
                     // Adaptive bitrate control (based on subscriber count/health)
@@ -778,8 +865,10 @@ impl ScreenSharePlugin {
                             let new_bitrate = (current_bitrate as f32 * 1.1) as u32;
                             let new_bitrate = new_bitrate.min(max_bitrate_kbps);
                             if new_bitrate != current_bitrate {
-                                debug!("Adaptive bitrate: {} kbps -> {} kbps ({} viewers)",
-                                    current_bitrate, new_bitrate, receiver_count);
+                                debug!(
+                                    "Adaptive bitrate: {} kbps -> {} kbps ({} viewers)",
+                                    current_bitrate, new_bitrate, receiver_count
+                                );
                                 let _ = capture.set_bitrate(new_bitrate);
                             }
                         }
@@ -820,7 +909,9 @@ impl ScreenSharePlugin {
         }
 
         // Spawn sender task for this viewer
-        let frame_rx = self.frame_sender.as_ref()
+        let frame_rx = self
+            .frame_sender
+            .as_ref()
             .ok_or_else(|| ProtocolError::Plugin("No frame sender available".to_string()))?
             .subscribe();
 
@@ -831,11 +922,17 @@ impl ScreenSharePlugin {
             // Connect to viewer
             let mut sender = StreamSender::new();
             if let Err(e) = sender.connect(&host, port).await {
-                error!("Failed to connect to viewer {} at {}:{}: {}", viewer_id_clone, host, port, e);
+                error!(
+                    "Failed to connect to viewer {} at {}:{}: {}",
+                    viewer_id_clone, host, port, e
+                );
                 return;
             }
 
-            info!("Streaming to viewer {} at {}:{}", viewer_id_clone, host, port);
+            info!(
+                "Streaming to viewer {} at {}:{}",
+                viewer_id_clone, host, port
+            );
 
             let mut rx = frame_rx;
 
@@ -871,7 +968,10 @@ impl ScreenSharePlugin {
             sender.close().await;
 
             let (frames, bytes) = sender.stats();
-            info!("Viewer {} stats: {} frames, {} bytes sent", viewer_id_clone, frames, bytes);
+            info!(
+                "Viewer {} stats: {} frames, {} bytes sent",
+                viewer_id_clone, frames, bytes
+            );
         });
 
         self.sender_tasks.insert(viewer_id, sender_handle);
@@ -880,8 +980,15 @@ impl ScreenSharePlugin {
 
     /// Start streaming - stub when screenshare feature is disabled
     #[cfg(not(feature = "screenshare"))]
-    pub async fn start_streaming_to_device(&mut self, _host: String, _port: u16, _viewer_id: String) -> Result<()> {
-        Err(ProtocolError::Plugin("screenshare feature not enabled".to_string()))
+    pub async fn start_streaming_to_device(
+        &mut self,
+        _host: String,
+        _port: u16,
+        _viewer_id: String,
+    ) -> Result<()> {
+        Err(ProtocolError::Plugin(
+            "screenshare feature not enabled".to_string(),
+        ))
     }
 
     /// Remove a viewer from the streaming session
@@ -907,7 +1014,12 @@ impl ScreenSharePlugin {
     ///
     /// Internal packets are intercepted by the daemon and converted to DBus signals.
     /// Errors are silently ignored since signal emission is best-effort.
-    async fn emit_internal_packet(&self, device_id: &str, packet_type: &str, body: serde_json::Value) {
+    async fn emit_internal_packet(
+        &self,
+        device_id: &str,
+        packet_type: &str,
+        body: serde_json::Value,
+    ) {
         if let Some(sender) = &self.packet_sender {
             let packet = Packet::new(packet_type, body);
             let _ = sender.send((device_id.to_string(), packet)).await;
@@ -916,8 +1028,9 @@ impl ScreenSharePlugin {
 
     /// Stop all streaming tasks
     pub async fn stop_streaming(&mut self) {
-        // Signal stop
+        // Signal stop and reset pause
         *self.stop_streaming.lock().await = true;
+        *self.pause_streaming.lock().await = false;
 
         // Stop all sender tasks
         for (viewer_id, handle) in self.sender_tasks.drain() {
@@ -966,7 +1079,11 @@ impl Plugin for ScreenSharePlugin {
         vec![OUTGOING_CAPABILITY.to_string()]
     }
 
-    async fn init(&mut self, device: &Device, packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>) -> Result<()> {
+    async fn init(
+        &mut self,
+        device: &Device,
+        packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>,
+    ) -> Result<()> {
         info!(
             "Initializing ScreenShare plugin for device {}",
             device.name()
@@ -1120,7 +1237,9 @@ impl Plugin for ScreenSharePlugin {
             let viewer_id = device_id.to_string();
             self.start_streaming_to_device(host.clone(), tcp_port, viewer_id)
                 .await
-                .inspect_err(|e| error!("Failed to start streaming to {}:{}: {}", host, tcp_port, e))?;
+                .inspect_err(|e| {
+                    error!("Failed to start streaming to {}:{}: {}", host, tcp_port, e)
+                })?;
 
             self.emit_internal_packet(
                 device_id,
@@ -1249,14 +1368,20 @@ mod tests {
         // Should receive internal packet request
         let (dev_id, sent_packet) = rx.recv().await.unwrap();
         assert_eq!(dev_id, device.id());
-        assert_eq!(sent_packet.packet_type, "cconnect.internal.screenshare.requested");
-        
-        let screenshare_plugin = plugin.as_any_mut().downcast_mut::<ScreenSharePlugin>().unwrap();
+        assert_eq!(
+            sent_packet.packet_type,
+            "cconnect.internal.screenshare.requested"
+        );
+
+        let screenshare_plugin = plugin
+            .as_any_mut()
+            .downcast_mut::<ScreenSharePlugin>()
+            .unwrap();
         assert!(screenshare_plugin.is_receiving());
-        
+
         // Now set port
         screenshare_plugin.set_local_port(12345).await.unwrap();
-        
+
         // Should receive ready packet
         let (dev_id, sent_packet) = rx.recv().await.unwrap();
         assert_eq!(dev_id, device.id());

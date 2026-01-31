@@ -1825,6 +1825,73 @@ impl CConnectInterface {
         }
     }
 
+    /// Pause screen share session
+    ///
+    /// Pauses an active screen share session. The session remains active but
+    /// no new frames are captured. Viewers will see a frozen frame.
+    ///
+    /// # Arguments
+    /// * `device_id` - The device ID to pause sharing with
+    async fn pause_screen_share(&self, device_id: String) -> Result<(), zbus::fdo::Error> {
+        info!("DBus: PauseScreenShare called for {}", device_id);
+
+        let mut plugin_manager = self.plugin_manager.write().await;
+
+        if let Some(plugin) = plugin_manager.get_device_plugin_mut(&device_id, "screenshare") {
+            use cosmic_connect_protocol::plugins::screenshare::ScreenSharePlugin;
+
+            if let Some(screenshare) = plugin.as_any_mut().downcast_mut::<ScreenSharePlugin>() {
+                screenshare.pause_sharing().await.map_err(|e| {
+                    zbus::fdo::Error::Failed(format!("Failed to pause screen share: {}", e))
+                })?;
+
+                info!("Screen share paused for device {}", device_id);
+                Ok(())
+            } else {
+                Err(zbus::fdo::Error::Failed(
+                    "Plugin is not ScreenSharePlugin".to_string(),
+                ))
+            }
+        } else {
+            Err(zbus::fdo::Error::Failed(
+                "ScreenShare plugin not found".to_string(),
+            ))
+        }
+    }
+
+    /// Resume screen share session
+    ///
+    /// Resumes a paused screen share session.
+    ///
+    /// # Arguments
+    /// * `device_id` - The device ID to resume sharing with
+    async fn resume_screen_share(&self, device_id: String) -> Result<(), zbus::fdo::Error> {
+        info!("DBus: ResumeScreenShare called for {}", device_id);
+
+        let mut plugin_manager = self.plugin_manager.write().await;
+
+        if let Some(plugin) = plugin_manager.get_device_plugin_mut(&device_id, "screenshare") {
+            use cosmic_connect_protocol::plugins::screenshare::ScreenSharePlugin;
+
+            if let Some(screenshare) = plugin.as_any_mut().downcast_mut::<ScreenSharePlugin>() {
+                screenshare.resume_sharing().await.map_err(|e| {
+                    zbus::fdo::Error::Failed(format!("Failed to resume screen share: {}", e))
+                })?;
+
+                info!("Screen share resumed for device {}", device_id);
+                Ok(())
+            } else {
+                Err(zbus::fdo::Error::Failed(
+                    "Plugin is not ScreenSharePlugin".to_string(),
+                ))
+            }
+        } else {
+            Err(zbus::fdo::Error::Failed(
+                "ScreenShare plugin not found".to_string(),
+            ))
+        }
+    }
+
     /// Send input event for screen mirroring
     async fn send_mirror_input(
         &self,

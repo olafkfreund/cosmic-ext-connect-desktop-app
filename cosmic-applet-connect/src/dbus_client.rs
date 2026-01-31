@@ -519,6 +519,12 @@ trait CConnect {
     /// Stop screen share session
     async fn stop_screen_share(&self, device_id: &str) -> zbus::fdo::Result<()>;
 
+    /// Pause screen share session
+    async fn pause_screen_share(&self, device_id: &str) -> zbus::fdo::Result<()>;
+
+    /// Resume screen share session
+    async fn resume_screen_share(&self, device_id: &str) -> zbus::fdo::Result<()>;
+
     /// Send screen mirror input
     async fn send_mirror_input(
         &self,
@@ -1221,6 +1227,22 @@ impl DbusClient {
             .stop_screen_share(device_id)
             .await
             .context("Failed to call stop_screen_share")
+    }
+
+    /// Pause screen share session
+    pub async fn pause_screen_share(&self, device_id: &str) -> Result<()> {
+        self.proxy
+            .pause_screen_share(device_id)
+            .await
+            .context("Failed to call pause_screen_share")
+    }
+
+    /// Resume screen share session
+    pub async fn resume_screen_share(&self, device_id: &str) -> Result<()> {
+        self.proxy
+            .resume_screen_share(device_id)
+            .await
+            .context("Failed to call resume_screen_share")
     }
 
     /// Send screen mirror input

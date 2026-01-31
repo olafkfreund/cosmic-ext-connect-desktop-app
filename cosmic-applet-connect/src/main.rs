@@ -319,7 +319,8 @@ struct CConnectApplet {
 #[derive(Debug, Clone)]
 struct ActiveScreenShare {
     device_id: String,
-    is_sender: bool, // true if we are sharing, false if receiving
+    is_sender: bool,  // true if we are sharing, false if receiving
+    is_paused: bool,  // true if the share is paused
 }
 
 #[derive(Debug, Clone)]
@@ -494,6 +495,8 @@ enum Message {
     ScreenShareStarted(String, bool), // device_id, is_sender
     ScreenShareStopped(String),       // device_id
     StopScreenShare(String),          // device_id - user action to stop sharing
+    PauseScreenShare(String),         // device_id - user action to pause sharing
+    ResumeScreenShare(String),        // device_id - user action to resume sharing
     // File Transfer events
     TransferProgress(
         String,
@@ -685,6 +688,40 @@ where
     Task::perform(
         async move { execute_device_operation(device_id, operation_name, operation).await },
         |_| cosmic::Action::App(Message::RefreshDevices),
+    )
+}
+
+/// Creates a task for screen share control operations (pause/resume)
+///
+/// On success, triggers a Tick. On failure, shows an error notification.
+fn screen_share_control_task<F, Fut>(
+    device_id: String,
+    action_name: &'static str,
+    operation: F,
+) -> Task<Message>
+where
+    F: FnOnce(DbusClient, String) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = anyhow::Result<()>> + Send,
+{
+    Task::perform(
+        async move {
+            let (client, _) = DbusClient::connect()
+                .await
+                .map_err(|e| anyhow::anyhow!("DBus connection failed: {}", e))?;
+            operation(client, device_id).await
+        },
+        move |result| {
+            if let Err(e) = result {
+                tracing::error!("Failed to {} screen share: {}", action_name, e);
+                cosmic::Action::App(Message::ShowNotification(
+                    format!("Failed to {} screen share", action_name),
+                    NotificationType::Error,
+                    None,
+                ))
+            } else {
+                cosmic::Action::App(Message::Tick(std::time::Instant::now()))
+            }
+        },
     )
 }
 
@@ -1755,6 +1792,7 @@ impl cosmic::Application for CConnectApplet {
                 self.active_screen_share = Some(ActiveScreenShare {
                     device_id,
                     is_sender,
+                    is_paused: false,
                 });
                 Task::none()
             }
@@ -1766,22 +1804,24 @@ impl cosmic::Application for CConnectApplet {
                 }
                 Task::none()
             }
+            Message::PauseScreenShare(device_id) => {
+                tracing::info!("User requested pause screen share with {}", device_id);
+                self.update_screen_share_pause_state(&device_id, true);
+                return screen_share_control_task(device_id, "pause", |client, id| async move {
+                    client.pause_screen_share(&id).await
+                });
+            }
+            Message::ResumeScreenShare(device_id) => {
+                tracing::info!("User requested resume screen share with {}", device_id);
+                self.update_screen_share_pause_state(&device_id, false);
+                return screen_share_control_task(device_id, "resume", |client, id| async move {
+                    client.resume_screen_share(&id).await
+                });
+            }
             Message::StopScreenShare(device_id) => {
                 tracing::info!("User requested stop screen share with {}", device_id);
-                let future = async move {
-                    match DbusClient::connect().await {
-                        Ok((client, _)) => {
-                            if let Err(e) = client.stop_screen_share(&device_id).await {
-                                tracing::error!("Failed to stop screen share: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to connect to daemon: {}", e);
-                        }
-                    }
-                };
-                return Task::perform(future, |_| {
-                    cosmic::Action::App(Message::Tick(std::time::Instant::now()))
+                return screen_share_control_task(device_id, "stop", |client, id| async move {
+                    client.stop_screen_share(&id).await
                 });
             }
             // File Transfer events
@@ -2198,6 +2238,15 @@ impl cosmic::Application for CConnectApplet {
 }
 
 impl CConnectApplet {
+    /// Updates the pause state for the active screen share session
+    fn update_screen_share_pause_state(&mut self, device_id: &str, paused: bool) {
+        if let Some(share) = &mut self.active_screen_share {
+            if share.device_id == device_id {
+                share.is_paused = paused;
+            }
+        }
+    }
+
     /// Formats a duration into a human-readable relative time string.
     fn format_elapsed(elapsed: std::time::Duration) -> String {
         let secs = elapsed.as_secs();
@@ -2468,25 +2517,63 @@ impl CConnectApplet {
                 .map(|d| d.device.name().to_string())
                 .unwrap_or_else(|| screen_share.device_id.clone());
 
-            let status_text = if screen_share.is_sender {
-                format!("Sharing screen to {}", device_name)
+            let (status_text, status_caption) = if screen_share.is_sender {
+                if screen_share.is_paused {
+                    (
+                        format!("Sharing paused to {}", device_name),
+                        "Screen sharing paused",
+                    )
+                } else {
+                    (
+                        format!("Sharing screen to {}", device_name),
+                        "Screen sharing active",
+                    )
+                }
             } else {
-                format!("Receiving screen from {}", device_name)
+                (
+                    format!("Receiving screen from {}", device_name),
+                    "Screen sharing active",
+                )
             };
 
             let device_id = screen_share.device_id.clone();
+            let device_id_for_pause = device_id.clone();
+            let is_paused = screen_share.is_paused;
+            let is_sender = screen_share.is_sender;
+
+            // Build control buttons
+            let mut controls = row![].spacing(SPACE_XS);
+
+            // Pause/Resume button (only for sender)
+            if is_sender {
+                let pause_resume_btn = if is_paused {
+                    button::standard("Resume")
+                        .on_press(Message::ResumeScreenShare(device_id_for_pause))
+                        .padding(SPACE_XXS)
+                } else {
+                    button::standard("Pause")
+                        .on_press(Message::PauseScreenShare(device_id_for_pause))
+                        .padding(SPACE_XXS)
+                };
+                controls = controls.push(pause_resume_btn);
+            }
+
+            // Stop button
+            controls = controls.push(
+                button::destructive("Stop")
+                    .on_press(Message::StopScreenShare(device_id))
+                    .padding(SPACE_XXS),
+            );
 
             let control_row = row![
                 icon::from_name("video-display-symbolic").size(ICON_S),
                 column![
                     text(status_text),
-                    cosmic::widget::text::caption("Screen sharing active"),
+                    cosmic::widget::text::caption(status_caption),
                 ]
                 .spacing(SPACE_XXXS),
                 horizontal_space(),
-                button::destructive("Stop")
-                    .on_press(Message::StopScreenShare(device_id))
-                    .padding(SPACE_XXS),
+                controls,
             ]
             .spacing(SPACE_S)
             .align_y(cosmic::iced::Alignment::Center);
