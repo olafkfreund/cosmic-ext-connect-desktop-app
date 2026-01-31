@@ -636,6 +636,23 @@ trait CConnect {
     ) -> zbus::fdo::Result<()>;
 }
 
+/// DBus proxy for COSMIC Connect Open interface (App Continuity)
+#[proxy(
+    interface = "com.system76.CosmicConnect.Open",
+    default_service = "com.system76.CosmicConnect",
+    default_path = "/com/system76/CosmicConnect/Open"
+)]
+trait CConnectOpen {
+    /// Open a URL on a connected Android device
+    async fn open_on_phone(&self, url: &str) -> zbus::fdo::Result<String>;
+
+    /// Open a file on a connected Android device (transfer + open)
+    async fn open_file_on_phone(&self, path: &str, device_id: &str) -> zbus::fdo::Result<String>;
+
+    /// List devices that support opening content
+    async fn list_open_capable_devices(&self) -> zbus::fdo::Result<Vec<String>>;
+}
+
 /// DBus client for communicating with the daemon
 #[derive(Clone, Debug)]
 pub struct DbusClient {
@@ -644,6 +661,8 @@ pub struct DbusClient {
     connection: Connection,
     /// Proxy to daemon interface
     proxy: CConnectProxy<'static>,
+    /// Proxy to Open interface (App Continuity)
+    open_proxy: CConnectOpenProxy<'static>,
     /// Event sender
     event_tx: mpsc::UnboundedSender<DaemonEvent>,
 }
@@ -664,6 +683,10 @@ impl DbusClient {
             .await
             .context("Failed to create proxy")?;
 
+        let open_proxy = CConnectOpenProxy::new(&connection)
+            .await
+            .context("Failed to create Open proxy")?;
+
         let (event_tx, event_rx) = mpsc::unbounded_channel();
 
         info!("Connected to daemon successfully");
@@ -672,6 +695,7 @@ impl DbusClient {
             Self {
                 connection,
                 proxy,
+                open_proxy,
                 event_tx,
             },
             event_rx,
@@ -1365,6 +1389,50 @@ impl DbusClient {
             .context("Failed to call get_run_commands")?;
 
         serde_json::from_str(&json).context("Failed to parse run commands JSON")
+    }
+
+    /// Open a URL on a connected Android device (App Continuity)
+    ///
+    /// # Arguments
+    /// * `url` - The URL to open (http, https, tel, mailto, etc.)
+    ///
+    /// # Returns
+    /// Request ID for tracking
+    pub async fn open_on_phone(&self, url: &str) -> Result<String> {
+        info!("Opening URL on phone: {}", url);
+        self.open_proxy
+            .open_on_phone(url)
+            .await
+            .context("Failed to open URL on phone")
+    }
+
+    /// List devices that support opening content
+    ///
+    /// # Returns
+    /// List of device IDs that are paired, reachable, and have share capability
+    pub async fn list_open_capable_devices(&self) -> Result<Vec<String>> {
+        debug!("Listing open-capable devices");
+        self.open_proxy
+            .list_open_capable_devices()
+            .await
+            .context("Failed to list open-capable devices")
+    }
+
+    /// Open a file on a connected Android device (transfer + open)
+    ///
+    /// # Arguments
+    /// * `path` - Absolute path to the file
+    /// * `device_id` - Target device ID (empty for default device)
+    ///
+    /// # Returns
+    /// Transfer ID for tracking
+    #[allow(dead_code)]
+    pub async fn open_file_on_phone(&self, path: &str, device_id: &str) -> Result<String> {
+        info!("Opening file on phone: {} -> {}", path, device_id);
+        self.open_proxy
+            .open_file_on_phone(path, device_id)
+            .await
+            .context("Failed to open file on phone")
     }
 }
 

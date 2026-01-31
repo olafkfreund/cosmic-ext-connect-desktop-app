@@ -365,6 +365,9 @@ struct CConnectApplet {
     last_screen_share_stats_poll: Option<std::time::Instant>, // Last time we polled screen share stats
     // Settings window state
     settings_window: Option<(window::Id, String)>, // (window_id, device_id)
+    // App Continuity (Open plugin) state
+    open_url_dialog_device: Option<String>, // device_id showing open URL dialog
+    open_url_input: String,                 // URL input field
 }
 
 /// Active screen share session information
@@ -627,6 +630,11 @@ enum Message {
     // SelectResolution(String, Resolution),               // device_id, resolution
     // CameraStatusUpdated(String, StreamingStatus, Option<String>), // device_id, status, error
     // CameraStatsUpdated(String, StreamStats),            // device_id, stats
+    // App Continuity (Open plugin)
+    ShowOpenUrlDialog(String),      // device_id
+    OpenUrlInput(String),           // url input text
+    OpenOnPhone(String, String),    // device_id, url
+    CancelOpenUrlDialog,
     // Animation
     Tick(std::time::Instant),
     // Recursive loop
@@ -966,6 +974,8 @@ impl cosmic::Application for CConnectApplet {
             onboarding_step: 0,
             last_screen_share_stats_poll: None,
             settings_window: None,
+            open_url_dialog_device: None,
+            open_url_input: String::new(),
         };
         (app, Task::none())
     }
@@ -1207,6 +1217,74 @@ impl cosmic::Application for CConnectApplet {
                         Task::none()
                     }
                 }
+            }
+            Message::ShowOpenUrlDialog(device_id) => {
+                tracing::info!("Show open URL dialog for device: {}", device_id);
+                self.open_url_dialog_device = Some(device_id);
+                // Pre-fill with clipboard if it's a URL
+                if let Some(text) = get_clipboard_text() {
+                    if text.starts_with("http://")
+                        || text.starts_with("https://")
+                        || text.starts_with("tel:")
+                        || text.starts_with("mailto:")
+                    {
+                        self.open_url_input = text;
+                    }
+                }
+                Task::none()
+            }
+            Message::OpenUrlInput(input) => {
+                self.open_url_input = input;
+                Task::none()
+            }
+            Message::OpenOnPhone(device_id, url) => {
+                tracing::info!("Opening URL on phone: {} -> {}", url, device_id);
+
+                // Clear dialog
+                self.open_url_dialog_device = None;
+                self.open_url_input.clear();
+
+                // Send URL to device
+                Task::perform(
+                    async move {
+                        let client = match get_dbus_client().await {
+                            Some(client) => client,
+                            None => {
+                                tracing::error!("Failed to get DBus client");
+                                return Err("Failed to connect to daemon".to_string());
+                            }
+                        };
+
+                        client.open_on_phone(&url).await
+                            .map_err(|e| format!("Failed to open URL: {}", e))
+                    },
+                    |result| {
+                        cosmic::Action::App(match result {
+                            Ok(request_id) => {
+                                tracing::info!("URL open request sent: {}", request_id);
+                                Message::ShowNotification(
+                                    "URL sent to device".to_string(),
+                                    NotificationType::Success,
+                                    None,
+                                )
+                            }
+                            Err(err) => {
+                                tracing::error!("Failed to open URL: {}", err);
+                                Message::ShowNotification(
+                                    err,
+                                    NotificationType::Error,
+                                    None,
+                                )
+                            }
+                        })
+                    },
+                )
+            }
+            Message::CancelOpenUrlDialog => {
+                tracing::debug!("Cancel open URL dialog");
+                self.open_url_dialog_device = None;
+                self.open_url_input.clear();
+                Task::none()
             }
             Message::RequestBatteryUpdate(device_id) => {
                 let id = device_id.clone();
@@ -3252,6 +3330,11 @@ impl CConnectApplet {
     }
 
     fn inner_view(&self) -> Element<'_, Message> {
+        // App Continuity dialog (Open on Phone)
+        if let Some(device_id) = &self.open_url_dialog_device {
+            return self.open_url_dialog_view(device_id);
+        }
+
         // Settings overrides
         if let Some(device_id) = &self.remotedesktop_settings_device {
             if let Some(settings) = self.remotedesktop_settings.get(device_id) {
@@ -4129,6 +4212,11 @@ impl CConnectApplet {
                         Message::ShareUrl(device_id.to_string()),
                         self.pending_operations
                             .contains(&(device_id.to_string(), OperationType::ShareUrl)),
+                    ))
+                    .push(action_button_with_tooltip(
+                        "smartphone-symbolic",
+                        "Open on Phone (App Continuity)",
+                        Message::ShowOpenUrlDialog(device_id.to_string()),
                     ));
             }
 
@@ -4990,6 +5078,64 @@ impl CConnectApplet {
             .into()
     }
 
+    /// Open URL dialog view for App Continuity
+    fn open_url_dialog_view(&self, device_id: &str) -> Element<'_, Message> {
+        use cosmic::iced::Alignment;
+        use cosmic::widget::{button, container, icon, text, text_input};
+
+        // Get device info
+        let device = self.devices.iter().find(|d| d.device.id() == device_id);
+        let device_name = device.map(|d| d.device.name()).unwrap_or("Unknown Device");
+
+        let content = column![
+            row![
+                text::title3("Open on Phone").width(Length::Fill),
+                cosmic::widget::tooltip(
+                    button::icon(icon::from_name("window-close-symbolic").size(ICON_S))
+                        .on_press(Message::CancelOpenUrlDialog)
+                        .padding(SPACE_XS),
+                    "Close",
+                    cosmic::widget::tooltip::Position::Bottom,
+                )
+            ]
+            .align_y(Alignment::Center),
+            divider::horizontal::default(),
+            text::caption(format!("Send a URL to open on {}", device_name)),
+            text_input("Enter URL (http://, https://, tel:, mailto:, etc.)", &self.open_url_input)
+                .on_input(Message::OpenUrlInput)
+                .on_submit({
+                    let url = self.open_url_input.clone();
+                    let id = device_id.to_string();
+                    move |_| Message::OpenOnPhone(id.clone(), url.clone())
+                }),
+            row![
+                button::text("Cancel")
+                    .on_press(Message::CancelOpenUrlDialog)
+                    .width(Length::Fill),
+                if !self.open_url_input.is_empty() {
+                    button::text("Open on Phone")
+                        .on_press({
+                            let url = self.open_url_input.clone();
+                            Message::OpenOnPhone(device_id.to_string(), url)
+                        })
+                        .class(cosmic::theme::Button::Suggested)
+                        .width(Length::Fill)
+                } else {
+                    button::text("Open on Phone")
+                        .class(cosmic::theme::Button::Suggested)
+                        .width(Length::Fill)
+                },
+            ]
+            .spacing(SPACE_S),
+        ]
+        .spacing(SPACE_M);
+
+        container(content)
+            .class(cosmic::theme::Container::Card)
+            .padding(SPACE_M)
+            .into()
+    }
+
     /// RemoteDesktop settings view with quality, FPS, and resolution controls
     fn remotedesktop_settings_view(
         &self,
@@ -5443,6 +5589,10 @@ impl CConnectApplet {
                 return Task::none();
             } else if self.notification.is_some() {
                 self.notification = None;
+                return Task::none();
+            } else if self.open_url_dialog_device.is_some() {
+                self.open_url_dialog_device = None;
+                self.open_url_input.clear();
                 return Task::none();
             } else if self.add_run_command_device.is_some() {
                 self.add_run_command_device = None;
