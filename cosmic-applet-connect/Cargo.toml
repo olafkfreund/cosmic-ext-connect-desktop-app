@@ -20,6 +20,8 @@ zbus = { workspace = true }
 futures = { workspace = true }
 ashpd = { workspace = true }
 arboard = "3.4"
+dirs = "5.0"
+toml = "0.8"
 
 [lib]
 name = "cosmic_applet_connect"

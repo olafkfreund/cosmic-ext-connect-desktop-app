@@ -1,4 +1,5 @@
 mod dbus_client;
+mod onboarding_config;
 
 use std::collections::HashMap;
 
@@ -352,6 +353,9 @@ struct CConnectApplet {
     // camera_streaming: HashMap<String, CameraStreamingState>, // device_id -> streaming state
     // camera_stats: HashMap<String, StreamStats>, // device_id -> stream statistics
     // v4l2loopback_available: bool,           // Whether v4l2loopback kernel module is loaded
+    // Onboarding state
+    show_onboarding: bool,
+    onboarding_step: u8,
     last_screen_share_stats_poll: Option<std::time::Instant>, // Last time we polled screen share stats
 }
 
@@ -850,6 +854,15 @@ impl cosmic::Application for CConnectApplet {
     const APP_ID: &'static str = "com.system76.CosmicAppletConnect";
 
     fn init(core: Core, _flags: Self::Flags) -> (Self, Task<Message>) {
+        // Check if onboarding has been completed
+        let show_onboarding = match onboarding_config::AppletConfig::load() {
+            Ok(config) => !config.onboarding_complete,
+            Err(e) => {
+                tracing::warn!("Failed to load applet config: {}, showing onboarding", e);
+                true
+            }
+        };
+
         let app = Self {
             core,
             popup: None,
@@ -903,6 +916,8 @@ impl cosmic::Application for CConnectApplet {
             // camera_streaming: HashMap::new(),
             // camera_stats: HashMap::new(),
             // v4l2loopback_available: check_v4l2loopback(),
+            show_onboarding,
+            onboarding_step: 0,
             last_screen_share_stats_poll: None,
         };
         (app, Task::none())

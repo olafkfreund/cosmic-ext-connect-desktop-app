@@ -277,6 +277,41 @@ impl CConnectInterface {
     }
 }
 
+/// Attempt to manually connect to a device at the specified address
+async fn attempt_manual_connection(
+    connection_manager: &Arc<RwLock<ConnectionManager>>,
+    device_manager: &Arc<RwLock<cosmic_connect_protocol::DeviceManager>>,
+    addr: std::net::SocketAddr,
+    temp_id: &str,
+) -> Result<String> {
+    // Try to connect - this will trigger identity exchange
+    let conn_mgr = connection_manager.read().await;
+    conn_mgr.connect(temp_id, addr).await?;
+    drop(conn_mgr);
+
+    // Wait a bit for identity exchange to complete
+    // In a real implementation, we'd listen for ConnectionEvent::Connected
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // Check if we got a real device ID from the identity exchange
+    let dev_mgr = device_manager.read().await;
+
+    // Look for a device with this transport address
+    for device in dev_mgr.devices() {
+        if let (Some(host), Some(port)) = (&device.host, device.port) {
+            // Parse the host to an IP address and compare with the target socket address
+            if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+                let device_addr = std::net::SocketAddr::new(ip, port);
+                if device_addr == addr {
+                    return Ok(device.id().to_string());
+                }
+            }
+        }
+    }
+
+    Err(anyhow::anyhow!("Device did not respond with identity"))
+}
+
 #[interface(name = "com.system76.CosmicConnect")]
 impl CConnectInterface {
     /// List all known devices
@@ -492,6 +527,75 @@ impl CConnectInterface {
 
         // Discovery is continuous in the daemon, so this is a no-op
         // In a real implementation, you might trigger a broadcast here
+        Ok(())
+    }
+
+    /// Connect to a device at a specific address
+    ///
+    /// # Arguments
+    /// * `address` - The IP:port or hostname:port to connect to (defaults to port 1716 if not specified)
+    ///
+    /// # Returns
+    /// * Success if connection attempt initiated
+    async fn connect_to_address(&self, address: String) -> Result<(), zbus::fdo::Error> {
+        info!("DBus: ConnectToAddress called with address: {}", address);
+
+        // Parse the address, default to port 1716 if not specified
+        use std::net::{SocketAddr, ToSocketAddrs};
+
+        let socket_addr: SocketAddr = if address.contains(':') {
+            // Address includes port
+            address
+                .to_socket_addrs()
+                .map_err(|e| {
+                    zbus::fdo::Error::Failed(format!("Invalid address format: {}", e))
+                })?
+                .next()
+                .ok_or_else(|| {
+                    zbus::fdo::Error::Failed("Could not resolve address".to_string())
+                })?
+        } else {
+            // Address is just hostname/IP, add default port 1716
+            format!("{}:1716", address)
+                .to_socket_addrs()
+                .map_err(|e| {
+                    zbus::fdo::Error::Failed(format!("Invalid address format: {}", e))
+                })?
+                .next()
+                .ok_or_else(|| {
+                    zbus::fdo::Error::Failed("Could not resolve address".to_string())
+                })?
+        };
+
+        info!("Attempting manual connection to {}", socket_addr);
+
+        // Spawn a task to attempt connection
+        // We'll connect and wait for the remote device to send its identity
+        let connection_manager = self.connection_manager.clone();
+        let device_manager = self.device_manager.clone();
+
+        tokio::spawn(async move {
+            // Create a temporary device ID for the connection attempt
+            // The real device ID will be obtained from the identity packet
+            let temp_id = format!("manual_{}", socket_addr);
+
+            match attempt_manual_connection(
+                &connection_manager,
+                &device_manager,
+                socket_addr,
+                &temp_id,
+            )
+            .await
+            {
+                Ok(device_id) => {
+                    info!("Successfully connected to device: {}", device_id);
+                }
+                Err(e) => {
+                    warn!("Failed to connect to {}: {}", socket_addr, e);
+                }
+            }
+        });
+
         Ok(())
     }
 

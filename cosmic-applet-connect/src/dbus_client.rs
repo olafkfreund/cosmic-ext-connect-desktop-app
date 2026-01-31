@@ -358,6 +358,9 @@ trait CConnect {
     /// Trigger device discovery
     async fn refresh_discovery(&self) -> zbus::fdo::Result<()>;
 
+    /// Connect to a device at a specific address
+    async fn connect_to_address(&self, address: &str) -> zbus::fdo::Result<()>;
+
     /// Get device connection state
     async fn get_device_state(&self, device_id: &str) -> zbus::fdo::Result<String>;
 
@@ -889,6 +892,15 @@ impl DbusClient {
             .refresh_discovery()
             .await
             .context("Failed to refresh discovery")
+    }
+
+    /// Connect to a device at a specific address
+    pub async fn connect_to_address(&self, address: &str) -> Result<()> {
+        debug!("Connecting to address: {}", address);
+        self.proxy
+            .connect_to_address(address)
+            .await
+            .context("Failed to connect to address")
     }
 
     /// Get device connection state
