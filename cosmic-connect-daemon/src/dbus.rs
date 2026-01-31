@@ -2959,14 +2959,24 @@ impl DbusServer {
             Handle::current(),
         );
 
-        // Serve the interface BEFORE requesting the name
+        // Serve the main interface BEFORE requesting the name
         connection
             .object_server()
             .at(OBJECT_PATH, interface)
             .await
             .context("Failed to serve interface")?;
 
-        // Now request the DBus name after interface is registered
+        // Register the Open interface on a separate path
+        let open_interface = OpenInterface::new(device_manager.clone());
+        connection
+            .object_server()
+            .at("/com/system76/CosmicConnect/Open", open_interface)
+            .await
+            .context("Failed to serve Open interface")?;
+
+        info!("Registered Open interface at /com/system76/CosmicConnect/Open");
+
+        // Now request the DBus name after all interfaces are registered
         connection
             .request_name(SERVICE_NAME)
             .await
@@ -3254,5 +3264,265 @@ impl DbusServer {
             device_id, annotation_type
         );
         Ok(())
+    }
+}
+
+//
+// ============================================================================
+// Open on Phone Interface
+// ============================================================================
+//
+
+/// Allowed URL schemes for security
+const ALLOWED_URL_SCHEMES: &[&str] = &[
+    "http", "https", "ftp", "ftps", "mailto", "tel", "sms", "geo", "file",
+];
+
+/// DBus interface for opening content on Android devices
+///
+/// Provides methods for sending URLs and files to connected devices
+/// to be opened with appropriate handlers.
+///
+/// ## DBus Interface
+///
+/// **Service**: `com.system76.CosmicConnect`
+/// **Object Path**: `/com/system76/CosmicConnect/Open`
+/// **Interface**: `com.system76.CosmicConnect.Open`
+pub struct OpenInterface {
+    /// Device manager for accessing connected devices
+    device_manager: Arc<RwLock<DeviceManager>>,
+}
+
+impl OpenInterface {
+    /// Create a new OpenInterface
+    pub fn new(device_manager: Arc<RwLock<DeviceManager>>) -> Self {
+        Self { device_manager }
+    }
+
+    /// Validate URL scheme against allowed list
+    fn is_scheme_allowed(url: &str) -> bool {
+        let scheme = url.split("://").next().unwrap_or("").to_lowercase();
+        ALLOWED_URL_SCHEMES.contains(&scheme.as_str())
+    }
+
+    /// Get a device by ID or return the default device
+    async fn get_target_device(
+        &self,
+        device_id: Option<&str>,
+    ) -> Result<Device, zbus::fdo::Error> {
+        let manager = self.device_manager.read().await;
+
+        let device = match device_id {
+            Some(id) if !id.is_empty() => manager.get_device(id).ok_or_else(|| {
+                zbus::fdo::Error::Failed(format!("Device not found: {}", id))
+            })?,
+            _ => {
+                // Get first paired and reachable device with share capability
+                manager
+                    .devices()
+                    .iter()
+                    .find(|d| {
+                        d.is_paired()
+                            && d.is_reachable()
+                            && d.info
+                                .outgoing_capabilities
+                                .contains(&"cconnect.share.request".to_string())
+                    })
+                    .ok_or_else(|| {
+                        zbus::fdo::Error::Failed("No suitable device found".to_string())
+                    })?
+                    .clone()
+            }
+        };
+
+        // Verify device is connected
+        if !device.is_connected() {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Device {} is not connected",
+                device.name()
+            )));
+        }
+
+        Ok(device)
+    }
+
+    /// Create an "open URL" packet using the share plugin format
+    fn create_open_url_packet(url: String) -> cosmic_connect_protocol::Packet {
+        cosmic_connect_protocol::Packet::new(
+            "cconnect.share.request",
+            serde_json::json!({
+                "url": url
+            }),
+        )
+    }
+}
+
+#[interface(name = "com.system76.CosmicConnect.Open")]
+impl OpenInterface {
+    /// Open a URL on a connected Android device
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - The URL to open (must have an allowed scheme)
+    ///
+    /// # Returns
+    ///
+    /// Returns the packet ID as a request identifier for tracking
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - URL scheme is not allowed
+    /// - No suitable device is available
+    /// - Device is not connected
+    /// - Packet sending fails
+    async fn open_on_phone(&self, url: String) -> zbus::fdo::Result<String> {
+        info!("Open on phone request for URL: {}", url);
+
+        // Validate URL scheme
+        if !Self::is_scheme_allowed(&url) {
+            error!("URL scheme not allowed: {}", url);
+            return Err(zbus::fdo::Error::Failed(
+                "URL scheme not allowed. Allowed schemes: http, https, ftp, ftps, mailto, tel, sms, geo, file".to_string()
+            ));
+        }
+
+        // Get target device (default)
+        let device = self.get_target_device(None).await?;
+        debug!("Opening URL on device: {}", device.name());
+
+        // Create and send packet
+        let packet = Self::create_open_url_packet(url.clone());
+        let request_id = packet.id.to_string();
+
+        device.send_packet(packet).await.map_err(|e| {
+            error!("Failed to send open URL packet: {}", e);
+            zbus::fdo::Error::Failed(format!("Failed to send packet: {}", e))
+        })?;
+
+        info!(
+            "Sent open URL request {} to {}",
+            request_id,
+            device.name()
+        );
+        Ok(request_id)
+    }
+
+    /// Open a file on a connected Android device (transfer + open)
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Absolute path to the file to transfer and open
+    /// * `device_id` - Target device ID (empty string for default device)
+    ///
+    /// # Returns
+    ///
+    /// Returns the transfer ID as a request identifier for tracking
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - File does not exist or cannot be read
+    /// - Device is not found or not connected
+    /// - File transfer fails to initiate
+    #[allow(unused_variables)]
+    async fn open_file_on_phone(
+        &self,
+        path: String,
+        device_id: String,
+    ) -> zbus::fdo::Result<String> {
+        info!("Open file on phone request: {} -> {}", path, device_id);
+
+        // Validate file exists
+        let file_path = std::path::Path::new(&path);
+        if !file_path.exists() {
+            error!("File not found: {}", path);
+            return Err(zbus::fdo::Error::Failed(format!(
+                "File not found: {}",
+                path
+            )));
+        }
+
+        // Get target device
+        let device_id_opt = if device_id.is_empty() {
+            None
+        } else {
+            Some(device_id.as_str())
+        };
+        let device = self.get_target_device(device_id_opt).await?;
+        debug!("Opening file on device: {}", device.name());
+
+        // TODO: Implement file transfer + open
+        // This requires integration with the Share plugin and payload transfer
+        // For now, return a placeholder error
+        warn!("File transfer not yet implemented");
+        Err(zbus::fdo::Error::Failed(
+            "File transfer + open not yet implemented. Use share plugin directly for now."
+                .to_string(),
+        ))
+    }
+
+    /// List devices that support opening content
+    ///
+    /// # Returns
+    ///
+    /// Returns a list of device IDs that have the share capability
+    /// and are currently paired and reachable
+    async fn list_open_capable_devices(&self) -> zbus::fdo::Result<Vec<String>> {
+        debug!("Listing open-capable devices");
+
+        let manager = self.device_manager.read().await;
+        let devices: Vec<String> = manager
+            .devices()
+            .iter()
+            .filter(|d| {
+                d.is_paired()
+                    && d.is_reachable()
+                    && d.info
+                        .outgoing_capabilities
+                        .contains(&"cconnect.share.request".to_string())
+            })
+            .map(|d| d.id().to_string())
+            .collect();
+
+        info!("Found {} open-capable devices", devices.len());
+        Ok(devices)
+    }
+}
+
+#[cfg(test)]
+mod open_interface_tests {
+    use super::*;
+
+    #[test]
+    fn test_allowed_schemes() {
+        assert!(OpenInterface::is_scheme_allowed("https://example.com"));
+        assert!(OpenInterface::is_scheme_allowed("http://example.com"));
+        assert!(OpenInterface::is_scheme_allowed(
+            "mailto:test@example.com"
+        ));
+        assert!(OpenInterface::is_scheme_allowed("tel:+1234567890"));
+        assert!(OpenInterface::is_scheme_allowed("sms:+1234567890"));
+        assert!(OpenInterface::is_scheme_allowed(
+            "ftp://files.example.com"
+        ));
+        assert!(OpenInterface::is_scheme_allowed("file:///path/to/file"));
+    }
+
+    #[test]
+    fn test_disallowed_schemes() {
+        assert!(!OpenInterface::is_scheme_allowed("javascript:alert(1)"));
+        assert!(!OpenInterface::is_scheme_allowed(
+            "data:text/html,<script>alert(1)</script>"
+        ));
+        assert!(!OpenInterface::is_scheme_allowed("vbscript:msgbox"));
+        assert!(!OpenInterface::is_scheme_allowed("about:blank"));
+    }
+
+    #[test]
+    fn test_create_open_url_packet() {
+        let packet = OpenInterface::create_open_url_packet("https://example.com".to_string());
+        assert_eq!(packet.packet_type, "cconnect.share.request");
+        assert_eq!(packet.body["url"], "https://example.com");
     }
 }
