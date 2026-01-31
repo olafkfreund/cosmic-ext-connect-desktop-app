@@ -20,6 +20,11 @@ use cosmic_connect_protocol::{
     ConnectionState, Device, DeviceInfo as ProtocolDeviceInfo, DeviceType, PairingStatus,
 };
 
+// TODO: Uncomment when camera module is implemented
+// use cosmic_connect_core::plugins::camera::{
+//     CameraCapability, CameraFacing, CameraInfo, CameraStart, Resolution, StreamStats, StreamingStatus,
+// };
+
 use cosmic::iced::widget::progress_bar;
 use dbus_client::DbusClient;
 
@@ -75,6 +80,27 @@ fn theme_muted_color() -> Color {
 /// Get theme accent color (blue)
 fn theme_accent_color() -> Color {
     theme_color_to_iced(cosmic::theme::active().cosmic().accent.base)
+}
+
+/// Check if v4l2loopback kernel module is loaded and device exists
+fn check_v4l2loopback() -> bool {
+    // Check if module is loaded
+    if let Ok(modules) = std::fs::read_to_string("/proc/modules") {
+        if !modules.contains("v4l2loopback") {
+            tracing::warn!("v4l2loopback kernel module not loaded");
+            return false;
+        }
+    } else {
+        tracing::warn!("Could not read /proc/modules");
+        return false;
+    }
+
+    // Check if device exists (default is /dev/video10)
+    let device_exists = std::path::Path::new("/dev/video10").exists();
+    if !device_exists {
+        tracing::warn!("/dev/video10 does not exist");
+    }
+    device_exists
 }
 
 fn main() -> cosmic::iced::Result {
@@ -195,6 +221,13 @@ const PLUGINS: &[PluginMetadata] = &[
         icon: "folder-remote-symbolic",
         capability: "kdeconnect.sftp",
     },
+    PluginMetadata {
+        id: "camera",
+        name: "Camera/Webcam",
+        description: "Use phone camera as webcam",
+        icon: "camera-web-symbolic",
+        capability: "cconnect.camera",
+    },
 ];
 
 #[derive(Debug, Clone)]
@@ -313,15 +346,37 @@ struct CConnectApplet {
     context_menu_mpris: bool,            // whether MPRIS context menu is open
     // Screen share state
     active_screen_share: Option<ActiveScreenShare>, // Currently active screen share session
+    // Camera state (TODO: uncomment when camera module is implemented)
+    // camera_settings_device: Option<String>, // device_id showing Camera settings
+    // camera_capabilities: HashMap<String, CameraCapability>, // device_id -> capabilities
+    // camera_streaming: HashMap<String, CameraStreamingState>, // device_id -> streaming state
+    // camera_stats: HashMap<String, StreamStats>, // device_id -> stream statistics
+    // v4l2loopback_available: bool,           // Whether v4l2loopback kernel module is loaded
+    last_screen_share_stats_poll: Option<std::time::Instant>, // Last time we polled screen share stats
 }
 
 /// Active screen share session information
 #[derive(Debug, Clone)]
 struct ActiveScreenShare {
     device_id: String,
-    is_sender: bool,  // true if we are sharing, false if receiving
-    is_paused: bool,  // true if the share is paused
+    is_sender: bool,     // true if we are sharing, false if receiving
+    is_paused: bool,     // true if the share is paused
+    quality: String,     // quality preset: "low", "medium", "high"
+    fps: u8,             // target framerate: 15, 30, or 60
+    include_audio: bool, // whether system audio is included in the share
+    viewer_count: u32,   // number of active viewers (only for sender)
 }
+
+// TODO: uncomment when camera module is implemented
+// /// Camera streaming state for a device
+// #[derive(Debug, Clone)]
+// struct CameraStreamingState {
+//     is_streaming: bool,
+//     selected_camera_id: u32,
+//     selected_resolution: Resolution,
+//     status: StreamingStatus,
+//     error: Option<String>,
+// }
 
 #[derive(Debug, Clone)]
 struct AppNotification {
@@ -492,11 +547,15 @@ enum Message {
     ShowMprisTrackInfo, // Show notification with track info
     RaiseMprisPlayer,   // Bring player window to front
     // Screen share control
-    ScreenShareStarted(String, bool), // device_id, is_sender
-    ScreenShareStopped(String),       // device_id
-    StopScreenShare(String),          // device_id - user action to stop sharing
-    PauseScreenShare(String),         // device_id - user action to pause sharing
-    ResumeScreenShare(String),        // device_id - user action to resume sharing
+    ScreenShareStarted(String, bool),     // device_id, is_sender
+    ScreenShareStopped(String),           // device_id
+    StopScreenShare(String),              // device_id - user action to stop sharing
+    ScreenShareStatsUpdated { device_id: String, viewer_count: u32 },
+    PauseScreenShare(String),             // device_id - user action to pause sharing
+    ResumeScreenShare(String),            // device_id - user action to resume sharing
+    SetScreenShareQuality(String),        // quality preset: "low", "medium", "high"
+    SetScreenShareFps(u8),                // fps: 15, 30, or 60
+    ToggleScreenShareAudio(String, bool), // device_id, include_audio - toggle audio in screen share
     // File Transfer events
     TransferProgress(
         String,
@@ -519,6 +578,16 @@ enum Message {
     CancelAddSyncFolder,
     ShowFileSyncSettings(String), // device_id
     CloseFileSyncSettings,
+    // Camera (TODO: uncomment when camera module is implemented)
+    // ShowCameraSettings(String), // device_id
+    // CloseCameraSettings,
+    // CameraCapabilityReceived(String, CameraCapability), // device_id, capability
+    // StartCameraStreaming(String),                       // device_id
+    // StopCameraStreaming(String),                        // device_id
+    // SelectCamera(String, u32),                          // device_id, camera_id
+    // SelectResolution(String, Resolution),               // device_id, resolution
+    // CameraStatusUpdated(String, StreamingStatus, Option<String>), // device_id, status, error
+    // CameraStatsUpdated(String, StreamStats),            // device_id, stats
     // Animation
     Tick(std::time::Instant),
     // Recursive loop
@@ -828,6 +897,13 @@ impl cosmic::Application for CConnectApplet {
             context_menu_transfer: None,
             context_menu_mpris: false,
             active_screen_share: None,
+            // Camera (TODO: uncomment when camera module is implemented)
+            // camera_settings_device: None,
+            // camera_capabilities: HashMap::new(),
+            // camera_streaming: HashMap::new(),
+            // camera_stats: HashMap::new(),
+            // v4l2loopback_available: check_v4l2loopback(),
+            last_screen_share_stats_poll: None,
         };
         (app, Task::none())
     }
@@ -1793,6 +1869,10 @@ impl cosmic::Application for CConnectApplet {
                     device_id,
                     is_sender,
                     is_paused: false,
+                    quality: "medium".to_string(),
+                    fps: 30,
+                    include_audio: false,
+                    viewer_count: 0,
                 });
                 Task::none()
             }
@@ -1801,6 +1881,18 @@ impl cosmic::Application for CConnectApplet {
                 if matches!(&self.active_screen_share, Some(share) if share.device_id == device_id)
                 {
                     self.active_screen_share = None;
+                    self.last_screen_share_stats_poll = None;
+                }
+                Task::none()
+            }
+            Message::ScreenShareStatsUpdated {
+                device_id,
+                viewer_count,
+            } => {
+                if let Some(ref mut share) = self.active_screen_share {
+                    if share.device_id == device_id && share.is_sender {
+                        share.viewer_count = viewer_count;
+                    }
                 }
                 Task::none()
             }
@@ -1823,6 +1915,50 @@ impl cosmic::Application for CConnectApplet {
                 return screen_share_control_task(device_id, "stop", |client, id| async move {
                     client.stop_screen_share(&id).await
                 });
+            }
+            Message::SetScreenShareQuality(quality) => {
+                if let Some(share) = &mut self.active_screen_share {
+                    if share.is_sender {
+                        tracing::info!("Updating screen share quality to: {}", quality);
+                        share.quality = quality;
+                        // Note: Quality changes require stopping and restarting the share
+                        self.notification = Some(AppNotification {
+                            message: "Quality setting updated. Stop and restart sharing to apply changes.".to_string(),
+                            kind: NotificationType::Info,
+                            action: None,
+                        });
+                    }
+                }
+                Task::none()
+            }
+            Message::SetScreenShareFps(fps) => {
+                if let Some(share) = &mut self.active_screen_share {
+                    if share.is_sender {
+                        tracing::info!("Updating screen share FPS to: {}", fps);
+                        share.fps = fps;
+                        // Note: FPS changes require stopping and restarting the share
+                        self.notification = Some(AppNotification {
+                            message: "FPS setting updated. Stop and restart sharing to apply changes.".to_string(),
+                            kind: NotificationType::Info,
+                            action: None,
+                        });
+                    }
+                }
+                Task::none()
+            }
+            Message::ToggleScreenShareAudio(_device_id, include_audio) => {
+                if let Some(share) = &mut self.active_screen_share {
+                    if share.is_sender {
+                        tracing::info!("Toggling screen share audio to: {}", include_audio);
+                        share.include_audio = include_audio;
+                        // TODO: Implement backend support for toggling audio mid-stream
+                        // This currently updates UI state only. Full implementation requires:
+                        // - DBus method to update stream configuration
+                        // - GStreamer pipeline modification to add/remove audio elements
+                        // - PipeWire audio node handling via XDG Desktop Portal
+                    }
+                }
+                Task::none()
             }
             // File Transfer events
             Message::TransferProgress(tid, device_id, filename, cur, tot, dir) => {
@@ -2517,32 +2653,50 @@ impl CConnectApplet {
                 .map(|d| d.device.name().to_string())
                 .unwrap_or_else(|| screen_share.device_id.clone());
 
+            let viewer_count = screen_share.viewer_count;
             let (status_text, status_caption) = if screen_share.is_sender {
                 if screen_share.is_paused {
                     (
                         format!("Sharing paused to {}", device_name),
-                        "Screen sharing paused",
+                        "Screen sharing paused".to_string(),
                     )
                 } else {
+                    let viewer_text = if viewer_count == 1 {
+                        "1 viewer".to_string()
+                    } else {
+                        format!("{} viewers", viewer_count)
+                    };
                     (
                         format!("Sharing screen to {}", device_name),
-                        "Screen sharing active",
+                        viewer_text,
                     )
                 }
             } else {
                 (
                     format!("Receiving screen from {}", device_name),
-                    "Screen sharing active",
+                    "Screen sharing active".to_string(),
                 )
             };
 
             let device_id = screen_share.device_id.clone();
             let device_id_for_pause = device_id.clone();
+            let device_id_for_audio = device_id.clone();
             let is_paused = screen_share.is_paused;
             let is_sender = screen_share.is_sender;
+            let include_audio = screen_share.include_audio;
 
             // Build control buttons
             let mut controls = row![].spacing(SPACE_XS);
+
+            // Audio toggle (only for sender)
+            if is_sender {
+                let audio_toggle = cosmic::widget::toggler(include_audio)
+                    .label("Include Audio")
+                    .on_toggle(move |enabled| {
+                        Message::ToggleScreenShareAudio(device_id_for_audio.clone(), enabled)
+                    });
+                controls = controls.push(audio_toggle);
+            }
 
             // Pause/Resume button (only for sender)
             if is_sender {
@@ -2578,15 +2732,93 @@ impl CConnectApplet {
             .spacing(SPACE_S)
             .align_y(cosmic::iced::Alignment::Center);
 
-            content = column![
-                container(control_row)
-                    .width(Length::Fill)
-                    .padding(SPACE_S)
-                    .class(cosmic::theme::Container::Primary),
-                content,
-            ]
-            .spacing(SPACE_S)
-            .into();
+            // Quality settings panel (only for sender)
+            let mut overlay_content = vec![container(control_row)
+                .width(Length::Fill)
+                .padding(SPACE_S)
+                .class(cosmic::theme::Container::Primary)
+                .into()];
+
+            if is_sender {
+                let current_quality = &screen_share.quality;
+                let current_fps = screen_share.fps;
+
+                // Quality preset buttons
+                let quality_buttons = row![
+                    text("Quality:").width(Length::Fixed(60.0)),
+                    button::text("Low")
+                        .on_press(Message::SetScreenShareQuality("low".to_string()))
+                        .padding(SPACE_XXS)
+                        .class(if current_quality == "low" {
+                            cosmic::theme::Button::Suggested
+                        } else {
+                            cosmic::theme::Button::Standard
+                        }),
+                    button::text("Medium")
+                        .on_press(Message::SetScreenShareQuality("medium".to_string()))
+                        .padding(SPACE_XXS)
+                        .class(if current_quality == "medium" {
+                            cosmic::theme::Button::Suggested
+                        } else {
+                            cosmic::theme::Button::Standard
+                        }),
+                    button::text("High")
+                        .on_press(Message::SetScreenShareQuality("high".to_string()))
+                        .padding(SPACE_XXS)
+                        .class(if current_quality == "high" {
+                            cosmic::theme::Button::Suggested
+                        } else {
+                            cosmic::theme::Button::Standard
+                        }),
+                ]
+                .spacing(SPACE_XS)
+                .align_y(cosmic::iced::Alignment::Center);
+
+                // FPS buttons
+                let fps_buttons = row![
+                    text("FPS:").width(Length::Fixed(60.0)),
+                    button::text("15")
+                        .on_press(Message::SetScreenShareFps(15))
+                        .padding(SPACE_XXS)
+                        .class(if current_fps == 15 {
+                            cosmic::theme::Button::Suggested
+                        } else {
+                            cosmic::theme::Button::Standard
+                        }),
+                    button::text("30")
+                        .on_press(Message::SetScreenShareFps(30))
+                        .padding(SPACE_XXS)
+                        .class(if current_fps == 30 {
+                            cosmic::theme::Button::Suggested
+                        } else {
+                            cosmic::theme::Button::Standard
+                        }),
+                    button::text("60")
+                        .on_press(Message::SetScreenShareFps(60))
+                        .padding(SPACE_XXS)
+                        .class(if current_fps == 60 {
+                            cosmic::theme::Button::Suggested
+                        } else {
+                            cosmic::theme::Button::Standard
+                        }),
+                ]
+                .spacing(SPACE_XS)
+                .align_y(cosmic::iced::Alignment::Center);
+
+                let settings_panel = column![quality_buttons, fps_buttons,].spacing(SPACE_S);
+
+                overlay_content.push(
+                    container(settings_panel)
+                        .width(Length::Fill)
+                        .padding(SPACE_S)
+                        .class(cosmic::theme::Container::Secondary)
+                        .into(),
+                );
+            }
+
+            overlay_content.push(content);
+
+            content = column(overlay_content).spacing(SPACE_S).into();
         }
 
         if let Some(notification) = &self.notification {
@@ -4993,6 +5225,42 @@ impl CConnectApplet {
                 self.notification_progress = 0.0;
             }
             needs_redux = true;
+        }
+
+        // Poll screen share stats every 2 seconds when actively sharing
+        if let Some(ref share) = self.active_screen_share {
+            if share.is_sender {
+                let should_poll = self
+                    .last_screen_share_stats_poll
+                    .map(|last| last.elapsed() >= std::time::Duration::from_secs(2))
+                    .unwrap_or(true);
+
+                if should_poll {
+                    if let Some(client) = self.dbus_client.clone() {
+                        self.last_screen_share_stats_poll = Some(std::time::Instant::now());
+                        let device_id = share.device_id.clone();
+
+                        return Task::perform(
+                            async move {
+                                match client.get_screen_share_stats(&device_id).await {
+                                    Ok(stats) => Some((device_id, stats.viewer_count)),
+                                    Err(_) => None,
+                                }
+                            },
+                            |result| {
+                                if let Some((device_id, viewer_count)) = result {
+                                    cosmic::Action::App(Message::ScreenShareStatsUpdated {
+                                        device_id,
+                                        viewer_count,
+                                    })
+                                } else {
+                                    cosmic::Action::App(Message::Tick(std::time::Instant::now()))
+                                }
+                            },
+                        );
+                    }
+                }
+            }
         }
 
         if needs_redux {

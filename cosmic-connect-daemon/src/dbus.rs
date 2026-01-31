@@ -128,6 +128,19 @@ pub struct BatteryStatus {
     pub is_charging: bool,
 }
 
+/// Screen share statistics for DBus serialization
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, zbus::zvariant::Type)]
+pub struct ScreenShareStats {
+    /// Current number of viewers
+    pub viewer_count: u32,
+    /// Session duration in seconds
+    pub duration_secs: u64,
+    /// Total frames sent
+    pub frames_sent: u64,
+    /// Average FPS
+    pub avg_fps: u64,
+}
+
 /// Daemon performance metrics for DBus serialization
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, zbus::zvariant::Type)]
 pub struct DaemonMetrics {
@@ -1140,6 +1153,51 @@ impl CConnectInterface {
         Ok(BatteryStatus {
             level: status.current_charge,
             is_charging: status.is_charging,
+        })
+    }
+
+    /// Get screen share statistics from a device
+    ///
+    /// # Arguments
+    /// * `device_id` - The device ID to query
+    ///
+    /// # Returns
+    /// Screen share statistics including viewer count and session metrics
+    async fn get_screen_share_stats(
+        &self,
+        device_id: String,
+    ) -> Result<ScreenShareStats, zbus::fdo::Error> {
+        debug!("DBus: GetScreenShareStats called for {}", device_id);
+
+        let device_manager = self.device_manager.read().await;
+        let device = device_manager
+            .get_device(&device_id)
+            .ok_or_else(|| zbus::fdo::Error::Failed(format!("Device not found: {}", device_id)))?;
+
+        if !device.is_connected() {
+            return Err(zbus::fdo::Error::Failed("Device not connected".to_string()));
+        }
+
+        drop(device_manager);
+
+        // Query screen share stats from plugin manager
+        let plugin_manager = self.plugin_manager.read().await;
+        let stats = plugin_manager
+            .get_device_screen_share_stats(&device_id)
+            .ok_or_else(|| {
+                zbus::fdo::Error::Failed("No screen share session active for device".to_string())
+            })?;
+
+        debug!(
+            "DBus: Screen share stats for {}: {} viewers, {} seconds",
+            device_id, stats.viewer_count, stats.duration_secs
+        );
+
+        Ok(ScreenShareStats {
+            viewer_count: stats.viewer_count as u32,
+            duration_secs: stats.duration_secs,
+            frames_sent: stats.frames_sent,
+            avg_fps: stats.avg_fps,
         })
     }
 

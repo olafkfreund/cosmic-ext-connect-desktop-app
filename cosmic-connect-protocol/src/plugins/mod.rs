@@ -798,6 +798,28 @@ impl PluginManager {
         battery_plugin.get_battery_status()
     }
 
+    /// Get screen share statistics for a device
+    ///
+    /// Returns viewer count and other sharing metrics when the device is sharing its screen
+    pub fn get_device_screen_share_stats(
+        &self,
+        device_id: &str,
+    ) -> Option<screenshare::ShareStats> {
+        // Get the device's plugins
+        let device_plugins = self.device_plugins.get(device_id)?;
+
+        // Get the screenshare plugin
+        let screenshare_plugin = device_plugins.get("screenshare")?;
+
+        // Downcast to ScreenSharePlugin
+        let screenshare_plugin = screenshare_plugin
+            .as_any()
+            .downcast_ref::<screenshare::ScreenSharePlugin>()?;
+
+        // Get the share stats
+        screenshare_plugin.get_stats()
+    }
+
     /// Get number of registered plugins (deprecated)
     ///
     /// Use `factory_count()` to get number of registered factories.

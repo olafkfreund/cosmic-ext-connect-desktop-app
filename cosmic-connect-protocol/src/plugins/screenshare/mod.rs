@@ -206,6 +206,10 @@ pub struct ShareConfig {
     /// Adaptive bitrate based on network
     #[serde(default = "default_true")]
     pub adaptive_bitrate: bool,
+
+    /// Include system audio in screen share
+    #[serde(default)]
+    pub include_audio: bool,
 }
 
 #[allow(dead_code)]
@@ -240,6 +244,7 @@ impl Default for ShareConfig {
             show_cursor: true,
             enable_annotations: false,
             adaptive_bitrate: true,
+            include_audio: false,
         }
     }
 }
@@ -783,6 +788,7 @@ impl ScreenSharePlugin {
                 height: 0,
                 pipewire_node_id,
                 pipewire_fd,
+                include_audio: config.include_audio,
             };
 
             // Adaptive bitrate settings

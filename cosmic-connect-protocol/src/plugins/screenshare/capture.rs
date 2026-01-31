@@ -33,6 +33,8 @@ pub struct CaptureConfig {
     pub pipewire_node_id: Option<u32>,
     /// PipeWire file descriptor (from portal session)
     pub pipewire_fd: Option<i32>,
+    /// Include audio capture
+    pub include_audio: bool,
 }
 
 impl Default for CaptureConfig {
@@ -44,6 +46,7 @@ impl Default for CaptureConfig {
             height: 0,
             pipewire_node_id: None,
             pipewire_fd: None,
+            include_audio: false,
         }
     }
 }
@@ -126,19 +129,40 @@ impl ScreenCapture {
             (self.config.pipewire_fd, self.config.pipewire_node_id)
         {
             // PipeWire source with portal fd and node
-            format!(
-                "pipewiresrc fd={} path={} do-timestamp=true keepalive-time=1000 ! \
-                 videoconvert ! videoscale ! \
-                 video/x-raw,framerate={}/1{} ! \
-                 x264enc name=encoder tune=zerolatency bitrate={} speed-preset=ultrafast key-int-max=30 ! \
-                 video/x-h264,stream-format=byte-stream ! \
-                 appsink name=sink emit-signals=true drop=true max-buffers=2",
-                fd,
-                node_id,
-                self.config.fps,
-                self.resolution_caps(),
-                self.config.bitrate_kbps
-            )
+            if self.config.include_audio {
+                // TODO: Audio capture requires additional PipeWire node for audio stream
+                // XDG Desktop Portal may provide separate audio node or mixed audio+video
+                // For now, audio capture is not implemented in the pipeline
+                warn!("Audio capture requested but not yet implemented in GStreamer pipeline");
+                format!(
+                    "pipewiresrc fd={} path={} do-timestamp=true keepalive-time=1000 ! \
+                     videoconvert ! videoscale ! \
+                     video/x-raw,framerate={}/1{} ! \
+                     x264enc name=encoder tune=zerolatency bitrate={} speed-preset=ultrafast key-int-max=30 ! \
+                     video/x-h264,stream-format=byte-stream ! \
+                     appsink name=sink emit-signals=true drop=true max-buffers=2",
+                    fd,
+                    node_id,
+                    self.config.fps,
+                    self.resolution_caps(),
+                    self.config.bitrate_kbps
+                )
+            } else {
+                // Video-only pipeline
+                format!(
+                    "pipewiresrc fd={} path={} do-timestamp=true keepalive-time=1000 ! \
+                     videoconvert ! videoscale ! \
+                     video/x-raw,framerate={}/1{} ! \
+                     x264enc name=encoder tune=zerolatency bitrate={} speed-preset=ultrafast key-int-max=30 ! \
+                     video/x-h264,stream-format=byte-stream ! \
+                     appsink name=sink emit-signals=true drop=true max-buffers=2",
+                    fd,
+                    node_id,
+                    self.config.fps,
+                    self.resolution_caps(),
+                    self.config.bitrate_kbps
+                )
+            }
         } else {
             // Fallback: use test source for development/testing
             warn!("No PipeWire fd/node_id provided, using test video source");
@@ -230,9 +254,10 @@ impl ScreenCapture {
 
     /// Set pipeline state and update paused flag
     fn set_pipeline_state(&mut self, state: gst::State, paused: bool, action: &str) -> Result<()> {
-        let pipeline = self.pipeline.as_ref().ok_or_else(|| {
-            crate::ProtocolError::Plugin("Pipeline not initialized".to_string())
-        })?;
+        let pipeline = self
+            .pipeline
+            .as_ref()
+            .ok_or_else(|| crate::ProtocolError::Plugin("Pipeline not initialized".to_string()))?;
 
         pipeline.set_state(state).map_err(|e| {
             crate::ProtocolError::Plugin(format!("Failed to {} capture: {}", action, e))

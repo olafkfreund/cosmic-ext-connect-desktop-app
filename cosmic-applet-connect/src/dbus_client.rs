@@ -53,6 +53,19 @@ pub struct BatteryStatus {
     pub is_charging: bool,
 }
 
+/// Screen share statistics from DBus
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, zbus::zvariant::Type)]
+pub struct ScreenShareStats {
+    /// Current number of viewers
+    pub viewer_count: u32,
+    /// Session duration in seconds
+    pub duration_secs: u64,
+    /// Total frames sent
+    pub frames_sent: u64,
+    /// Average FPS
+    pub avg_fps: u64,
+}
+
 /// Device-specific configuration
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DeviceConfig {
@@ -376,6 +389,9 @@ trait CConnect {
 
     /// Get battery status from a device
     async fn get_battery_status(&self, device_id: &str) -> zbus::fdo::Result<BatteryStatus>;
+
+    /// Get screen share statistics from a device
+    async fn get_screen_share_stats(&self, device_id: &str) -> zbus::fdo::Result<ScreenShareStats>;
 
     /// Request battery update from a device
     async fn request_battery_update(&self, device_id: &str) -> zbus::fdo::Result<()>;
@@ -956,6 +972,15 @@ impl DbusClient {
             .get_battery_status(device_id)
             .await
             .context("Failed to get battery status")
+    }
+
+    /// Get screen share statistics from a device
+    pub async fn get_screen_share_stats(&self, device_id: &str) -> Result<ScreenShareStats> {
+        debug!("Getting screen share stats for device {}", device_id);
+        self.proxy
+            .get_screen_share_stats(device_id)
+            .await
+            .context("Failed to get screen share stats")
     }
 
     /// Request battery update from a device
