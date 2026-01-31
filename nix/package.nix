@@ -180,6 +180,21 @@ rustPlatform.buildRustPackage rec {
     NoDisplay=false
     EOF
 
+    # Install applet icon
+    mkdir -p $out/share/icons/hicolor/scalable/apps
+    cat > $out/share/icons/hicolor/scalable/apps/cosmic-applet-connect-symbolic.svg << 'ICON_EOF'
+    <?xml version="1.0" encoding="UTF-8"?>
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+      <style>
+        path { fill: currentColor; }
+      </style>
+      <!-- Phone outline -->
+      <path d="M4 1C3.45 1 3 1.45 3 2v12c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V2c0-.55-.45-1-1-1H4zm0 1h6v10H4V2zm3 10.5a.5.5 0 1 1 0 1 .5.5 0 0 1 0-1z"/>
+      <!-- Sync arrows -->
+      <path d="M13 4l2 2-2 2v-1.5h-1.5v-1H13V4zM13 8l2 2-2 2v-1.5h-1.5v-1H13V8z" opacity="0.7"/>
+    </svg>
+    ICON_EOF
+
     # Install desktop entry for applet (COSMIC panel integration)
     cat > $out/share/applications/cosmic-applet-connect.desktop << EOF
     [Desktop Entry]
@@ -187,7 +202,7 @@ rustPlatform.buildRustPackage rec {
     Name=COSMIC Connect
     Comment=Device connectivity for COSMIC Desktop
     Keywords=Cosmic;Iced;applet;connect;phone;device;sync;
-    Icon=phone-symbolic
+    Icon=cosmic-applet-connect-symbolic
     Exec=$out/bin/cosmic-applet-connect
     Categories=Cosmic;Iced;
     Terminal=false
