@@ -57,34 +57,206 @@ pub struct Args {
     pub action: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+/// Device type category for filtering actions
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceCategory {
+    /// Phone or tablet (Android)
+    Mobile,
+    /// Desktop or laptop computer
+    Desktop,
+    /// Unknown device type
+    Unknown,
+}
+
+impl DeviceCategory {
+    fn from_device_type(device_type: &str) -> Self {
+        match device_type {
+            "phone" | "tablet" => DeviceCategory::Mobile,
+            "desktop" | "laptop" => DeviceCategory::Desktop,
+            _ => DeviceCategory::Unknown,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeviceAction {
-    SendFile,
+    // Universal actions (all device types)
     Ping,
+    SendFile,
+    Clipboard,
+    RemoteInput,
+    Screenshot,
+    SystemInfo,
+    Settings,
+
+    // Mobile-only actions (phone/tablet)
     Find,
+    Sms,
+    MuteCall,
+    Camera,
+    RefreshBattery,
+    Contacts,
+
+    // Desktop-only actions (desktop/laptop)
     ScreenShare,
     Lock,
     Power,
-    Sms,
-    RefreshBattery,
-    Settings,
+    Wake,
+    RunCommand,
+    Presenter,
+
+    // Media control (primarily desktop but could work on both)
+    MediaControl,
 }
 
 impl DeviceAction {
     fn from_str(s: &str) -> Option<Self> {
         match s {
-            "send-file" => Some(DeviceAction::SendFile),
             "ping" => Some(DeviceAction::Ping),
+            "send-file" => Some(DeviceAction::SendFile),
+            "clipboard" => Some(DeviceAction::Clipboard),
+            "remote-input" => Some(DeviceAction::RemoteInput),
+            "screenshot" => Some(DeviceAction::Screenshot),
+            "system-info" => Some(DeviceAction::SystemInfo),
+            "settings" => Some(DeviceAction::Settings),
             "find" => Some(DeviceAction::Find),
+            "sms" => Some(DeviceAction::Sms),
+            "mute-call" => Some(DeviceAction::MuteCall),
+            "camera" => Some(DeviceAction::Camera),
+            "refresh-battery" => Some(DeviceAction::RefreshBattery),
+            "contacts" => Some(DeviceAction::Contacts),
             "screen-share" => Some(DeviceAction::ScreenShare),
             "lock" => Some(DeviceAction::Lock),
             "power" => Some(DeviceAction::Power),
-            "sms" => Some(DeviceAction::Sms),
-            "refresh-battery" => Some(DeviceAction::RefreshBattery),
-            "settings" => Some(DeviceAction::Settings),
+            "wake" => Some(DeviceAction::Wake),
+            "run-command" => Some(DeviceAction::RunCommand),
+            "presenter" => Some(DeviceAction::Presenter),
+            "media-control" => Some(DeviceAction::MediaControl),
             _ => None,
         }
     }
+
+    /// Check if this action is available for the given device category
+    fn is_available_for(&self, category: DeviceCategory) -> bool {
+        match self {
+            // Universal actions
+            DeviceAction::Ping
+            | DeviceAction::SendFile
+            | DeviceAction::Clipboard
+            | DeviceAction::RemoteInput
+            | DeviceAction::Screenshot
+            | DeviceAction::SystemInfo
+            | DeviceAction::Settings => true,
+
+            // Mobile-only actions
+            DeviceAction::Find
+            | DeviceAction::Sms
+            | DeviceAction::MuteCall
+            | DeviceAction::Camera
+            | DeviceAction::RefreshBattery
+            | DeviceAction::Contacts => matches!(category, DeviceCategory::Mobile | DeviceCategory::Unknown),
+
+            // Desktop-only actions
+            DeviceAction::ScreenShare
+            | DeviceAction::Lock
+            | DeviceAction::Power
+            | DeviceAction::Wake
+            | DeviceAction::RunCommand
+            | DeviceAction::Presenter => matches!(category, DeviceCategory::Desktop | DeviceCategory::Unknown),
+
+            // Media control works on both but primarily desktop
+            DeviceAction::MediaControl => true,
+        }
+    }
+
+    /// Get the icon name for this action
+    fn icon_name(&self) -> &'static str {
+        match self {
+            DeviceAction::Ping => "network-transmit-receive-symbolic",
+            DeviceAction::SendFile => "document-send-symbolic",
+            DeviceAction::Clipboard => "edit-paste-symbolic",
+            DeviceAction::RemoteInput => "input-keyboard-symbolic",
+            DeviceAction::Screenshot => "applets-screenshooter-symbolic",
+            DeviceAction::SystemInfo => "computer-symbolic",
+            DeviceAction::Settings => "preferences-system-symbolic",
+            DeviceAction::Find => "find-location-symbolic",
+            DeviceAction::Sms => "mail-message-new-symbolic",
+            DeviceAction::MuteCall => "audio-volume-muted-symbolic",
+            DeviceAction::Camera => "camera-web-symbolic",
+            DeviceAction::RefreshBattery => "battery-symbolic",
+            DeviceAction::Contacts => "contact-new-symbolic",
+            DeviceAction::ScreenShare => "video-display-symbolic",
+            DeviceAction::Lock => "system-lock-screen-symbolic",
+            DeviceAction::Power => "system-shutdown-symbolic",
+            DeviceAction::Wake => "system-reboot-symbolic",
+            DeviceAction::RunCommand => "utilities-terminal-symbolic",
+            DeviceAction::Presenter => "x-office-presentation-symbolic",
+            DeviceAction::MediaControl => "multimedia-player-symbolic",
+        }
+    }
+
+    /// Get the tooltip text for this action
+    fn tooltip(&self) -> &'static str {
+        match self {
+            DeviceAction::Ping => "Send ping",
+            DeviceAction::SendFile => "Send file",
+            DeviceAction::Clipboard => "Sync clipboard",
+            DeviceAction::RemoteInput => "Remote keyboard/mouse",
+            DeviceAction::Screenshot => "Take screenshot",
+            DeviceAction::SystemInfo => "System information",
+            DeviceAction::Settings => "Device settings",
+            DeviceAction::Find => "Find device",
+            DeviceAction::Sms => "Send SMS",
+            DeviceAction::MuteCall => "Mute call",
+            DeviceAction::Camera => "Use as webcam",
+            DeviceAction::RefreshBattery => "Refresh battery",
+            DeviceAction::Contacts => "Browse contacts",
+            DeviceAction::ScreenShare => "Screen share",
+            DeviceAction::Lock => "Lock device",
+            DeviceAction::Power => "Power options",
+            DeviceAction::Wake => "Wake device",
+            DeviceAction::RunCommand => "Run command",
+            DeviceAction::Presenter => "Presenter mode",
+            DeviceAction::MediaControl => "Media control",
+        }
+    }
+}
+
+/// Get available actions for a device based on its type and capabilities
+fn get_available_actions(device: &DeviceInfo) -> Vec<DeviceAction> {
+    let category = DeviceCategory::from_device_type(&device.device_type);
+
+    // All possible actions in display order
+    let all_actions = [
+        // Primary row - common actions
+        DeviceAction::Ping,
+        DeviceAction::SendFile,
+        DeviceAction::Clipboard,
+        DeviceAction::Screenshot,
+        // Mobile-specific
+        DeviceAction::Find,
+        DeviceAction::RefreshBattery,
+        DeviceAction::Sms,
+        DeviceAction::MuteCall,
+        DeviceAction::Camera,
+        DeviceAction::Contacts,
+        // Desktop-specific
+        DeviceAction::ScreenShare,
+        DeviceAction::Lock,
+        DeviceAction::Power,
+        DeviceAction::Wake,
+        DeviceAction::RunCommand,
+        DeviceAction::Presenter,
+        // Advanced
+        DeviceAction::RemoteInput,
+        DeviceAction::MediaControl,
+        DeviceAction::SystemInfo,
+    ];
+
+    all_actions
+        .into_iter()
+        .filter(|action| action.is_available_for(category))
+        .collect()
 }
 
 fn device_icon_name(device_type: &str) -> &'static str {
@@ -897,96 +1069,54 @@ impl CosmicConnectManager {
             .push(info_row);
 
         if device.is_connected {
-            let ping_button = cosmic::widget::tooltip(
-                button::icon(icon::from_name("network-transmit-receive-symbolic").size(20))
-                    .on_press(Message::ExecuteAction(device_id.to_string(), DeviceAction::Ping))
-                    .padding(theme::active().cosmic().space_xxs())
-                    .class(theme::Button::Icon),
-                "Send ping",
-                cosmic::widget::tooltip::Position::Bottom,
-            );
+            // Get device-appropriate actions based on device type
+            let available_actions = get_available_actions(device);
 
-            let send_file_button = cosmic::widget::tooltip(
-                button::icon(icon::from_name("document-send-symbolic").size(20))
-                    .on_press(Message::ExecuteAction(device_id.to_string(), DeviceAction::SendFile))
-                    .padding(theme::active().cosmic().space_xxs())
-                    .class(theme::Button::Icon),
-                "Send file",
-                cosmic::widget::tooltip::Position::Bottom,
-            );
+            // Split actions into rows of 5 for better layout
+            let actions_per_row = 5;
+            let mut action_rows: Vec<Element<'_, Message>> = Vec::new();
+            let mut current_row = row::with_capacity(actions_per_row)
+                .spacing(theme::active().cosmic().space_xs());
+            let mut count = 0;
 
-            let find_button = cosmic::widget::tooltip(
-                button::icon(icon::from_name("find-location-symbolic").size(20))
-                    .on_press(Message::ExecuteAction(device_id.to_string(), DeviceAction::Find))
-                    .padding(theme::active().cosmic().space_xxs())
-                    .class(theme::Button::Icon),
-                "Find device",
-                cosmic::widget::tooltip::Position::Bottom,
-            );
+            for action in available_actions {
+                // Skip Settings action from the button grid (it's accessed differently)
+                if matches!(action, DeviceAction::Settings) {
+                    continue;
+                }
 
-            let screen_share_button = cosmic::widget::tooltip(
-                button::icon(icon::from_name("video-display-symbolic").size(20))
-                    .on_press(Message::ExecuteAction(device_id.to_string(), DeviceAction::ScreenShare))
-                    .padding(theme::active().cosmic().space_xxs())
-                    .class(theme::Button::Icon),
-                "Screen share",
-                cosmic::widget::tooltip::Position::Bottom,
-            );
+                let action_button = cosmic::widget::tooltip(
+                    button::icon(icon::from_name(action.icon_name()).size(20))
+                        .on_press(Message::ExecuteAction(device_id.to_string(), action))
+                        .padding(theme::active().cosmic().space_xxs())
+                        .class(theme::Button::Icon),
+                    action.tooltip(),
+                    cosmic::widget::tooltip::Position::Bottom,
+                );
 
-            let lock_button = cosmic::widget::tooltip(
-                button::icon(icon::from_name("system-lock-screen-symbolic").size(20))
-                    .on_press(Message::ExecuteAction(device_id.to_string(), DeviceAction::Lock))
-                    .padding(theme::active().cosmic().space_xxs())
-                    .class(theme::Button::Icon),
-                "Lock device",
-                cosmic::widget::tooltip::Position::Bottom,
-            );
+                current_row = current_row.push(action_button);
+                count += 1;
 
-            let power_button = cosmic::widget::tooltip(
-                button::icon(icon::from_name("system-shutdown-symbolic").size(20))
-                    .on_press(Message::ExecuteAction(device_id.to_string(), DeviceAction::Power))
-                    .padding(theme::active().cosmic().space_xxs())
-                    .class(theme::Button::Icon),
-                "Shutdown device",
-                cosmic::widget::tooltip::Position::Bottom,
-            );
+                if count >= actions_per_row {
+                    action_rows.push(current_row.into());
+                    current_row = row::with_capacity(actions_per_row)
+                        .spacing(theme::active().cosmic().space_xs());
+                    count = 0;
+                }
+            }
 
-            let sms_button = cosmic::widget::tooltip(
-                button::icon(icon::from_name("mail-message-new-symbolic").size(20))
-                    .on_press(Message::ExecuteAction(device_id.to_string(), DeviceAction::Sms))
-                    .padding(theme::active().cosmic().space_xxs())
-                    .class(theme::Button::Icon),
-                "Send SMS",
-                cosmic::widget::tooltip::Position::Bottom,
-            );
+            // Push remaining buttons if any
+            if count > 0 {
+                action_rows.push(current_row.into());
+            }
 
-            let refresh_battery_button = cosmic::widget::tooltip(
-                button::icon(icon::from_name("view-refresh-symbolic").size(20))
-                    .on_press(Message::ExecuteAction(device_id.to_string(), DeviceAction::RefreshBattery))
-                    .padding(theme::active().cosmic().space_xxs())
-                    .class(theme::Button::Icon),
-                "Refresh battery",
-                cosmic::widget::tooltip::Position::Bottom,
-            );
+            // Build action container
+            let mut all_actions = column::with_capacity(action_rows.len())
+                .spacing(theme::active().cosmic().space_xs());
 
-            let primary_actions = row::with_capacity(3)
-                .spacing(theme::active().cosmic().space_xs())
-                .push(ping_button)
-                .push(send_file_button)
-                .push(find_button);
-
-            let secondary_actions = row::with_capacity(5)
-                .spacing(theme::active().cosmic().space_xs())
-                .push(screen_share_button)
-                .push(lock_button)
-                .push(power_button)
-                .push(sms_button)
-                .push(refresh_battery_button);
-
-            let all_actions = column::with_capacity(2)
-                .spacing(theme::active().cosmic().space_xs())
-                .push(primary_actions)
-                .push(secondary_actions);
+            for action_row in action_rows {
+                all_actions = all_actions.push(action_row);
+            }
 
             card_content = card_content.push(all_actions);
         }
@@ -1239,6 +1369,7 @@ impl Application for CosmicConnectManager {
                 if let Some(client) = &self.dbus_client {
                     let client = client.clone();
                     match action {
+                        // Universal actions
                         DeviceAction::Ping => {
                             cosmic::task::future(async move {
                                 if let Err(e) = client.send_ping(&device_id, "Ping from manager").await {
@@ -1247,6 +1378,43 @@ impl Application for CosmicConnectManager {
                                 Message::None
                             })
                         }
+                        DeviceAction::SendFile => {
+                            // TODO: Open file picker dialog
+                            tracing::info!("Send file to {}", device_id);
+                            Task::none()
+                        }
+                        DeviceAction::Clipboard => {
+                            // Toggle clipboard sync for this device
+                            tracing::info!("Clipboard sync toggled for {}", device_id);
+                            Task::none()
+                        }
+                        DeviceAction::RemoteInput => {
+                            // TODO: Open remote input dialog/window
+                            tracing::info!("Remote input requested for {}", device_id);
+                            Task::none()
+                        }
+                        DeviceAction::Screenshot => {
+                            cosmic::task::future(async move {
+                                if let Err(e) = client.take_screenshot(&device_id).await {
+                                    tracing::error!("Failed to take screenshot: {}", e);
+                                }
+                                Message::None
+                            })
+                        }
+                        DeviceAction::SystemInfo => {
+                            cosmic::task::future(async move {
+                                if let Err(e) = client.request_system_info(&device_id).await {
+                                    tracing::error!("Failed to request system info: {}", e);
+                                }
+                                Message::None
+                            })
+                        }
+                        DeviceAction::Settings => {
+                            // TODO: Open device settings dialog
+                            Task::none()
+                        }
+
+                        // Mobile-only actions
                         DeviceAction::Find => {
                             cosmic::task::future(async move {
                                 if let Err(e) = client.find_phone(&device_id).await {
@@ -1255,31 +1423,23 @@ impl Application for CosmicConnectManager {
                                 Message::None
                             })
                         }
-                        DeviceAction::ScreenShare => {
+                        DeviceAction::Sms => {
+                            // TODO: Open SMS compose dialog
+                            tracing::info!("SMS compose requested for {}", device_id);
+                            Task::none()
+                        }
+                        DeviceAction::MuteCall => {
                             cosmic::task::future(async move {
-                                if let Err(e) = client.start_screen_share(&device_id, 5000).await {
-                                    tracing::error!("Failed to start screen share: {}", e);
+                                if let Err(e) = client.mute_call(&device_id).await {
+                                    tracing::error!("Failed to mute call: {}", e);
                                 }
                                 Message::None
                             })
                         }
-                        DeviceAction::Lock => {
-                            cosmic::task::future(async move {
-                                tracing::info!("Lock device not yet implemented for {}", device_id);
-                                Message::None
-                            })
-                        }
-                        DeviceAction::Power => {
-                            cosmic::task::future(async move {
-                                tracing::info!("Power action not yet implemented for {}", device_id);
-                                Message::None
-                            })
-                        }
-                        DeviceAction::Sms => {
-                            cosmic::task::future(async move {
-                                tracing::info!("SMS not yet implemented for {}", device_id);
-                                Message::None
-                            })
+                        DeviceAction::Camera => {
+                            // TODO: Start camera as webcam
+                            tracing::info!("Camera webcam requested for {}", device_id);
+                            Task::none()
                         }
                         DeviceAction::RefreshBattery => {
                             let device_id_clone = device_id.clone();
@@ -1302,10 +1462,64 @@ impl Application for CosmicConnectManager {
                                 }
                             })
                         }
-                        DeviceAction::SendFile => {
+                        DeviceAction::Contacts => {
+                            // TODO: Open contacts browser
+                            tracing::info!("Contacts browser requested for {}", device_id);
                             Task::none()
                         }
-                        DeviceAction::Settings => {
+
+                        // Desktop-only actions
+                        DeviceAction::ScreenShare => {
+                            cosmic::task::future(async move {
+                                if let Err(e) = client.start_screen_share(&device_id, 5000).await {
+                                    tracing::error!("Failed to start screen share: {}", e);
+                                }
+                                Message::None
+                            })
+                        }
+                        DeviceAction::Lock => {
+                            cosmic::task::future(async move {
+                                if let Err(e) = client.lock_device(&device_id).await {
+                                    tracing::error!("Failed to lock device: {}", e);
+                                }
+                                Message::None
+                            })
+                        }
+                        DeviceAction::Power => {
+                            // TODO: Show power options menu (shutdown, suspend, hibernate)
+                            cosmic::task::future(async move {
+                                if let Err(e) = client.power_action(&device_id, "suspend").await {
+                                    tracing::error!("Failed to send power action: {}", e);
+                                }
+                                Message::None
+                            })
+                        }
+                        DeviceAction::Wake => {
+                            cosmic::task::future(async move {
+                                if let Err(e) = client.wake_device(&device_id).await {
+                                    tracing::error!("Failed to wake device: {}", e);
+                                }
+                                Message::None
+                            })
+                        }
+                        DeviceAction::RunCommand => {
+                            // TODO: Open run command dialog
+                            tracing::info!("Run command requested for {}", device_id);
+                            Task::none()
+                        }
+                        DeviceAction::Presenter => {
+                            cosmic::task::future(async move {
+                                if let Err(e) = client.start_presenter(&device_id).await {
+                                    tracing::error!("Failed to start presenter mode: {}", e);
+                                }
+                                Message::None
+                            })
+                        }
+
+                        // Media control
+                        DeviceAction::MediaControl => {
+                            // Switch to media page for this device
+                            self.active_page = Page::MediaPlayers;
                             Task::none()
                         }
                     }
