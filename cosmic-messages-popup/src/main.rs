@@ -38,6 +38,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 mod app;
 mod config;
 mod dbus;
+mod gtk_webview;
 mod notification;
 mod webview;
 
@@ -85,6 +86,16 @@ fn main() -> cosmic::iced::Result {
 
     info!("Starting COSMIC Messages Popup");
     info!("Version: {}", env!("CARGO_PKG_VERSION"));
+
+    // Initialize GTK for WebView support (required for Wayland)
+    if let Err(e) = gtk_webview::ensure_gtk_init() {
+        error!("Failed to initialize GTK: {}", e);
+        error!("WebView windows will not be available");
+    } else {
+        // Start GTK event loop in background thread
+        let _gtk_handle = gtk_webview::start_gtk_event_loop();
+        info!("GTK event loop started");
+    }
 
     // Create D-Bus channel
     let (dbus_sender, _) = app::create_dbus_channel();

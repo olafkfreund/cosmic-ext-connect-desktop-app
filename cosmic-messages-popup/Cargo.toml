@@ -11,8 +11,13 @@ description = "Web-based messaging popup for COSMIC Desktop with notification in
 # COSMIC Desktop
 libcosmic = { workspace = true, features = ["winit"] }
 
-# WebView
+# WebView with GTK support for Linux/Wayland
 wry = "0.47"
+
+# GTK for WebView window on Linux
+gtk = "0.18"
+glib = "0.18"
+gdk = "0.18"
 
 # D-Bus
 zbus = { workspace = true }

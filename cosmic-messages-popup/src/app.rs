@@ -4,6 +4,7 @@
 
 use crate::config::{Config, PopupPosition};
 use crate::dbus::{DbusCommand, NotificationData};
+use crate::gtk_webview;
 use crate::notification::NotificationHandler;
 use crate::webview::WebViewManager;
 use cosmic::app::{Core, Task};
@@ -128,6 +129,13 @@ impl Application for MessagesPopup {
                     error!("Failed to switch messenger: {}", e);
                 }
 
+                // Show the GTK WebView window
+                if let Some(url) = self.webview_manager.current_url() {
+                    if let Err(e) = gtk_webview::show_messenger_window(&messenger_id, url, &self.config) {
+                        error!("Failed to show WebView window: {}", e);
+                    }
+                }
+
                 // Update last messenger in config
                 if self.config.popup.remember_last {
                     self.config.popup.last_messenger = Some(messenger_id);
@@ -137,16 +145,33 @@ impl Application for MessagesPopup {
 
             Message::ShowPopup => {
                 self.visible = true;
+                // Show current messenger's GTK window
+                if let Some(messenger_id) = self.webview_manager.current() {
+                    if let Some(url) = self.webview_manager.current_url() {
+                        let _ = gtk_webview::show_messenger_window(messenger_id, url, &self.config);
+                    }
+                }
                 debug!("Showing popup");
             }
 
             Message::HidePopup => {
                 self.visible = false;
+                // Hide all GTK windows
+                let _ = gtk_webview::hide_all_windows();
                 debug!("Hiding popup");
             }
 
             Message::TogglePopup => {
                 self.visible = !self.visible;
+                if self.visible {
+                    if let Some(messenger_id) = self.webview_manager.current() {
+                        if let Some(url) = self.webview_manager.current_url() {
+                            let _ = gtk_webview::show_messenger_window(messenger_id, url, &self.config);
+                        }
+                    }
+                } else {
+                    let _ = gtk_webview::hide_all_windows();
+                }
                 debug!("Toggling popup: {}", self.visible);
             }
 
@@ -160,6 +185,10 @@ impl Application for MessagesPopup {
                     // Auto-open if enabled
                     if self.notification_handler.should_auto_open() {
                         self.visible = true;
+                        // Show GTK WebView window
+                        if let Some(url) = self.webview_manager.current_url() {
+                            let _ = gtk_webview::show_messenger_window(&messenger_id, url, &self.config);
+                        }
                     }
                 }
             }
