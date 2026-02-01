@@ -3313,7 +3313,8 @@ impl OpenInterface {
 
     /// Validate URL scheme against allowed list
     fn is_scheme_allowed(url: &str) -> bool {
-        let scheme = url.split("://").next().unwrap_or("").to_lowercase();
+        // Extract scheme by finding the first colon (handles both "http://" and "mailto:")
+        let scheme = url.split(':').next().unwrap_or("").to_lowercase();
         ALLOWED_URL_SCHEMES.contains(&scheme.as_str())
     }
 
