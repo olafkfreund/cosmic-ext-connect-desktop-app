@@ -19,6 +19,8 @@
 //!
 //! ### Notification (`cconnect.notification`)
 //!
+//! Basic notification (backward compatible):
+//!
 //! ```json
 //! {
 //!     "id": 1234567890,
@@ -35,6 +37,44 @@
 //!     }
 //! }
 //! ```
+//!
+//! ### Rich Notification (Desktop → Android)
+//!
+//! Extended notification with images, actions, urgency, and metadata:
+//!
+//! ```json
+//! {
+//!     "id": 1234567890,
+//!     "type": "cconnect.notification",
+//!     "body": {
+//!         "id": "desktop-Thunderbird-1704067200000",
+//!         "appName": "Thunderbird",
+//!         "title": "New Email",
+//!         "text": "You have a new message from Alice",
+//!         "ticker": "Thunderbird: New Email - You have a new message from Alice",
+//!         "isClearable": true,
+//!         "time": "1704067200000",
+//!         "silent": "false",
+//!         "imageData": "iVBORw0KGgoAAAANSUhEUgAAAAUA...",
+//!         "appIcon": "iVBORw0KGgoAAAANSUhEUgAAAAUA...",
+//!         "urgency": 1,
+//!         "category": "email",
+//!         "actions": ["Reply", "Mark as Read"],
+//!         "actionButtons": [
+//!             {"id": "reply", "label": "Reply"},
+//!             {"id": "mark_read", "label": "Mark as Read"}
+//!         ]
+//!     }
+//! }
+//! ```
+//!
+//! **Extended Fields**:
+//! - `imageData` (string, optional): Base64 encoded notification image (PNG)
+//! - `appIcon` (string, optional): Base64 encoded application icon (PNG)
+//! - `urgency` (number, optional): Urgency level (0=low, 1=normal, 2=critical)
+//! - `category` (string, optional): Notification category (e.g., "email", "im", "device")
+//! - `actions` (array, optional): Legacy action labels for backward compatibility
+//! - `actionButtons` (array, optional): Structured actions with IDs and labels
 //!
 //! ### Cancel Notification
 //!
@@ -61,7 +101,7 @@
 //! }
 //! ```
 //!
-//! ### Dismiss Notification
+//! ### Dismiss Notification (Desktop → Android)
 //!
 //! ```json
 //! {
@@ -69,6 +109,40 @@
 //!     "type": "cconnect.notification.request",
 //!     "body": {
 //!         "cancel": "notification-id-123"
+//!     }
+//! }
+//! ```
+//!
+//! ### Action Invocation (Android → Desktop)
+//!
+//! Sent when user taps an action button on a mirrored notification:
+//!
+//! ```json
+//! {
+//!     "id": 1234567890,
+//!     "type": "cconnect.notification.action",
+//!     "body": {
+//!         "key": "desktop-Thunderbird-1704067200000",
+//!         "action": "reply"
+//!     }
+//! }
+//! ```
+//!
+//! **Fields**:
+//! - `key` (string): The notification ID that contains the action
+//! - `action` (string): The action ID (from `actionButtons[].id`)
+//!
+//! ### Notification Dismissal (Android → Desktop)
+//!
+//! Sent when notification is dismissed on Android:
+//!
+//! ```json
+//! {
+//!     "id": 1234567890,
+//!     "type": "cconnect.notification",
+//!     "body": {
+//!         "id": "desktop-Thunderbird-1704067200000",
+//!         "isCancel": true
 //!     }
 //! }
 //! ```
@@ -121,6 +195,119 @@ use std::sync::{Arc, RwLock};
 use tracing::{debug, info, warn};
 
 use super::{Plugin, PluginFactory};
+
+/// Notification urgency level
+///
+/// Follows the freedesktop.org notification spec urgency levels.
+///
+/// ## Example
+///
+/// ```rust
+/// use cosmic_connect_core::plugins::notification::NotificationUrgency;
+///
+/// let urgency = NotificationUrgency::Critical;
+/// assert_eq!(urgency.to_byte(), 2);
+/// ```
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum NotificationUrgency {
+    /// Low priority notification (urgency=0)
+    Low = 0,
+    /// Normal priority notification (urgency=1, default)
+    Normal = 1,
+    /// Critical/urgent notification (urgency=2)
+    Critical = 2,
+}
+
+impl NotificationUrgency {
+    /// Convert urgency to byte representation
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use cosmic_connect_core::plugins::notification::NotificationUrgency;
+    ///
+    /// assert_eq!(NotificationUrgency::Low.to_byte(), 0);
+    /// assert_eq!(NotificationUrgency::Normal.to_byte(), 1);
+    /// assert_eq!(NotificationUrgency::Critical.to_byte(), 2);
+    /// ```
+    pub fn to_byte(self) -> u8 {
+        self as u8
+    }
+
+    /// Create urgency from byte value
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use cosmic_connect_core::plugins::notification::NotificationUrgency;
+    ///
+    /// assert_eq!(NotificationUrgency::from_byte(0), NotificationUrgency::Low);
+    /// assert_eq!(NotificationUrgency::from_byte(1), NotificationUrgency::Normal);
+    /// assert_eq!(NotificationUrgency::from_byte(2), NotificationUrgency::Critical);
+    /// assert_eq!(NotificationUrgency::from_byte(99), NotificationUrgency::Normal);
+    /// ```
+    pub fn from_byte(value: u8) -> Self {
+        match value {
+            0 => Self::Low,
+            2 => Self::Critical,
+            _ => Self::Normal,
+        }
+    }
+}
+
+impl Default for NotificationUrgency {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
+
+/// Notification action button
+///
+/// Represents an actionable button in a notification with both an identifier
+/// and display label. The identifier is used in action invocation packets.
+///
+/// ## Example
+///
+/// ```rust
+/// use cosmic_connect_core::plugins::notification::NotificationAction;
+///
+/// let action = NotificationAction {
+///     id: "reply".to_string(),
+///     label: "Reply".to_string(),
+/// };
+///
+/// assert_eq!(action.id, "reply");
+/// assert_eq!(action.label, "Reply");
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NotificationAction {
+    /// Unique action identifier (used in action packets)
+    pub id: String,
+
+    /// User-visible action label
+    pub label: String,
+}
+
+impl NotificationAction {
+    /// Create a new notification action
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use cosmic_connect_core::plugins::notification::NotificationAction;
+    ///
+    /// let action = NotificationAction::new("reply", "Reply");
+    /// assert_eq!(action.id, "reply");
+    /// assert_eq!(action.label, "Reply");
+    /// ```
+    pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+        }
+    }
+}
 
 /// Clickable link within a notification
 ///
@@ -310,6 +497,22 @@ pub struct Notification {
     /// Base64 encoded video thumbnail
     #[serde(rename = "videoThumbnail", skip_serializing_if = "Option::is_none")]
     pub video_thumbnail: Option<String>,
+
+    /// Notification urgency level (0=low, 1=normal, 2=critical)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub urgency: Option<u8>,
+
+    /// Notification category (e.g., "email", "im", "device")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+
+    /// Base64 encoded application icon
+    #[serde(rename = "appIcon", skip_serializing_if = "Option::is_none")]
+    pub app_icon: Option<String>,
+
+    /// Structured action buttons with IDs and labels
+    #[serde(rename = "actionButtons", skip_serializing_if = "Option::is_none")]
+    pub action_buttons: Option<Vec<NotificationAction>>,
 }
 
 impl Notification {
@@ -363,6 +566,10 @@ impl Notification {
             image_data: None,
             links: None,
             video_thumbnail: None,
+            urgency: None,
+            category: None,
+            app_icon: None,
+            action_buttons: None,
         }
     }
 
@@ -408,10 +615,7 @@ impl Notification {
     /// assert!(notif.has_actions());
     /// ```
     pub fn has_actions(&self) -> bool {
-        self.actions
-            .as_ref()
-            .map(|a| !a.is_empty())
-            .unwrap_or(false)
+        self.actions.as_ref().is_some_and(|a| !a.is_empty())
     }
 
     /// Check if notification has rich HTML content
@@ -456,10 +660,7 @@ impl Notification {
     /// assert!(notif.has_links());
     /// ```
     pub fn has_links(&self) -> bool {
-        self.links
-            .as_ref()
-            .map(|l| !l.is_empty())
-            .unwrap_or(false)
+        self.links.as_ref().is_some_and(|l| !l.is_empty())
     }
 
     /// Get decoded image data
@@ -497,6 +698,82 @@ impl Notification {
         self.video_thumbnail
             .as_ref()
             .and_then(|data| general_purpose::STANDARD.decode(data).ok())
+    }
+
+    /// Get notification urgency level
+    ///
+    /// Returns the urgency level or Normal if not specified.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use cosmic_connect_core::plugins::notification::{Notification, NotificationUrgency};
+    ///
+    /// let mut notif = Notification::new("1", "App", "Title", "Text", true);
+    /// assert_eq!(notif.get_urgency(), NotificationUrgency::Normal);
+    ///
+    /// notif.urgency = Some(2);
+    /// assert_eq!(notif.get_urgency(), NotificationUrgency::Critical);
+    /// ```
+    pub fn get_urgency(&self) -> NotificationUrgency {
+        self.urgency
+            .map(NotificationUrgency::from_byte)
+            .unwrap_or_default()
+    }
+
+    /// Check if notification has an app icon
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use cosmic_connect_core::plugins::notification::Notification;
+    ///
+    /// let mut notif = Notification::new("1", "App", "Title", "Text", true);
+    /// assert!(!notif.has_app_icon());
+    ///
+    /// notif.app_icon = Some("base64icondata".to_string());
+    /// assert!(notif.has_app_icon());
+    /// ```
+    pub fn has_app_icon(&self) -> bool {
+        self.app_icon.is_some()
+    }
+
+    /// Get decoded app icon bytes
+    ///
+    /// Decodes base64 app icon data if present.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use cosmic_connect_core::plugins::notification::Notification;
+    ///
+    /// let mut notif = Notification::new("1", "App", "Title", "Text", true);
+    /// notif.app_icon = Some(base64::encode(b"icon data"));
+    /// assert!(notif.get_app_icon_bytes().is_some());
+    /// ```
+    pub fn get_app_icon_bytes(&self) -> Option<Vec<u8>> {
+        use base64::{Engine as _, engine::general_purpose};
+
+        self.app_icon
+            .as_ref()
+            .and_then(|data| general_purpose::STANDARD.decode(data).ok())
+    }
+
+    /// Check if notification has structured action buttons
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use cosmic_connect_core::plugins::notification::{Notification, NotificationAction};
+    ///
+    /// let mut notif = Notification::new("1", "App", "Title", "Text", true);
+    /// assert!(!notif.has_action_buttons());
+    ///
+    /// notif.action_buttons = Some(vec![NotificationAction::new("reply", "Reply")]);
+    /// assert!(notif.has_action_buttons());
+    /// ```
+    pub fn has_action_buttons(&self) -> bool {
+        self.action_buttons.as_ref().is_some_and(|a| !a.is_empty())
     }
 }
 
@@ -671,6 +948,67 @@ impl NotificationPlugin {
         Packet::new("cconnect.notification.request", body)
     }
 
+    /// Create an action invocation packet (Android → Desktop)
+    ///
+    /// This packet is sent when a user taps an action button in a notification
+    /// on the remote device (e.g., Android phone). The desktop receives this
+    /// packet and triggers the corresponding action in the desktop notification.
+    ///
+    /// # Arguments
+    ///
+    /// * `notification_id` - ID of the notification containing the action
+    /// * `action_id` - ID of the action button that was tapped
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use cosmic_connect_core::plugins::notification::NotificationPlugin;
+    ///
+    /// let plugin = NotificationPlugin::new();
+    /// let packet = plugin.create_action_invocation_packet("desktop-App-123", "reply");
+    ///
+    /// assert_eq!(packet.packet_type, "cconnect.notification.action");
+    /// assert_eq!(packet.body["key"], "desktop-App-123");
+    /// assert_eq!(packet.body["action"], "reply");
+    /// ```
+    pub fn create_action_invocation_packet(&self, notification_id: &str, action_id: &str) -> Packet {
+        let body = json!({
+            "key": notification_id,
+            "action": action_id
+        });
+        Packet::new("cconnect.notification.action", body)
+    }
+
+    /// Create a notification dismissal packet (Android → Desktop)
+    ///
+    /// This packet is sent when a notification is dismissed on the remote device
+    /// (e.g., swiped away on Android). The desktop receives this and removes the
+    /// corresponding mirrored notification.
+    ///
+    /// # Arguments
+    ///
+    /// * `notification_id` - ID of the notification that was dismissed
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use cosmic_connect_core::plugins::notification::NotificationPlugin;
+    ///
+    /// let plugin = NotificationPlugin::new();
+    /// let packet = plugin.create_notification_dismissal_packet("desktop-App-123");
+    ///
+    /// assert_eq!(packet.packet_type, "cconnect.notification");
+    /// assert_eq!(packet.body["id"], "desktop-App-123");
+    /// assert_eq!(packet.body["isCancel"], true);
+    /// ```
+    pub fn create_notification_dismissal_packet(&self, notification_id: &str) -> Packet {
+        let body = json!({
+            "id": notification_id,
+            "isCancel": true
+        });
+        Packet::new("cconnect.notification", body)
+    }
+
     /// Create a notification packet from a captured desktop notification
     ///
     /// Creates a notification packet suitable for sending desktop notifications to
@@ -685,11 +1023,14 @@ impl NotificationPlugin {
     /// * `timestamp` - UNIX timestamp in milliseconds
     /// * `image_data` - Optional notification image as raw bytes (will be base64 encoded)
     /// * `actions` - Optional list of action (key, label) pairs
+    /// * `urgency` - Optional urgency level (None defaults to Normal)
+    /// * `category` - Optional category string (e.g., "email", "im", "device")
+    /// * `app_icon` - Optional application icon as raw bytes (will be base64 encoded)
     ///
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::NotificationPlugin;
+    /// use cosmic_connect_core::plugins::notification::{NotificationPlugin, NotificationUrgency};
     ///
     /// let plugin = NotificationPlugin::new();
     /// let packet = NotificationPlugin::create_desktop_notification_packet(
@@ -698,7 +1039,10 @@ impl NotificationPlugin {
     ///     "You have 3 new messages",
     ///     1704067200000,
     ///     None,
-    ///     &[("reply".to_string(), "Reply".to_string())]
+    ///     &[("reply".to_string(), "Reply".to_string())],
+    ///     Some(NotificationUrgency::Normal),
+    ///     Some("email"),
+    ///     None
     /// );
     ///
     /// assert_eq!(packet.packet_type, "cconnect.notification");
@@ -710,6 +1054,9 @@ impl NotificationPlugin {
         timestamp: i64,
         image_data: Option<&[u8]>,
         actions: &[(String, String)],
+        urgency: Option<NotificationUrgency>,
+        category: Option<&str>,
+        app_icon: Option<&[u8]>,
     ) -> Packet {
         use base64::{Engine as _, engine::general_purpose};
 
@@ -730,7 +1077,22 @@ impl NotificationPlugin {
         // Encode image data as base64 if provided
         let encoded_image = image_data.map(|data| general_purpose::STANDARD.encode(data));
 
-        // Extract action labels if provided
+        // Encode app icon as base64 if provided
+        let encoded_app_icon = app_icon.map(|data| general_purpose::STANDARD.encode(data));
+
+        // Convert actions to structured format with both IDs and labels
+        let action_buttons = if !actions.is_empty() {
+            Some(
+                actions
+                    .iter()
+                    .map(|(id, label)| NotificationAction::new(id, label))
+                    .collect::<Vec<_>>(),
+            )
+        } else {
+            None
+        };
+
+        // Extract action labels for backward compatibility
         let action_labels = if !actions.is_empty() {
             Some(actions.iter().map(|(_, label)| label.clone()).collect::<Vec<_>>())
         } else {
@@ -754,8 +1116,24 @@ impl NotificationPlugin {
             notification_body["imageData"] = json!(image);
         }
 
+        if let Some(icon) = encoded_app_icon {
+            notification_body["appIcon"] = json!(icon);
+        }
+
         if let Some(actions) = action_labels {
             notification_body["actions"] = json!(actions);
+        }
+
+        if let Some(buttons) = action_buttons {
+            notification_body["actionButtons"] = json!(buttons);
+        }
+
+        if let Some(urgency_level) = urgency {
+            notification_body["urgency"] = json!(urgency_level.to_byte());
+        }
+
+        if let Some(cat) = category {
+            notification_body["category"] = json!(cat);
         }
 
         Packet::new("cconnect.notification", notification_body)
@@ -1318,9 +1696,11 @@ mod tests {
 
     #[test]
     fn test_rich_notification_creation() {
+        use base64::{Engine as _, engine::general_purpose};
+
         let mut notif = Notification::new("123", "App", "Title", "Text", true);
         notif.rich_body = Some("<b>Bold</b> and <i>italic</i> text".to_string());
-        notif.image_data = Some(base64::encode(b"fake image data"));
+        notif.image_data = Some(general_purpose::STANDARD.encode(b"fake image data"));
         notif.links = Some(vec![NotificationLink::new(
             "https://example.com",
             Some("Link"),
@@ -1335,11 +1715,13 @@ mod tests {
 
     #[test]
     fn test_rich_notification_serialization() {
+        use base64::{Engine as _, engine::general_purpose};
+
         let mut notif = Notification::new("123", "App", "Title", "Text", true);
         notif.rich_body = Some("<b>Bold</b> text".to_string());
-        notif.image_data = Some(base64::encode(b"fake image"));
+        notif.image_data = Some(general_purpose::STANDARD.encode(b"fake image"));
         notif.links = Some(vec![NotificationLink::new("https://example.com", None::<String>, 0, 10)]);
-        notif.video_thumbnail = Some(base64::encode(b"fake thumbnail"));
+        notif.video_thumbnail = Some(general_purpose::STANDARD.encode(b"fake thumbnail"));
 
         let json = serde_json::to_value(&notif).unwrap();
 
@@ -1462,6 +1844,9 @@ mod tests {
             1704067200000,
             None,
             &[],
+            None,
+            None,
+            None,
         );
 
         assert_eq!(packet.packet_type, "cconnect.notification");
@@ -1493,6 +1878,9 @@ mod tests {
             1704067200000,
             None,
             &[],
+            None,
+            None,
+            None,
         );
 
         let text = packet.body["text"].as_str().unwrap();
@@ -1512,6 +1900,9 @@ mod tests {
             1704067200000,
             Some(image_data),
             &[],
+            None,
+            None,
+            None,
         );
 
         assert!(packet.body["imageData"].is_string());
@@ -1534,6 +1925,9 @@ mod tests {
             1704067200000,
             None,
             &actions,
+            None,
+            None,
+            None,
         );
 
         assert!(packet.body["actions"].is_array());
@@ -1541,6 +1935,15 @@ mod tests {
         assert_eq!(action_labels.len(), 2);
         assert_eq!(action_labels[0], "Reply");
         assert_eq!(action_labels[1], "Mark as Read");
+
+        // Check structured action buttons
+        assert!(packet.body["actionButtons"].is_array());
+        let action_buttons = packet.body["actionButtons"].as_array().unwrap();
+        assert_eq!(action_buttons.len(), 2);
+        assert_eq!(action_buttons[0]["id"], "reply");
+        assert_eq!(action_buttons[0]["label"], "Reply");
+        assert_eq!(action_buttons[1]["id"], "mark_read");
+        assert_eq!(action_buttons[1]["label"], "Mark as Read");
     }
 
     #[test]
@@ -1548,6 +1951,7 @@ mod tests {
         use base64::{Engine as _, engine::general_purpose};
 
         let image_data = b"image bytes";
+        let app_icon_data = b"icon bytes";
         let actions = vec![("reply".to_string(), "Reply".to_string())];
 
         let packet = NotificationPlugin::create_desktop_notification_packet(
@@ -1557,6 +1961,9 @@ mod tests {
             1704067200000,
             Some(image_data),
             &actions,
+            Some(NotificationUrgency::Normal),
+            Some("im"),
+            Some(app_icon_data),
         );
 
         assert_eq!(packet.packet_type, "cconnect.notification");
@@ -1564,11 +1971,231 @@ mod tests {
         assert_eq!(packet.body["title"], "New Message");
         assert_eq!(packet.body["text"], "Hello from Signal");
         assert!(packet.body["imageData"].is_string());
+        assert!(packet.body["appIcon"].is_string());
         assert!(packet.body["actions"].is_array());
+        assert!(packet.body["actionButtons"].is_array());
+        assert_eq!(packet.body["urgency"], 1);
+        assert_eq!(packet.body["category"], "im");
 
         // Verify image can be decoded
         let encoded = packet.body["imageData"].as_str().unwrap();
         let decoded = general_purpose::STANDARD.decode(encoded).unwrap();
         assert_eq!(decoded, image_data);
+
+        // Verify app icon can be decoded
+        let encoded_icon = packet.body["appIcon"].as_str().unwrap();
+        let decoded_icon = general_purpose::STANDARD.decode(encoded_icon).unwrap();
+        assert_eq!(decoded_icon, app_icon_data);
+    }
+
+    #[test]
+    fn test_notification_urgency() {
+        assert_eq!(NotificationUrgency::Low.to_byte(), 0);
+        assert_eq!(NotificationUrgency::Normal.to_byte(), 1);
+        assert_eq!(NotificationUrgency::Critical.to_byte(), 2);
+
+        assert_eq!(NotificationUrgency::from_byte(0), NotificationUrgency::Low);
+        assert_eq!(NotificationUrgency::from_byte(1), NotificationUrgency::Normal);
+        assert_eq!(NotificationUrgency::from_byte(2), NotificationUrgency::Critical);
+        assert_eq!(NotificationUrgency::from_byte(99), NotificationUrgency::Normal);
+    }
+
+    #[test]
+    fn test_notification_action_creation() {
+        let action = NotificationAction::new("reply", "Reply");
+        assert_eq!(action.id, "reply");
+        assert_eq!(action.label, "Reply");
+    }
+
+    #[test]
+    fn test_notification_action_serialization() {
+        let action = NotificationAction::new("mark_read", "Mark as Read");
+        let json = serde_json::to_value(&action).unwrap();
+
+        assert_eq!(json["id"], "mark_read");
+        assert_eq!(json["label"], "Mark as Read");
+
+        let deserialized: NotificationAction = serde_json::from_value(json).unwrap();
+        assert_eq!(action, deserialized);
+    }
+
+    #[test]
+    fn test_notification_get_urgency() {
+        let mut notif = Notification::new("1", "App", "Title", "Text", true);
+        assert_eq!(notif.get_urgency(), NotificationUrgency::Normal);
+
+        notif.urgency = Some(0);
+        assert_eq!(notif.get_urgency(), NotificationUrgency::Low);
+
+        notif.urgency = Some(2);
+        assert_eq!(notif.get_urgency(), NotificationUrgency::Critical);
+    }
+
+    #[test]
+    fn test_notification_has_app_icon() {
+        let mut notif = Notification::new("1", "App", "Title", "Text", true);
+        assert!(!notif.has_app_icon());
+
+        notif.app_icon = Some("base64icon".to_string());
+        assert!(notif.has_app_icon());
+    }
+
+    #[test]
+    fn test_notification_get_app_icon_bytes() {
+        use base64::{Engine as _, engine::general_purpose};
+
+        let mut notif = Notification::new("1", "App", "Title", "Text", true);
+        let icon_data = b"icon bytes";
+        notif.app_icon = Some(general_purpose::STANDARD.encode(icon_data));
+
+        let decoded = notif.get_app_icon_bytes().unwrap();
+        assert_eq!(decoded, icon_data);
+    }
+
+    #[test]
+    fn test_notification_has_action_buttons() {
+        let mut notif = Notification::new("1", "App", "Title", "Text", true);
+        assert!(!notif.has_action_buttons());
+
+        notif.action_buttons = Some(vec![]);
+        assert!(!notif.has_action_buttons());
+
+        notif.action_buttons = Some(vec![NotificationAction::new("reply", "Reply")]);
+        assert!(notif.has_action_buttons());
+    }
+
+    #[test]
+    fn test_notification_extended_fields_serialization() {
+        use base64::{Engine as _, engine::general_purpose};
+
+        let mut notif = Notification::new("123", "App", "Title", "Text", true);
+        notif.urgency = Some(2);
+        notif.category = Some("email".to_string());
+        notif.app_icon = Some(general_purpose::STANDARD.encode(b"icon"));
+        notif.action_buttons = Some(vec![
+            NotificationAction::new("reply", "Reply"),
+            NotificationAction::new("delete", "Delete"),
+        ]);
+
+        let json = serde_json::to_value(&notif).unwrap();
+
+        assert_eq!(json["urgency"], 2);
+        assert_eq!(json["category"], "email");
+        assert!(json["appIcon"].is_string());
+        assert!(json["actionButtons"].is_array());
+        assert_eq!(json["actionButtons"].as_array().unwrap().len(), 2);
+
+        let deserialized: Notification = serde_json::from_value(json).unwrap();
+        assert_eq!(notif, deserialized);
+    }
+
+    #[test]
+    fn test_create_action_invocation_packet() {
+        let plugin = NotificationPlugin::new();
+        let packet = plugin.create_action_invocation_packet("desktop-App-123", "reply");
+
+        assert_eq!(packet.packet_type, "cconnect.notification.action");
+        assert_eq!(packet.body["key"], "desktop-App-123");
+        assert_eq!(packet.body["action"], "reply");
+    }
+
+    #[test]
+    fn test_create_notification_dismissal_packet() {
+        let plugin = NotificationPlugin::new();
+        let packet = plugin.create_notification_dismissal_packet("desktop-App-123");
+
+        assert_eq!(packet.packet_type, "cconnect.notification");
+        assert_eq!(packet.body["id"], "desktop-App-123");
+        assert_eq!(packet.body["isCancel"], true);
+    }
+
+    #[test]
+    fn test_desktop_notification_with_urgency_levels() {
+        // Test low urgency
+        let packet_low = NotificationPlugin::create_desktop_notification_packet(
+            "App",
+            "Title",
+            "Body",
+            1704067200000,
+            None,
+            &[],
+            Some(NotificationUrgency::Low),
+            None,
+            None,
+        );
+        assert_eq!(packet_low.body["urgency"], 0);
+
+        // Test normal urgency
+        let packet_normal = NotificationPlugin::create_desktop_notification_packet(
+            "App",
+            "Title",
+            "Body",
+            1704067200000,
+            None,
+            &[],
+            Some(NotificationUrgency::Normal),
+            None,
+            None,
+        );
+        assert_eq!(packet_normal.body["urgency"], 1);
+
+        // Test critical urgency
+        let packet_critical = NotificationPlugin::create_desktop_notification_packet(
+            "App",
+            "Title",
+            "Body",
+            1704067200000,
+            None,
+            &[],
+            Some(NotificationUrgency::Critical),
+            None,
+            None,
+        );
+        assert_eq!(packet_critical.body["urgency"], 2);
+    }
+
+    #[test]
+    fn test_desktop_notification_with_category() {
+        let packet = NotificationPlugin::create_desktop_notification_packet(
+            "Thunderbird",
+            "New Email",
+            "You have mail",
+            1704067200000,
+            None,
+            &[],
+            None,
+            Some("email"),
+            None,
+        );
+
+        assert_eq!(packet.body["category"], "email");
+    }
+
+    #[test]
+    fn test_desktop_notification_backward_compatibility() {
+        // Packet without new fields should still work
+        let packet = NotificationPlugin::create_desktop_notification_packet(
+            "App",
+            "Title",
+            "Body",
+            1704067200000,
+            None,
+            &[],
+            None,
+            None,
+            None,
+        );
+
+        // Basic fields should be present
+        assert!(packet.body["id"].is_string());
+        assert!(packet.body["appName"].is_string());
+        assert!(packet.body["title"].is_string());
+        assert!(packet.body["text"].is_string());
+
+        // Extended fields should not be present when not provided
+        assert!(packet.body["urgency"].is_null());
+        assert!(packet.body["category"].is_null());
+        assert!(packet.body["appIcon"].is_null());
+        assert!(packet.body["actionButtons"].is_null());
     }
 }

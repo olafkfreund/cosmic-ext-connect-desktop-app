@@ -27,6 +27,7 @@ arboard = "3.4"
 regex = { workspace = true }
 open = { workspace = true }
 serde_bytes = "0.11"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 [build-dependencies]
 chrono = { workspace = true }
