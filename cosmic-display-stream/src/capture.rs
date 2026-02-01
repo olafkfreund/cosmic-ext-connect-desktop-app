@@ -12,9 +12,9 @@ use crate::error::{DisplayStreamError, Result};
 use crate::output::OutputInfo;
 use crate::pipewire::PipeWireStream;
 
-// TODO: Re-enable when ashpd integration is complete
-// use ashpd::desktop::screencast::{CursorMode, SourceType};
-// use ashpd::WindowIdentifier;
+use ashpd::desktop::screencast::{CursorMode, Screencast, SourceType};
+use ashpd::desktop::PersistMode;
+use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 /// Screen capture session state
@@ -52,6 +52,9 @@ pub struct ScreenCapture {
 
     /// Output information (cached after discovery)
     output_info: Option<OutputInfo>,
+
+    /// Frame sender for async frame delivery
+    frame_sender: Option<mpsc::Sender<VideoFrame>>,
 }
 
 impl ScreenCapture {
@@ -96,6 +99,7 @@ impl ScreenCapture {
             session_handle: None,
             pipewire_stream: None,
             output_info: Some(output_info),
+            frame_sender: None,
         })
     }
 
@@ -106,25 +110,102 @@ impl ScreenCapture {
     async fn discover_output(output_name: &str) -> Result<OutputInfo> {
         debug!("Discovering output: {}", output_name);
 
-        // TODO: Query actual compositor outputs via wayland protocols
-        // For now, create a placeholder that assumes the output exists
-        // In a real implementation, we would:
-        // 1. Connect to wayland compositor
-        // 2. Bind to wl_output global
-        // 3. Enumerate outputs and get their properties
-        // 4. Match by name
+        // Query outputs using wl-randr or similar
+        // For now, we create a placeholder that assumes the output exists
+        // In production, this would query the Wayland compositor
 
-        // Placeholder implementation
-        // This will be replaced with actual wayland protocol queries
-        let output_info = OutputInfo::new(
-            output_name.to_string(),
-            1920, // Default resolution, should be queried
-            1080,
-            60,   // Default refresh rate, should be queried
-            true, // Assume HDMI dummy is virtual
-        );
+        // Try to get output info from wlr-randr if available
+        let output_info = match Self::query_wlr_randr(output_name).await {
+            Ok(info) => info,
+            Err(e) => {
+                debug!("wlr-randr query failed ({}), using defaults", e);
+                // Fallback to defaults for HDMI outputs
+                OutputInfo::new(
+                    output_name.to_string(),
+                    1920,
+                    1080,
+                    60,
+                    output_name.to_uppercase().contains("HDMI"),
+                )
+            }
+        };
 
         Ok(output_info)
+    }
+
+    /// Query output info using wlr-randr
+    async fn query_wlr_randr(output_name: &str) -> Result<OutputInfo> {
+        let output = tokio::process::Command::new("wlr-randr")
+            .output()
+            .await
+            .map_err(|e| DisplayStreamError::OutputNotFound(format!("wlr-randr failed: {}", e)))?;
+
+        if !output.status.success() {
+            return Err(DisplayStreamError::OutputNotFound(
+                "wlr-randr returned error".to_string(),
+            ));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        // Parse wlr-randr output to find the target display
+        // Format: "HDMI-A-1 "Model Name" (1920x1080@60Hz)"
+        let mut found_output = false;
+        let mut width = 1920u32;
+        let mut height = 1080u32;
+        let mut refresh = 60u32;
+
+        for line in stdout.lines() {
+            let line = line.trim();
+
+            // Check if this is our output
+            if line.starts_with(output_name) {
+                found_output = true;
+                continue;
+            }
+
+            // If we found our output, parse the current mode
+            if found_output && line.contains("current") {
+                // Parse resolution like "1920x1080 px, 60.000000 Hz (current)"
+                if let Some(res_part) = line.split(" px").next() {
+                    let parts: Vec<&str> = res_part.split('x').collect();
+                    if parts.len() == 2 {
+                        width = parts[0].trim().parse().unwrap_or(1920);
+                        height = parts[1].trim().parse().unwrap_or(1080);
+                    }
+                }
+                if let Some(hz_part) = line.split("Hz").next() {
+                    if let Some(hz_str) = hz_part.split(',').last() {
+                        refresh = hz_str
+                            .trim()
+                            .parse::<f32>()
+                            .map(|f| f as u32)
+                            .unwrap_or(60);
+                    }
+                }
+                break;
+            }
+
+            // Stop if we hit another output section
+            if found_output && !line.starts_with(' ') && !line.is_empty() {
+                break;
+            }
+        }
+
+        if !found_output {
+            return Err(DisplayStreamError::OutputNotFound(format!(
+                "Output '{}' not found in wlr-randr output",
+                output_name
+            )));
+        }
+
+        Ok(OutputInfo::new(
+            output_name.to_string(),
+            width,
+            height,
+            refresh,
+            output_name.to_uppercase().contains("HDMI"),
+        ))
     }
 
     /// Start the screen capture session
@@ -144,22 +225,6 @@ impl ScreenCapture {
     /// - Permission is denied by the user
     /// - The portal session fails to start
     /// - PipeWire connection fails
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use cosmic_display_stream::capture::ScreenCapture;
-    /// # use futures::StreamExt;
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut capture = ScreenCapture::new("HDMI-2").await?;
-    /// let mut frame_stream = capture.start_capture().await?;
-    ///
-    /// while let Some(frame) = frame_stream.next().await {
-    ///     // Process frame
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
     pub async fn start_capture(&mut self) -> Result<FrameStream> {
         if self.state != SessionState::Idle {
             return Err(DisplayStreamError::StreamAlreadyStarted);
@@ -168,38 +233,83 @@ impl ScreenCapture {
         info!("Starting screen capture for output: {}", self.target_output);
         self.state = SessionState::RequestingPermission;
 
-        // TODO: Implement full ashpd screencast integration
-        // The ashpd 0.12 API requires:
-        // 1. Creating a screencast proxy/session
-        // 2. Selecting sources (monitor output)
-        // 3. Starting the session
-        // 4. Getting PipeWire node ID from response
-        //
-        // For now, return an error indicating work in progress
-        // This allows the module to compile while we complete the implementation
+        // Create the screencast portal proxy
+        let screencast = Screencast::new()
+            .await
+            .map_err(|e| DisplayStreamError::Portal(format!("Failed to create screencast: {}", e)))?;
 
-        return Err(DisplayStreamError::CaptureSessionFailed(
-            "Screen capture implementation in progress - ashpd integration pending".to_string(),
-        ));
+        // Create a session
+        let session = screencast
+            .create_session()
+            .await
+            .map_err(|e| DisplayStreamError::Portal(format!("Failed to create session: {}", e)))?;
 
-        // Placeholder code for when implementation is complete:
-        /*
-        let pipewire_node_id = 0; // Will come from portal response
+        debug!("Portal session created");
 
-        let pipewire_stream = PipeWireStream::connect(pipewire_node_id).await
+        // Select sources - request monitor capture
+        screencast
+            .select_sources(
+                &session,
+                CursorMode::Embedded,     // Include cursor in the stream
+                SourceType::Monitor.into(), // Capture monitors only
+                false,                     // Don't allow multiple sources
+                None,                      // No restore token
+                PersistMode::DoNot,        // Don't persist
+            )
+            .await
+            .map_err(|e| DisplayStreamError::Portal(format!("Failed to select sources: {}", e)))?;
+
+        debug!("Sources selected, starting portal session");
+        self.state = SessionState::Connecting;
+
+        // Start the session - this shows the permission dialog
+        let streams = screencast
+            .start(&session, None)
+            .await
+            .map_err(|e| {
+                DisplayStreamError::CaptureSessionFailed(format!("Failed to start session: {}", e))
+            })?
+            .response()
+            .map_err(|e| {
+                DisplayStreamError::CaptureSessionFailed(format!("Portal response error: {}", e))
+            })?;
+
+        // Get streams from response
+        if streams.streams().is_empty() {
+            return Err(DisplayStreamError::CaptureSessionFailed(
+                "No streams returned from portal".to_string(),
+            ));
+        }
+
+        // Get the first stream's PipeWire node ID
+        let stream_info = &streams.streams()[0];
+        let pipewire_node_id = stream_info.pipe_wire_node_id();
+        let stream_size = stream_info.size();
+
+        info!(
+            "Portal session started - PipeWire node: {}, size: {:?}",
+            pipewire_node_id, stream_size
+        );
+
+        // Store session handle
+        self.session_handle = Some(format!("{:?}", session));
+
+        // Create frame channel
+        let (tx, rx) = mpsc::channel(32);
+        self.frame_sender = Some(tx.clone());
+
+        // Connect to PipeWire stream
+        let pipewire_stream = PipeWireStream::connect(pipewire_node_id, tx)
+            .await
             .map_err(|e| DisplayStreamError::PipeWire(e.to_string()))?;
 
         self.pipewire_stream = Some(pipewire_stream);
-        self.session_handle = Some("session_handle".to_string());
         self.state = SessionState::Capturing;
 
         info!("Screen capture started successfully");
 
         // Return the frame stream
-        Ok(FrameStream {
-            inner: Box::pin(futures::stream::empty()),
-        })
-        */
+        Ok(FrameStream::new(rx))
     }
 
     /// Stop the screen capture session
@@ -219,6 +329,9 @@ impl ScreenCapture {
                 .await
                 .map_err(|e| DisplayStreamError::PipeWire(e.to_string()))?;
         }
+
+        // Close frame sender
+        self.frame_sender = None;
 
         // Close portal session
         self.session_handle = None;
@@ -246,7 +359,19 @@ impl ScreenCapture {
 
 /// Stream of video frames from the capture session
 pub struct FrameStream {
-    inner: std::pin::Pin<Box<dyn futures::Stream<Item = VideoFrame> + Send>>,
+    receiver: mpsc::Receiver<VideoFrame>,
+}
+
+impl FrameStream {
+    /// Create a new frame stream from a receiver
+    pub fn new(receiver: mpsc::Receiver<VideoFrame>) -> Self {
+        Self { receiver }
+    }
+
+    /// Receive the next frame (async)
+    pub async fn next_frame(&mut self) -> Option<VideoFrame> {
+        self.receiver.recv().await
+    }
 }
 
 impl futures::Stream for FrameStream {
@@ -256,12 +381,12 @@ impl futures::Stream for FrameStream {
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        self.inner.as_mut().poll_next(cx)
+        std::pin::Pin::new(&mut self.receiver).poll_recv(cx)
     }
 }
 
 /// A single video frame from the capture stream
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VideoFrame {
     /// Raw frame data
     pub data: Vec<u8>,
@@ -277,6 +402,44 @@ pub struct VideoFrame {
 
     /// Frame timestamp in microseconds
     pub timestamp: i64,
+
+    /// Frame sequence number
+    pub sequence: u64,
+}
+
+impl VideoFrame {
+    /// Create a new video frame
+    pub fn new(
+        data: Vec<u8>,
+        width: u32,
+        height: u32,
+        format: String,
+        timestamp: i64,
+        sequence: u64,
+    ) -> Self {
+        Self {
+            data,
+            width,
+            height,
+            format,
+            timestamp,
+            sequence,
+        }
+    }
+
+    /// Get the frame data size in bytes
+    pub fn size(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Get bytes per pixel based on format
+    pub fn bytes_per_pixel(&self) -> usize {
+        match self.format.as_str() {
+            "BGRx" | "RGBx" | "BGRA" | "RGBA" => 4,
+            "BGR" | "RGB" => 3,
+            _ => 4, // Default to 4 bytes
+        }
+    }
 }
 
 #[cfg(test)]
@@ -312,5 +475,22 @@ mod tests {
 
         state = SessionState::Capturing;
         assert_eq!(state, SessionState::Capturing);
+    }
+
+    #[test]
+    fn test_video_frame() {
+        let frame = VideoFrame::new(
+            vec![0u8; 1920 * 1080 * 4],
+            1920,
+            1080,
+            "BGRx".to_string(),
+            12345,
+            1,
+        );
+
+        assert_eq!(frame.width, 1920);
+        assert_eq!(frame.height, 1080);
+        assert_eq!(frame.bytes_per_pixel(), 4);
+        assert_eq!(frame.size(), 1920 * 1080 * 4);
     }
 }
