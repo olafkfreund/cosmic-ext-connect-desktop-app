@@ -550,6 +550,7 @@ enum Message {
     ShowNotification(String, NotificationType, Option<(String, Box<Message>)>),
     // Help dialog
     ToggleKeyboardShortcutsHelp,
+    OpenManager, // Launch standalone manager window
     // Pinned devices
     ToggleDevicePin(String), // device_id
     // Daemon status
@@ -1876,6 +1877,13 @@ impl cosmic::Application for CConnectApplet {
             }
             Message::ToggleKeyboardShortcutsHelp => {
                 self.show_keyboard_shortcuts_help = !self.show_keyboard_shortcuts_help;
+                Task::none()
+            }
+            Message::OpenManager => {
+                // Launch the standalone manager window
+                if let Err(e) = std::process::Command::new("cosmic-connect-manager").spawn() {
+                    tracing::error!("Failed to launch manager: {}", e);
+                }
                 Task::none()
             }
             Message::ToggleDevicePin(device_id) => {
@@ -3227,6 +3235,11 @@ impl CConnectApplet {
                         cosmic::widget::text::body("Toggle device settings").width(Length::FillPortion(3)),
                     ]
                     .spacing(SPACE_S),
+                    row![
+                        cosmic::widget::text::body("Ctrl+M").width(Length::FillPortion(2)),
+                        cosmic::widget::text::body("Open Manager").width(Length::FillPortion(3)),
+                    ]
+                    .spacing(SPACE_S),
                     divider::horizontal::light(),
                     cosmic::widget::text::title4("Navigation"),
                     row![
@@ -3417,6 +3430,13 @@ impl CConnectApplet {
                         .on_press(Message::ToggleKeyboardShortcutsHelp)
                         .padding(SPACE_XXS),
                     "Keyboard shortcuts",
+                    cosmic::widget::tooltip::Position::Bottom,
+                ),
+                cosmic::widget::tooltip(
+                    button::icon(icon::from_name("preferences-desktop-apps-symbolic").size(ICON_S))
+                        .on_press(Message::OpenManager)
+                        .padding(SPACE_XXS),
+                    "Open Manager (Ctrl+M)",
                     cosmic::widget::tooltip::Position::Bottom,
                 )
             ]
@@ -5620,6 +5640,7 @@ impl CConnectApplet {
                             )))
                         }
                     },
+                    "m" => cosmic::task::message(cosmic::Action::App(Message::OpenManager)),
                     _ => Task::none(),
                 };
             }
