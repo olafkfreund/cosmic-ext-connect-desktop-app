@@ -47,6 +47,187 @@ cosmic-connect-core (Shared Library)
                                      └── Kotlin via FFI
 ```
 
+## Components
+
+This repository contains seven main components that work together to provide the full COSMIC Connect experience:
+
+### cosmic-connect-protocol
+
+The **protocol library** implements the CConnect/KDE Connect v7/v8 protocol specification in pure Rust.
+
+| Feature | Description |
+|---------|-------------|
+| **Packet Handling** | Serialization/deserialization of JSON protocol packets |
+| **TLS Layer** | Certificate generation, exchange, and secure channel establishment using rustls |
+| **Device Discovery** | UDP broadcast and mDNS service discovery mechanisms |
+| **Plugin Framework** | Trait-based plugin system for extensible functionality |
+| **Connection Management** | Socket handling, reconnection logic, and transport abstraction |
+
+**Key Modules:**
+- `connection.rs` - TCP/TLS connection management with auto-reconnect
+- `discovery.rs` - UDP broadcast (port 1816) and mDNS discovery
+- `pairing.rs` - Certificate exchange and verification workflow
+- `plugins/` - All 22 plugin implementations (ping, battery, share, etc.)
+
+**Usage:** This crate is used internally by the daemon and manager; it's not typically used directly.
+
+---
+
+### cosmic-connect-daemon
+
+The **background service** that handles all device communication, running as a systemd user service.
+
+| Feature | Description |
+|---------|-------------|
+| **Device Management** | Tracks paired devices, connection state, and trust levels |
+| **Plugin Orchestration** | Loads and manages plugins per device based on capabilities |
+| **DBus Interface** | Exposes `org.cosmicde.CosmicConnect` for IPC with applet/manager |
+| **Notification Forwarding** | Captures desktop notifications via DBus and forwards to devices |
+| **Desktop Icons** | Creates `.desktop` files for paired devices in `~/.local/share/applications/` |
+
+**DBus Methods:**
+```
+org.cosmicde.CosmicConnect
+├── GetDevices() → Array<Device>
+├── PairDevice(device_id: String)
+├── UnpairDevice(device_id: String)
+├── SendPing(device_id: String)
+├── SendFile(device_id: String, path: String)
+├── GetClipboard(device_id: String) → String
+├── SetClipboard(device_id: String, content: String)
+└── ... (60+ methods for all plugins)
+```
+
+**Configuration:** `~/.config/cosmic/com.cosmic.Connect.ron`
+
+---
+
+### cosmic-applet-connect
+
+The **COSMIC panel applet** that provides quick access to device status and common actions.
+
+| Feature | Description |
+|---------|-------------|
+| **Status Overview** | Shows connected device count with status indicators |
+| **Quick Actions** | Ping, send file, clipboard sync from dropdown |
+| **Device Cards** | Expandable cards showing battery, connection quality |
+| **Onboarding** | First-run wizard for daemon setup and firewall configuration |
+| **Pinned Devices** | Quick access to favorite devices in collapsed view |
+
+**Panel Integration:**
+- Appears in COSMIC panel's system tray area
+- Shows device count badge when devices are connected
+- Dropdown provides device list and "Open Manager" button
+
+---
+
+### cosmic-connect-manager
+
+The **standalone window application** for comprehensive device management.
+
+| Feature | Description |
+|---------|-------------|
+| **Sidebar Navigation** | Device list with search, filtering, and status indicators |
+| **Device Details** | Full device info, capabilities, and connection stats |
+| **Action Grid** | Context-aware actions based on device type (mobile vs desktop) |
+| **File Transfers** | Progress tracking for active transfers |
+| **Plugin Settings** | Per-device enable/disable toggles for each plugin |
+| **Media Controls** | MPRIS remote control for music/video playback |
+
+**Device-Type Actions:**
+
+| Action | Mobile | Desktop | Description |
+|--------|--------|---------|-------------|
+| Ping | ✅ | ✅ | Test connectivity |
+| Send File | ✅ | ✅ | Share files via dialog |
+| Clipboard | ✅ | ✅ | Sync clipboard content |
+| Find Phone | ✅ | ❌ | Ring device to locate |
+| SMS | ✅ | ❌ | Compose text messages |
+| Camera | ✅ | ❌ | Use phone as webcam |
+| Contacts | ✅ | ❌ | Sync contact database |
+| Screen Share | ❌ | ✅ | VNC desktop sharing |
+| Run Command | ❌ | ✅ | Execute remote scripts |
+| Power | ❌ | ✅ | Shutdown/suspend remote |
+
+**Launch:**
+```bash
+cosmic-connect-manager                    # Open manager
+cosmic-connect-manager --select-device ID # Open with device selected
+cosmic-connect-manager --device-action ID ping  # Execute action directly
+```
+
+---
+
+### cosmic-display-stream
+
+The **display streaming library** for using Android tablets as extended displays.
+
+| Feature | Description |
+|---------|-------------|
+| **Screen Capture** | PipeWire-based desktop capture with portal integration |
+| **H.264 Encoding** | Hardware-accelerated video encoding via GStreamer |
+| **WebRTC Transport** | Low-latency streaming using WebRTC data channels |
+| **Input Forwarding** | Touch/stylus input sent back to desktop (libei/reis) |
+| **Multi-Monitor** | Select specific outputs or capture entire workspace |
+
+**Architecture:**
+```
+┌──────────────┐    PipeWire    ┌──────────────┐    WebRTC    ┌──────────────┐
+│ COSMIC       │ ───────────▶  │  Encoder     │ ──────────▶ │   Android    │
+│ Desktop      │               │  (H.264)     │              │   Tablet     │
+└──────────────┘               └──────────────┘              └──────────────┘
+                                      ▲
+                                      │ Touch events
+                                      ▼
+                               ┌──────────────┐
+                               │  Input       │
+                               │  (libei)     │
+                               └──────────────┘
+```
+
+**Status:** Work in progress - basic streaming functional, input forwarding experimental.
+
+---
+
+### cosmic-messages-popup
+
+The **web messenger popup** for responding to messages directly from desktop notifications.
+
+| Feature | Description |
+|---------|-------------|
+| **WebView Integration** | Embedded browser using wry/WebKitGTK |
+| **Session Persistence** | Maintains login state per messenger service |
+| **Notification Trigger** | Opens automatically when message notification received |
+| **DBus Interface** | `org.cosmicde.MessagesPopup` for daemon integration |
+| **Multi-Service** | Supports Google Messages, WhatsApp, Telegram, Signal, Discord, Slack |
+
+**Why Web-Based:**
+- Google Messages RCS has no public API
+- Maintains end-to-end encryption
+- Works with any web messenger
+- No reverse-engineering required
+
+---
+
+### cosmic-messages
+
+A **lightweight messages utility** for command-line message operations and testing.
+
+| Feature | Description |
+|---------|-------------|
+| **CLI Interface** | Send/receive messages from terminal |
+| **DBus Client** | Communicates with daemon's message queue |
+| **Testing Tool** | Useful for debugging notification flow |
+
+**Usage:**
+```bash
+cosmic-messages list              # Show message queue
+cosmic-messages send DEVICE TEXT  # Send message to device
+cosmic-messages dismiss ID        # Dismiss notification
+```
+
+---
+
 ## Features
 
 ### Status: Production Ready
