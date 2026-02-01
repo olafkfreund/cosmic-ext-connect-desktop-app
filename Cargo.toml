@@ -79,6 +79,10 @@ gstreamer = "0.23"
 gstreamer-app = "0.23"
 gstreamer-video = "0.23"
 
+# Network Streaming (WebRTC)
+webrtc = "0.12"
+tokio-tungstenite = "0.26"
+
 # Configuration
 toml = "0.9"
 

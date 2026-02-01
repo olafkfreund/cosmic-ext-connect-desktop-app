@@ -44,6 +44,10 @@ pub enum DisplayStreamError {
     #[error("Encoder error: {0}")]
     Encoder(String),
 
+    /// Network streaming error
+    #[error("Streaming error: {0}")]
+    Streaming(String),
+
     /// Generic I/O error
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),

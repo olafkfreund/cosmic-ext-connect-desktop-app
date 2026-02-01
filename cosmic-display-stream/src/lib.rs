@@ -13,16 +13,17 @@
 //! - Filter for HDMI dummy display outputs only
 //! - Receive raw video frames
 //!
-//! ### Phase 2: Video Encoding (Current)
+//! ### Phase 2: Video Encoding
 //! - Encode frames to H.264 using hardware acceleration
 //! - Support VAAPI (Intel/AMD), NVENC (NVIDIA), and software (x264) encoding
 //! - Configurable quality, bitrate, and low-latency settings
 //! - Automatic hardware encoder detection
 //!
-//! ### Phase 3: Network Streaming (Future)
-//! - Stream encoded video over WebRTC or custom protocol
-//! - Implement adaptive bitrate streaming
-//! - Add latency optimization
+//! ### Phase 3: Network Streaming (Current)
+//! - Stream encoded video over WebRTC
+//! - WebSocket-based signaling server for peer connection setup
+//! - ICE/STUN for NAT traversal
+//! - Support for WiFi and USB (ADB) transport modes
 //!
 //! ## Usage Example
 //!
@@ -80,11 +81,13 @@ pub mod encoder;
 pub mod error;
 pub mod output;
 pub mod pipewire;
+pub mod streaming;
 
 pub use capture::{ScreenCapture, SessionState, VideoFrame, FrameStream};
 pub use encoder::{VideoEncoder, EncoderConfig, EncoderType, EncodedFrame};
 pub use error::{DisplayStreamError, Result};
 pub use output::OutputInfo;
+pub use streaming::{StreamingServer, StreamConfig, TransportMode, ConnectionStats};
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -19,10 +19,18 @@ gstreamer = { workspace = true }
 gstreamer-app = { workspace = true }
 gstreamer-video = { workspace = true }
 
+# Network Streaming (WebRTC)
+webrtc = { workspace = true }
+tokio-tungstenite = { workspace = true }
+futures-util = "0.3"
+
 # Async runtime
 tokio = { workspace = true }
 futures = { workspace = true }
 async-trait = { workspace = true }
+
+# Utilities
+uuid = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }
