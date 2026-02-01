@@ -109,7 +109,11 @@ impl MessagesPopupService {
             icon_data: None,
         };
 
-        if let Err(e) = self.sender.send(DbusCommand::NotificationReceived(data)).await {
+        if let Err(e) = self
+            .sender
+            .send(DbusCommand::NotificationReceived(data))
+            .await
+        {
             error!("Failed to send notification to app: {}", e);
         }
     }
@@ -241,9 +245,7 @@ impl MessagesPopupClient {
         )
         .await?;
 
-        proxy
-            .call_method("OpenMessenger", &(messenger_id,))
-            .await?;
+        proxy.call_method("OpenMessenger", &(messenger_id,)).await?;
 
         Ok(())
     }

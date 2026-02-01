@@ -107,14 +107,14 @@ use serde_json::json;
 use std::any::Any;
 use std::sync::Arc;
 use tokio::sync::{mpsc::Sender, Mutex};
-use tracing::{debug, info, warn};
 #[cfg(feature = "video")]
 use tracing::error;
+use tracing::{debug, info, warn};
 
 #[cfg(feature = "video")]
-use cosmic_connect_core::video::{CameraDaemon, CameraDaemonConfig, PixelFormat};
-#[cfg(feature = "video")]
 use cosmic_connect_core::plugins::camera::{CameraFrame as CoreCameraFrame, FrameType};
+#[cfg(feature = "video")]
+use cosmic_connect_core::video::{CameraDaemon, CameraDaemonConfig, PixelFormat};
 
 const PLUGIN_NAME: &str = "camera";
 const INCOMING_CAPABILITY: &str = "cconnect.camera";
@@ -362,7 +362,11 @@ impl CameraPlugin {
     /// This method should be called by the connection layer when payload data
     /// for a camera frame packet is received.
     #[cfg(feature = "video")]
-    pub async fn process_camera_frame_payload(&self, packet: &Packet, payload: Vec<u8>) -> Result<()> {
+    pub async fn process_camera_frame_payload(
+        &self,
+        packet: &Packet,
+        payload: Vec<u8>,
+    ) -> Result<()> {
         self.handle_camera_frame_with_payload(packet, payload).await
     }
 
@@ -494,11 +498,10 @@ impl CameraPlugin {
         #[cfg(feature = "video")]
         {
             // Extract frame metadata from packet body
-            let frame = CoreCameraFrame::from_packet(packet)
-                .map_err(|e| {
-                    warn!("Failed to parse camera frame packet: {}", e);
-                    e
-                })?;
+            let frame = CoreCameraFrame::from_packet(packet).map_err(|e| {
+                warn!("Failed to parse camera frame packet: {}", e);
+                e
+            })?;
 
             debug!(
                 "Camera frame: type={:?}, seq={}, size={}, timestamp={}us",
@@ -537,7 +540,11 @@ impl CameraPlugin {
 
     /// Handle incoming camera frame with payload data
     #[cfg(feature = "video")]
-    async fn handle_camera_frame_with_payload(&self, packet: &Packet, payload: Vec<u8>) -> Result<()> {
+    async fn handle_camera_frame_with_payload(
+        &self,
+        packet: &Packet,
+        payload: Vec<u8>,
+    ) -> Result<()> {
         // Parse frame metadata
         let frame = CoreCameraFrame::from_packet(packet)?;
 
@@ -596,13 +603,14 @@ impl Plugin for CameraPlugin {
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
-        vec![
-            OUTGOING_CAPABILITY.to_string(),
-            CAMERA_REQUEST.to_string(),
-        ]
+        vec![OUTGOING_CAPABILITY.to_string(), CAMERA_REQUEST.to_string()]
     }
 
-    async fn init(&mut self, device: &Device, packet_sender: Sender<(String, Packet)>) -> Result<()> {
+    async fn init(
+        &mut self,
+        device: &Device,
+        packet_sender: Sender<(String, Packet)>,
+    ) -> Result<()> {
         self.device_id = Some(device.id().to_string());
         self.packet_sender = Some(packet_sender);
         info!("Camera plugin initialized for device {}", device.name());
@@ -677,10 +685,7 @@ impl PluginFactory for CameraPluginFactory {
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
-        vec![
-            OUTGOING_CAPABILITY.to_string(),
-            CAMERA_REQUEST.to_string(),
-        ]
+        vec![OUTGOING_CAPABILITY.to_string(), CAMERA_REQUEST.to_string()]
     }
 
     fn create(&self) -> Box<dyn Plugin> {
@@ -848,12 +853,7 @@ mod tests {
 
     #[test]
     fn test_create_start_request() {
-        let packet = create_camera_start_request(
-            "camera-0",
-            "1280x720",
-            30,
-            CameraQuality::Medium,
-        );
+        let packet = create_camera_start_request("camera-0", "1280x720", 30, CameraQuality::Medium);
 
         assert_eq!(packet.packet_type, "cconnect.camera.request");
         assert_eq!(
@@ -908,12 +908,7 @@ mod tests {
         plugin.start().await.unwrap();
 
         let mut device = create_test_device();
-        let packet = create_camera_start_request(
-            "camera-0",
-            "1920x1080",
-            30,
-            CameraQuality::High,
-        );
+        let packet = create_camera_start_request("camera-0", "1920x1080", 30, CameraQuality::High);
 
         plugin.handle_packet(&packet, &mut device).await.unwrap();
 

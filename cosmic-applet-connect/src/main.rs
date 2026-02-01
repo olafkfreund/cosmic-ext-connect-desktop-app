@@ -433,9 +433,9 @@ struct CConnectApplet {
     // Pinned devices config
     pinned_devices_config: pinned_devices_config::PinnedDevicesConfig,
     // Camera state
-    camera_settings_device: Option<String>,              // device_id showing Camera settings
-    camera_stats: HashMap<String, CameraStats>,          // device_id -> stream statistics
-    v4l2loopback_available: bool,                        // Whether v4l2loopback kernel module is loaded
+    camera_settings_device: Option<String>, // device_id showing Camera settings
+    camera_stats: HashMap<String, CameraStats>, // device_id -> stream statistics
+    v4l2loopback_available: bool,           // Whether v4l2loopback kernel module is loaded
     // Onboarding state
     #[allow(dead_code)]
     show_onboarding: bool,
@@ -448,9 +448,9 @@ struct CConnectApplet {
     open_url_dialog_device: Option<String>, // device_id showing open URL dialog
     open_url_input: String,                 // URL input field
     // SMS dialog state
-    sms_dialog_device: Option<String>,      // device_id showing SMS dialog
-    sms_phone_number_input: String,         // Phone number input field
-    sms_message_input: String,              // Message body input field
+    sms_dialog_device: Option<String>, // device_id showing SMS dialog
+    sms_phone_number_input: String,    // Phone number input field
+    sms_message_input: String,         // Message body input field
 }
 
 /// Active screen share session information
@@ -589,26 +589,26 @@ enum Message {
     MprisAlbumArtLoaded(String, cosmic::iced::widget::image::Handle),
 
     // Camera streaming controls
-    ToggleCameraStreaming(String),         // device_id
-    SelectCamera(String, u32),             // device_id, camera_id
-    SelectCameraResolution(String, String), // device_id, resolution ("480p", "720p", "1080p")
+    ToggleCameraStreaming(String),           // device_id
+    SelectCamera(String, u32),               // device_id, camera_id
+    SelectCameraResolution(String, String),  // device_id, resolution ("480p", "720p", "1080p")
     CameraStatsUpdated(String, CameraStats), // device_id, stats
 
     // System Volume controls
-    SetDeviceVolume(String, f64),  // device_id, volume (0.0-1.0)
-    
+    SetDeviceVolume(String, f64), // device_id, volume (0.0-1.0)
+
     // System Monitor
-    RequestSystemInfo(String),  // device_id
-    SystemInfoReceived(String, SystemInfo),  // device_id, info
-    
+    RequestSystemInfo(String),              // device_id
+    SystemInfoReceived(String, SystemInfo), // device_id, info
+
     // Screenshot
-    TakeScreenshot(String),  // device_id
-    ScreenshotReceived(String, Vec<u8>),  // device_id, image data
+    TakeScreenshot(String),              // device_id
+    ScreenshotReceived(String, Vec<u8>), // device_id, image data
 
     // Power Control
-    LockDevice(String),  // device_id
-    PowerAction(String, String),  // device_id, action ("shutdown", "hibernate", "suspend")
-    WakeDevice(String),  // device_id
+    LockDevice(String),          // device_id
+    PowerAction(String, String), // device_id, action ("shutdown", "hibernate", "suspend")
+    WakeDevice(String),          // device_id
 
     // Renaming
     StartRenaming(String), // device_id
@@ -654,7 +654,7 @@ enum Message {
     ShowNotification(String, NotificationType, Option<(String, Box<Message>)>),
     // Help dialog
     ToggleKeyboardShortcutsHelp,
-    OpenManager, // Launch standalone manager window
+    OpenManager,           // Launch standalone manager window
     LaunchManager(String), // Launch manager with device_id pre-selected
     // Pinned devices
     ToggleDevicePin(String), // device_id
@@ -695,23 +695,26 @@ enum Message {
     ShowMprisTrackInfo, // Show notification with track info
     RaiseMprisPlayer,   // Bring player window to front
     // Screen share control
-    ScreenShareStarted(String, bool),     // device_id, is_sender
-    ScreenShareStopped(String),           // device_id
-    StopScreenShare(String),              // device_id - user action to stop sharing
-    ScreenShareStatsUpdated { device_id: String, viewer_count: u32 },
-    PauseScreenShare(String),             // device_id - user action to pause sharing
-    ResumeScreenShare(String),            // device_id - user action to resume sharing
-    SetScreenShareQuality(String),        // quality preset: "low", "medium", "high"
-    SetScreenShareFps(u8),                // fps: 15, 30, or 60
+    ScreenShareStarted(String, bool), // device_id, is_sender
+    ScreenShareStopped(String),       // device_id
+    StopScreenShare(String),          // device_id - user action to stop sharing
+    ScreenShareStatsUpdated {
+        device_id: String,
+        viewer_count: u32,
+    },
+    PauseScreenShare(String),  // device_id - user action to pause sharing
+    ResumeScreenShare(String), // device_id - user action to resume sharing
+    SetScreenShareQuality(String), // quality preset: "low", "medium", "high"
+    SetScreenShareFps(u8),     // fps: 15, 30, or 60
     ToggleScreenShareAudio(String, bool), // device_id, include_audio - toggle audio in screen share
     // Audio Stream events
-    ToggleAudioStream(String),    // device_id - toggle audio streaming on/off
-    AudioStreamStarted(String),   // device_id - audio stream started
-    AudioStreamStopped(String),   // device_id - audio stream stopped
+    ToggleAudioStream(String),  // device_id - toggle audio streaming on/off
+    AudioStreamStarted(String), // device_id - audio stream started
+    AudioStreamStopped(String), // device_id - audio stream stopped
     // Presenter mode events
-    TogglePresenterMode(String),  // device_id - toggle presenter mode on/off
-    PresenterStarted(String),     // device_id - presenter mode started
-    PresenterStopped(String),     // device_id - presenter mode stopped
+    TogglePresenterMode(String), // device_id - toggle presenter mode on/off
+    PresenterStarted(String),    // device_id - presenter mode started
+    PresenterStopped(String),    // device_id - presenter mode stopped
     // File Transfer events
     TransferProgress(
         String,
@@ -738,17 +741,17 @@ enum Message {
     ShowCameraSettings(String), // device_id
     CloseCameraSettings,
     // App Continuity (Open plugin)
-    ShowOpenUrlDialog(String),      // device_id
-    OpenUrlInput(String),           // url input text
-    OpenOnPhone(String, String),    // device_id, url
+    ShowOpenUrlDialog(String),   // device_id
+    OpenUrlInput(String),        // url input text
+    OpenOnPhone(String, String), // device_id, url
     CancelOpenUrlDialog,
     // Telephony and SMS
-    MuteCall(String),                       // device_id
-    ShowSmsDialog(String),                  // device_id
+    MuteCall(String),      // device_id
+    ShowSmsDialog(String), // device_id
     CancelSmsDialog,
-    UpdateSmsPhoneNumberInput(String),      // phone number text
-    UpdateSmsMessageInput(String),          // message body text
-    SendSms(String, String, String),        // device_id, phone_number, message
+    UpdateSmsPhoneNumberInput(String), // phone number text
+    UpdateSmsMessageInput(String),     // message body text
+    SendSms(String, String, String),   // device_id, phone_number, message
     // Animation
     Tick(std::time::Instant),
     // Recursive loop
@@ -1386,11 +1389,7 @@ impl cosmic::Application for CConnectApplet {
                             }
                             Err(err) => {
                                 tracing::error!("Failed to open URL: {}", err);
-                                Message::ShowNotification(
-                                    err,
-                                    NotificationType::Error,
-                                    None,
-                                )
+                                Message::ShowNotification(err, NotificationType::Error, None)
                             }
                         })
                     },
@@ -1468,7 +1467,9 @@ impl cosmic::Application for CConnectApplet {
                     async move {
                         match DbusClient::connect().await {
                             Ok((client, _)) => {
-                                if let Err(e) = client.send_sms(&device_id, &phone_number, &message).await {
+                                if let Err(e) =
+                                    client.send_sms(&device_id, &phone_number, &message).await
+                                {
                                     tracing::error!("Failed to send SMS: {:?}", e);
                                     return Message::OperationFailed(
                                         device_id.clone(),
@@ -2425,7 +2426,9 @@ impl cosmic::Application for CConnectApplet {
                         share.fps = fps;
                         // Note: FPS changes require stopping and restarting the share
                         self.notification = Some(AppNotification {
-                            message: "FPS setting updated. Stop and restart sharing to apply changes.".to_string(),
+                            message:
+                                "FPS setting updated. Stop and restart sharing to apply changes."
+                                    .to_string(),
                             kind: NotificationType::Info,
                             action: None,
                         });
@@ -2535,21 +2538,23 @@ impl cosmic::Application for CConnectApplet {
             Message::TransferProgress(tid, device_id, filename, cur, tot, dir) => {
                 let now = std::time::Instant::now();
                 let entry = self.active_transfers.entry(tid.clone());
-                entry.and_modify(|state| {
-                    state.last_bytes = state.current;
-                    state.current = cur;
-                    state.total = tot;
-                    state.last_update = now;
-                }).or_insert_with(|| TransferState {
-                    device_id,
-                    filename,
-                    current: cur,
-                    total: tot,
-                    direction: dir,
-                    started_at: now,
-                    last_update: now,
-                    last_bytes: 0,
-                });
+                entry
+                    .and_modify(|state| {
+                        state.last_bytes = state.current;
+                        state.current = cur;
+                        state.total = tot;
+                        state.last_update = now;
+                    })
+                    .or_insert_with(|| TransferState {
+                        device_id,
+                        filename,
+                        current: cur,
+                        total: tot,
+                        direction: dir,
+                        started_at: now,
+                        last_update: now,
+                        last_bytes: 0,
+                    });
                 Task::none()
             }
             Message::TransferComplete(tid, device_id, filename, success, _error) => {
@@ -3006,7 +3011,6 @@ impl CConnectApplet {
             .into()
     }
 
-
     /// Formats a duration into a human-readable relative time string.
     fn format_elapsed(elapsed: std::time::Duration) -> String {
         let secs = elapsed.as_secs();
@@ -3082,10 +3086,10 @@ impl CConnectApplet {
 
         let bytes_transferred = state.current;
         let bytes_remaining = state.total.saturating_sub(state.current);
-        
+
         // Calculate speed based on total elapsed time
         let speed = bytes_transferred as f64 / elapsed.as_secs_f64();
-        
+
         if speed < 1.0 {
             return Some("Calculating...".to_string());
         }
@@ -3095,12 +3099,19 @@ impl CConnectApplet {
         match seconds_remaining {
             0 => Some("Almost done".to_string()),
             1..=59 => Some(format!("{}s left", seconds_remaining)),
-            60..=3599 => Some(format!("{}m {}s left", seconds_remaining / 60, seconds_remaining % 60)),
-            3600..=86399 => Some(format!("{}h {}m left", seconds_remaining / 3600, (seconds_remaining % 3600) / 60)),
+            60..=3599 => Some(format!(
+                "{}m {}s left",
+                seconds_remaining / 60,
+                seconds_remaining % 60
+            )),
+            3600..=86399 => Some(format!(
+                "{}h {}m left",
+                seconds_remaining / 3600,
+                (seconds_remaining % 3600) / 60
+            )),
             _ => Some(format!("{}d left", seconds_remaining / 86400)),
         }
     }
-
 
     /// Records a received file in the history for display in the transfer queue view.
     fn record_received_file(&mut self, device_id: String, filename: String, success: bool) {
@@ -3211,14 +3222,14 @@ impl CConnectApplet {
                 let file_icon = Self::file_type_icon(&state.filename);
                 let file_size = Self::format_file_size(state.total);
                 let bytes_transferred = Self::format_file_size(state.current);
-                
+
                 // Build status text with size and time info
                 let mut status_text = if state.direction == "sending" {
                     format!("Sending: {} / {}", bytes_transferred, file_size)
                 } else {
                     format!("Receiving: {} / {}", bytes_transferred, file_size)
                 };
-                
+
                 // Add time estimate if available
                 if let Some(time_left) = Self::estimate_time_remaining(state) {
                     status_text.push_str(&format!(" · {}", time_left));
@@ -3381,10 +3392,7 @@ impl CConnectApplet {
                     } else {
                         format!("{} viewers", viewer_count)
                     };
-                    (
-                        format!("Sharing screen to {}", device_name),
-                        viewer_text,
-                    )
+                    (format!("Sharing screen to {}", device_name), viewer_text)
                 }
             } else {
                 (
@@ -3554,7 +3562,8 @@ impl CConnectApplet {
                 column![
                     row![
                         cosmic::widget::text::body("Escape").width(Length::FillPortion(2)),
-                        cosmic::widget::text::body("Close dialogs/overlays").width(Length::FillPortion(3)),
+                        cosmic::widget::text::body("Close dialogs/overlays")
+                            .width(Length::FillPortion(3)),
                     ]
                     .spacing(SPACE_S),
                     row![
@@ -3569,7 +3578,8 @@ impl CConnectApplet {
                     .spacing(SPACE_S),
                     row![
                         cosmic::widget::text::body("Ctrl+,").width(Length::FillPortion(2)),
-                        cosmic::widget::text::body("Toggle device settings").width(Length::FillPortion(3)),
+                        cosmic::widget::text::body("Toggle device settings")
+                            .width(Length::FillPortion(3)),
                     ]
                     .spacing(SPACE_S),
                     row![
@@ -3581,17 +3591,20 @@ impl CConnectApplet {
                     cosmic::widget::text::title4("Navigation"),
                     row![
                         cosmic::widget::text::body("Tab / Shift+Tab").width(Length::FillPortion(2)),
-                        cosmic::widget::text::body("Next/Previous element").width(Length::FillPortion(3)),
+                        cosmic::widget::text::body("Next/Previous element")
+                            .width(Length::FillPortion(3)),
                     ]
                     .spacing(SPACE_S),
                     row![
                         cosmic::widget::text::body("Arrow Keys").width(Length::FillPortion(2)),
-                        cosmic::widget::text::body("Navigate elements").width(Length::FillPortion(3)),
+                        cosmic::widget::text::body("Navigate elements")
+                            .width(Length::FillPortion(3)),
                     ]
                     .spacing(SPACE_S),
                     row![
                         cosmic::widget::text::body("Enter / Space").width(Length::FillPortion(2)),
-                        cosmic::widget::text::body("Activate focused element").width(Length::FillPortion(3)),
+                        cosmic::widget::text::body("Activate focused element")
+                            .width(Length::FillPortion(3)),
                     ]
                     .spacing(SPACE_S),
                 ]
@@ -3686,7 +3699,6 @@ impl CConnectApplet {
         if let Some(device_id) = &self.sms_dialog_device {
             return self.sms_dialog_view(device_id);
         }
-
 
         // Settings overrides
         if let Some(device_id) = &self.remotedesktop_settings_device {
@@ -3852,8 +3864,12 @@ impl CConnectApplet {
 
             // Sort each category: pinned devices first
             let sort_by_pinned = |a: &&DeviceState, b: &&DeviceState| {
-                let a_pinned = self.pinned_devices_config.is_pinned(&a.device.info.device_id);
-                let b_pinned = self.pinned_devices_config.is_pinned(&b.device.info.device_id);
+                let a_pinned = self
+                    .pinned_devices_config
+                    .is_pinned(&a.device.info.device_id);
+                let b_pinned = self
+                    .pinned_devices_config
+                    .is_pinned(&b.device.info.device_id);
                 match (a_pinned, b_pinned) {
                     (true, false) => std::cmp::Ordering::Less,
                     (false, true) => std::cmp::Ordering::Greater,
@@ -4217,7 +4233,7 @@ impl CConnectApplet {
         } else {
             // Show helper text when not streaming
             let helper_text = cosmic::widget::text::caption(
-                "Toggle to use phone camera as webcam (/dev/video10)"
+                "Toggle to use phone camera as webcam (/dev/video10)",
             );
             content_col = content_col.push(helper_text);
         }
@@ -4385,7 +4401,11 @@ impl CConnectApplet {
                 .on_press(Message::ToggleDevicePin(device_id.to_string()))
                 .padding(SPACE_XXS)
                 .class(cosmic::theme::Button::Icon),
-            if is_pinned { "Unpin device" } else { "Pin device" },
+            if is_pinned {
+                "Unpin device"
+            } else {
+                "Pin device"
+            },
             cosmic::widget::tooltip::Position::Bottom,
         );
 
@@ -4460,7 +4480,6 @@ impl CConnectApplet {
                 ])),
             );
         }
-
 
         // Add context menu if open for this device
         if self.context_menu_device.as_ref() == Some(device_id) {
@@ -4636,43 +4655,44 @@ impl CConnectApplet {
                 ));
             }
 
-
             // Audio Stream toggle button
             if device.has_incoming_capability("cconnect.audiostream") {
                 let is_streaming = self.audio_streaming_devices.contains(device_id);
 
-            // Telephony - Mute Call button
-            if device.has_incoming_capability("cconnect.telephony") {
-                let is_muting = self
-                    .pending_operations
-                    .contains(&(device_id.to_string(), OperationType::MuteCall));
-                actions = actions.push(action_button_with_tooltip_loading(
-                    "audio-volume-muted-symbolic",
-                    "Mute incoming call",
-                    Message::MuteCall(device_id.to_string()),
-                    is_muting,
-                ));
-            }
+                // Telephony - Mute Call button
+                if device.has_incoming_capability("cconnect.telephony") {
+                    let is_muting = self
+                        .pending_operations
+                        .contains(&(device_id.to_string(), OperationType::MuteCall));
+                    actions = actions.push(action_button_with_tooltip_loading(
+                        "audio-volume-muted-symbolic",
+                        "Mute incoming call",
+                        Message::MuteCall(device_id.to_string()),
+                        is_muting,
+                    ));
+                }
 
-            // SMS button
-            if device.has_incoming_capability("cconnect.sms") {
-                actions = actions.push(action_button_with_tooltip(
-                    "mail-message-new-symbolic",
-                    "Send SMS",
-                    Message::ShowSmsDialog(device_id.to_string()),
-                ));
-            }
+                // SMS button
+                if device.has_incoming_capability("cconnect.sms") {
+                    actions = actions.push(action_button_with_tooltip(
+                        "mail-message-new-symbolic",
+                        "Send SMS",
+                        Message::ShowSmsDialog(device_id.to_string()),
+                    ));
+                }
                 actions = actions.push(
-                    cosmic::widget::button::icon(
-                        if is_streaming {
-                            cosmic::widget::icon::from_name("audio-volume-high-symbolic").size(16)
-                        } else {
-                            cosmic::widget::icon::from_name("audio-volume-muted-symbolic").size(16)
-                        }
-                    )
+                    cosmic::widget::button::icon(if is_streaming {
+                        cosmic::widget::icon::from_name("audio-volume-high-symbolic").size(16)
+                    } else {
+                        cosmic::widget::icon::from_name("audio-volume-muted-symbolic").size(16)
+                    })
                     .on_press(Message::ToggleAudioStream(device_id.to_string()))
                     .padding(SPACE_XXS)
-                    .tooltip(if is_streaming { "Stop audio streaming" } else { "Start audio streaming" })
+                    .tooltip(if is_streaming {
+                        "Stop audio streaming"
+                    } else {
+                        "Start audio streaming"
+                    }),
                 );
             }
 
@@ -4680,16 +4700,18 @@ impl CConnectApplet {
             if device.has_incoming_capability("cconnect.presenter") {
                 let is_presenting = self.presenter_mode_devices.contains(device_id);
                 actions = actions.push(
-                    cosmic::widget::button::icon(
-                        if is_presenting {
-                            cosmic::widget::icon::from_name("x11-cursor-symbolic").size(16)
-                        } else {
-                            cosmic::widget::icon::from_name("input-touchpad-symbolic").size(16)
-                        }
-                    )
+                    cosmic::widget::button::icon(if is_presenting {
+                        cosmic::widget::icon::from_name("x11-cursor-symbolic").size(16)
+                    } else {
+                        cosmic::widget::icon::from_name("input-touchpad-symbolic").size(16)
+                    })
                     .on_press(Message::TogglePresenterMode(device_id.to_string()))
                     .padding(SPACE_XXS)
-                    .tooltip(if is_presenting { "Stop presenter mode" } else { "Start presenter mode" })
+                    .tooltip(if is_presenting {
+                        "Stop presenter mode"
+                    } else {
+                        "Start presenter mode"
+                    }),
                 );
             }
             // Battery refresh button
@@ -5278,13 +5300,16 @@ impl CConnectApplet {
             .align_y(Alignment::Center),
             divider::horizontal::default(),
             text::caption(format!("Send a URL to open on {}", device_name)),
-            text_input("Enter URL (http://, https://, tel:, mailto:, etc.)", &self.open_url_input)
-                .on_input(Message::OpenUrlInput)
-                .on_submit({
-                    let url = self.open_url_input.clone();
-                    let id = device_id.to_string();
-                    move |_| Message::OpenOnPhone(id.clone(), url.clone())
-                }),
+            text_input(
+                "Enter URL (http://, https://, tel:, mailto:, etc.)",
+                &self.open_url_input
+            )
+            .on_input(Message::OpenUrlInput)
+            .on_submit({
+                let url = self.open_url_input.clone();
+                let id = device_id.to_string();
+                move |_| Message::OpenOnPhone(id.clone(), url.clone())
+            }),
             row![
                 button::text("Cancel")
                     .on_press(Message::CancelOpenUrlDialog)
@@ -5621,8 +5646,13 @@ impl CConnectApplet {
         .align_y(cosmic::iced::Alignment::Center);
 
         // Build content
-        let mut content = column![header, divider::horizontal::default(), camera_row, resolution_row]
-            .spacing(SPACE_M);
+        let mut content = column![
+            header,
+            divider::horizontal::default(),
+            camera_row,
+            resolution_row
+        ]
+        .spacing(SPACE_M);
 
         // Statistics section (only show when streaming)
         if is_streaming {
@@ -6011,9 +6041,9 @@ impl CConnectApplet {
                         FocusTarget::Search,
                     ))),
                     "," => match self.get_settings_device_id() {
-                        Some(id) => cosmic::task::message(cosmic::Action::App(
-                            Message::LaunchManager(id),
-                        )),
+                        Some(id) => {
+                            cosmic::task::message(cosmic::Action::App(Message::LaunchManager(id)))
+                        }
                         None => {
                             cosmic::task::message(cosmic::Action::App(Message::ShowNotification(
                                 "No paired devices available".into(),

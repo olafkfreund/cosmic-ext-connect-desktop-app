@@ -116,9 +116,7 @@ impl WebViewManager {
 
     /// Get the current context
     pub fn current_context(&self) -> Option<&WebViewContext> {
-        self.current
-            .as_ref()
-            .and_then(|id| self.contexts.get(id))
+        self.current.as_ref().and_then(|id| self.contexts.get(id))
     }
 
     /// Get the current context mutably
@@ -162,8 +160,7 @@ impl WebViewManager {
     pub fn clear_data(&mut self, messenger_id: &str) -> Result<()> {
         if let Some(ctx) = self.contexts.get(messenger_id) {
             if ctx.data_dir.exists() {
-                std::fs::remove_dir_all(&ctx.data_dir)
-                    .context("Failed to clear WebView data")?;
+                std::fs::remove_dir_all(&ctx.data_dir).context("Failed to clear WebView data")?;
                 info!("Cleared WebView data for {}", messenger_id);
             }
         }

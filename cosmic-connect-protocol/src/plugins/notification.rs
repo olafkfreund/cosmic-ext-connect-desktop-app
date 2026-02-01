@@ -677,7 +677,7 @@ impl Notification {
     /// assert!(notif.get_image_bytes().is_some());
     /// ```
     pub fn get_image_bytes(&self) -> Option<Vec<u8>> {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         self.image_data
             .as_ref()
@@ -693,7 +693,7 @@ impl Notification {
     ///
     /// Decodes base64 video thumbnail data if present.
     pub fn get_video_thumbnail_bytes(&self) -> Option<Vec<u8>> {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         self.video_thumbnail
             .as_ref()
@@ -752,7 +752,7 @@ impl Notification {
     /// assert!(notif.get_app_icon_bytes().is_some());
     /// ```
     pub fn get_app_icon_bytes(&self) -> Option<Vec<u8>> {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         self.app_icon
             .as_ref()
@@ -971,7 +971,11 @@ impl NotificationPlugin {
     /// assert_eq!(packet.body["key"], "desktop-App-123");
     /// assert_eq!(packet.body["action"], "reply");
     /// ```
-    pub fn create_action_invocation_packet(&self, notification_id: &str, action_id: &str) -> Packet {
+    pub fn create_action_invocation_packet(
+        &self,
+        notification_id: &str,
+        action_id: &str,
+    ) -> Packet {
         let body = json!({
             "key": notification_id,
             "action": action_id
@@ -1058,7 +1062,7 @@ impl NotificationPlugin {
         category: Option<&str>,
         app_icon: Option<&[u8]>,
     ) -> Packet {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         // Generate unique ID from app name and timestamp
         let id = format!("desktop-{}-{}", app_name, timestamp);
@@ -1094,7 +1098,12 @@ impl NotificationPlugin {
 
         // Extract action labels for backward compatibility
         let action_labels = if !actions.is_empty() {
-            Some(actions.iter().map(|(_, label)| label.clone()).collect::<Vec<_>>())
+            Some(
+                actions
+                    .iter()
+                    .map(|(_, label)| label.clone())
+                    .collect::<Vec<_>>(),
+            )
         } else {
             None
         };
@@ -1696,7 +1705,7 @@ mod tests {
 
     #[test]
     fn test_rich_notification_creation() {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         let mut notif = Notification::new("123", "App", "Title", "Text", true);
         notif.rich_body = Some("<b>Bold</b> and <i>italic</i> text".to_string());
@@ -1715,12 +1724,17 @@ mod tests {
 
     #[test]
     fn test_rich_notification_serialization() {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         let mut notif = Notification::new("123", "App", "Title", "Text", true);
         notif.rich_body = Some("<b>Bold</b> text".to_string());
         notif.image_data = Some(general_purpose::STANDARD.encode(b"fake image"));
-        notif.links = Some(vec![NotificationLink::new("https://example.com", None::<String>, 0, 10)]);
+        notif.links = Some(vec![NotificationLink::new(
+            "https://example.com",
+            None::<String>,
+            0,
+            10,
+        )]);
         notif.video_thumbnail = Some(general_purpose::STANDARD.encode(b"fake thumbnail"));
 
         let json = serde_json::to_value(&notif).unwrap();
@@ -1737,7 +1751,7 @@ mod tests {
 
     #[test]
     fn test_notification_image_decoding() {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         let mut notif = Notification::new("123", "App", "Title", "Text", true);
         let image_data = b"fake image data";
@@ -1749,7 +1763,7 @@ mod tests {
 
     #[test]
     fn test_notification_sender_avatar_fallback() {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         let mut notif = Notification::new("123", "App", "Title", "Text", true);
         let avatar_data = b"avatar data";
@@ -1762,7 +1776,7 @@ mod tests {
 
     #[test]
     fn test_notification_video_thumbnail_decoding() {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         let mut notif = Notification::new("123", "App", "Title", "Text", true);
         let thumbnail_data = b"thumbnail data";
@@ -1802,13 +1816,18 @@ mod tests {
         notif.links = Some(vec![]);
         assert!(!notif.has_links());
 
-        notif.links = Some(vec![NotificationLink::new("https://example.com", None::<String>, 0, 10)]);
+        notif.links = Some(vec![NotificationLink::new(
+            "https://example.com",
+            None::<String>,
+            0,
+            10,
+        )]);
         assert!(notif.has_links());
     }
 
     #[tokio::test]
     async fn test_handle_rich_notification() {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         let mut plugin = NotificationPlugin::new();
         let device = create_test_device();
@@ -1817,19 +1836,30 @@ mod tests {
             .await
             .unwrap();
 
-        let mut notif = Notification::new("123", "WhatsApp", "New Message", "Check this out!", true);
-        notif.rich_body = Some("<b>Important:</b> Check <a href=\"https://example.com\">this link</a>".to_string());
+        let mut notif =
+            Notification::new("123", "WhatsApp", "New Message", "Check this out!", true);
+        notif.rich_body = Some(
+            "<b>Important:</b> Check <a href=\"https://example.com\">this link</a>".to_string(),
+        );
         notif.image_data = Some(general_purpose::STANDARD.encode(b"image data"));
-        notif.links = Some(vec![
-            NotificationLink::new("https://example.com", Some("Link"), 20, 4),
-        ]);
+        notif.links = Some(vec![NotificationLink::new(
+            "https://example.com",
+            Some("Link"),
+            20,
+            4,
+        )]);
 
         let packet = plugin.create_notification_packet(&notif);
         let mut device = create_test_device();
         plugin.handle_packet(&packet, &mut device).await.unwrap();
 
         let stored = plugin.get_notification("123").unwrap();
-        assert_eq!(stored.rich_body, Some("<b>Important:</b> Check <a href=\"https://example.com\">this link</a>".to_string()));
+        assert_eq!(
+            stored.rich_body,
+            Some(
+                "<b>Important:</b> Check <a href=\"https://example.com\">this link</a>".to_string()
+            )
+        );
         assert!(stored.has_rich_content());
         assert!(stored.has_image());
         assert!(stored.has_links());
@@ -1890,7 +1920,7 @@ mod tests {
 
     #[test]
     fn test_create_desktop_notification_packet_with_image() {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         let image_data = b"fake image data";
         let packet = NotificationPlugin::create_desktop_notification_packet(
@@ -1948,7 +1978,7 @@ mod tests {
 
     #[test]
     fn test_create_desktop_notification_packet_complete() {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         let image_data = b"image bytes";
         let app_icon_data = b"icon bytes";
@@ -1995,9 +2025,18 @@ mod tests {
         assert_eq!(NotificationUrgency::Critical.to_byte(), 2);
 
         assert_eq!(NotificationUrgency::from_byte(0), NotificationUrgency::Low);
-        assert_eq!(NotificationUrgency::from_byte(1), NotificationUrgency::Normal);
-        assert_eq!(NotificationUrgency::from_byte(2), NotificationUrgency::Critical);
-        assert_eq!(NotificationUrgency::from_byte(99), NotificationUrgency::Normal);
+        assert_eq!(
+            NotificationUrgency::from_byte(1),
+            NotificationUrgency::Normal
+        );
+        assert_eq!(
+            NotificationUrgency::from_byte(2),
+            NotificationUrgency::Critical
+        );
+        assert_eq!(
+            NotificationUrgency::from_byte(99),
+            NotificationUrgency::Normal
+        );
     }
 
     #[test]
@@ -2042,7 +2081,7 @@ mod tests {
 
     #[test]
     fn test_notification_get_app_icon_bytes() {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         let mut notif = Notification::new("1", "App", "Title", "Text", true);
         let icon_data = b"icon bytes";
@@ -2066,7 +2105,7 @@ mod tests {
 
     #[test]
     fn test_notification_extended_fields_serialization() {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
 
         let mut notif = Notification::new("123", "App", "Title", "Text", true);
         notif.urgency = Some(2);

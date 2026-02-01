@@ -73,10 +73,12 @@ impl PipeWireStream {
         pw::init();
 
         // Create main loop
-        let mainloop = MainLoop::new(None)
-            .map_err(|e| crate::error::DisplayStreamError::PipeWire(
-                format!("Failed to create PipeWire main loop: {}", e)
-            ))?;
+        let mainloop = MainLoop::new(None).map_err(|e| {
+            crate::error::DisplayStreamError::PipeWire(format!(
+                "Failed to create PipeWire main loop: {}",
+                e
+            ))
+        })?;
 
         debug!("PipeWire main loop created");
 

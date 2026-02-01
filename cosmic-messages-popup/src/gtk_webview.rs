@@ -49,16 +49,14 @@ static GTK_SENDER: OnceLock<Sender<GtkCommand>> = OnceLock::new();
 /// Initialize GTK if not already initialized
 #[allow(dead_code)]
 pub fn ensure_gtk_init() -> Result<()> {
-    let initialized = GTK_INITIALIZED.get_or_init(|| {
-        match gtk::init() {
-            Ok(()) => {
-                info!("GTK initialized successfully");
-                true
-            }
-            Err(e) => {
-                error!("Failed to initialize GTK: {}", e);
-                false
-            }
+    let initialized = GTK_INITIALIZED.get_or_init(|| match gtk::init() {
+        Ok(()) => {
+            info!("GTK initialized successfully");
+            true
+        }
+        Err(e) => {
+            error!("Failed to initialize GTK: {}", e);
+            false
         }
     });
 
@@ -117,7 +115,13 @@ pub fn start_gtk_event_loop() -> JoinHandle<()> {
                                 debug!("Presenting existing window for {}", messenger_id);
                             } else {
                                 // Create new window
-                                match create_webview_window(&messenger_id, &url, &title, width, height) {
+                                match create_webview_window(
+                                    &messenger_id,
+                                    &url,
+                                    &title,
+                                    width,
+                                    height,
+                                ) {
                                     Ok((window, webview)) => {
                                         windows.insert(messenger_id.clone(), (window, webview));
                                         info!("Created WebView window for {}", messenger_id);
@@ -198,7 +202,10 @@ fn create_webview_window(
     if let Err(e) = std::fs::create_dir_all(&data_dir) {
         error!("Failed to create WebView data directory: {}", e);
     }
-    info!("WebView data directory for {}: {:?}", messenger_id, data_dir);
+    info!(
+        "WebView data directory for {}: {:?}",
+        messenger_id, data_dir
+    );
 
     // Create GTK window
     let window = gtk::Window::new(gtk::WindowType::Toplevel);
@@ -229,9 +236,7 @@ fn create_webview_window(
         .with_new_window_req_handler(|uri: String| {
             debug!("WebView requested new window: {}", uri);
             // Open OAuth/external links in default browser
-            if uri.contains("accounts.google.com")
-                || uri.contains("oauth")
-                || uri.contains("login")
+            if uri.contains("accounts.google.com") || uri.contains("oauth") || uri.contains("login")
             {
                 let _ = open::that(&uri);
                 return false; // Don't open in webview

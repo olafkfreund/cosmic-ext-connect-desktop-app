@@ -1407,7 +1407,10 @@ impl DbusClient {
     /// * `device_id` - Device ID
     /// * `resolution` - Resolution string (e.g., "480p", "720p", "1080p")
     pub async fn set_camera_resolution(&self, device_id: &str, resolution: &str) -> Result<()> {
-        info!("Setting camera resolution to {} for {}", resolution, device_id);
+        info!(
+            "Setting camera resolution to {} for {}",
+            resolution, device_id
+        );
         self.proxy
             .set_camera_resolution(device_id, resolution)
             .await

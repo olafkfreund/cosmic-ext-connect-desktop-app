@@ -83,8 +83,8 @@ impl NotificationBuilder {
 
         // Remove dangerous tags
         let dangerous = [
-            "script", "style", "iframe", "object", "embed", "link", "meta",
-            "html", "head", "body", "img", "video", "audio",
+            "script", "style", "iframe", "object", "embed", "link", "meta", "html", "head", "body",
+            "img", "video", "audio",
         ];
         for tag in dangerous {
             // Remove opening and closing tags
@@ -392,7 +392,9 @@ impl CosmicNotifier {
             text.to_string()
         };
 
-        let mut builder = NotificationBuilder::new(summary).icon("phone-symbolic").timeout(10000);
+        let mut builder = NotificationBuilder::new(summary)
+            .icon("phone-symbolic")
+            .timeout(10000);
 
         // Use rich body if available, otherwise plain text
         if let Some(html) = rich_body {
@@ -747,11 +749,7 @@ impl CosmicNotifier {
     ///
     /// Opens the URL in the default browser when a link action is triggered.
     #[allow(dead_code)]
-    pub async fn open_notification_link(
-        &self,
-        notification_id: u32,
-        link_url: &str,
-    ) -> Result<()> {
+    pub async fn open_notification_link(&self, notification_id: u32, link_url: &str) -> Result<()> {
         debug!(
             "Opening link from notification {}: {}",
             notification_id, link_url
@@ -936,7 +934,8 @@ mod tests {
     #[test]
     fn test_html_sanitization() {
         // Allowed tags
-        let safe = "<b>Bold</b> <i>Italic</i> <u>Underline</u> <a href=\"https://example.com\">Link</a>";
+        let safe =
+            "<b>Bold</b> <i>Italic</i> <u>Underline</u> <a href=\"https://example.com\">Link</a>";
         let sanitized = NotificationBuilder::sanitize_html(safe);
         assert!(sanitized.contains("<b>"));
         assert!(sanitized.contains("<i>"));
@@ -958,8 +957,7 @@ mod tests {
 
     #[test]
     fn test_rich_body_builder() {
-        let builder = NotificationBuilder::new("Test")
-            .rich_body("<b>Bold</b> and <i>italic</i>");
+        let builder = NotificationBuilder::new("Test").rich_body("<b>Bold</b> and <i>italic</i>");
 
         let params = builder.build();
         assert!(params.body.contains("<b>"));

@@ -122,20 +122,20 @@ impl TouchEvent {
         let x = self.x;
         let y = self.y;
         if !(0.0..=1.0).contains(&x) {
-            return Err(DisplayStreamError::Input(
-                format!("Invalid x coordinate: {x} (must be 0.0-1.0)")
-            ));
+            return Err(DisplayStreamError::Input(format!(
+                "Invalid x coordinate: {x} (must be 0.0-1.0)"
+            )));
         }
         if !(0.0..=1.0).contains(&y) {
-            return Err(DisplayStreamError::Input(
-                format!("Invalid y coordinate: {y} (must be 0.0-1.0)")
-            ));
+            return Err(DisplayStreamError::Input(format!(
+                "Invalid y coordinate: {y} (must be 0.0-1.0)"
+            )));
         }
         if let Some(pressure) = self.pressure {
             if !(0.0..=1.0).contains(&pressure) {
-                return Err(DisplayStreamError::Input(
-                    format!("Invalid pressure: {pressure} (must be 0.0-1.0)")
-                ));
+                return Err(DisplayStreamError::Input(format!(
+                    "Invalid pressure: {pressure} (must be 0.0-1.0)"
+                )));
             }
         }
         Ok(())
@@ -192,10 +192,7 @@ impl DisplayGeometry {
     /// Check if a desktop coordinate is within this display
     #[must_use]
     pub fn contains(&self, x: i32, y: i32) -> bool {
-        x >= self.offset.0
-            && x < self.right()
-            && y >= self.offset.1
-            && y < self.bottom()
+        x >= self.offset.0 && x < self.right() && y >= self.offset.1 && y < self.bottom()
     }
 }
 
@@ -261,11 +258,7 @@ impl InputHandler {
     ///
     /// * `display_offset` - New offset (x, y)
     /// * `display_size` - New size (width, height)
-    pub fn set_display_geometry(
-        &mut self,
-        display_offset: (i32, i32),
-        display_size: (u32, u32),
-    ) {
+    pub fn set_display_geometry(&mut self, display_offset: (i32, i32), display_size: (u32, u32)) {
         self.geometry = DisplayGeometry {
             offset: display_offset,
             size: display_size,
@@ -569,8 +562,7 @@ mod tests {
 
     #[test]
     fn test_touch_event_with_pressure() {
-        let event = TouchEvent::new(0.5, 0.5, TouchAction::Down, 0)
-            .with_pressure(0.8);
+        let event = TouchEvent::new(0.5, 0.5, TouchAction::Down, 0).with_pressure(0.8);
         assert_eq!(event.pressure, Some(0.8));
     }
 

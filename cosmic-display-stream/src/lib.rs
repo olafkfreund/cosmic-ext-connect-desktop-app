@@ -91,12 +91,14 @@ pub mod output;
 pub mod pipewire;
 pub mod streaming;
 
-pub use capture::{ScreenCapture, SessionState, VideoFrame, FrameStream};
-pub use encoder::{VideoEncoder, EncoderConfig, EncoderType, EncodedFrame};
+pub use capture::{FrameStream, ScreenCapture, SessionState, VideoFrame};
+pub use encoder::{EncodedFrame, EncoderConfig, EncoderType, VideoEncoder};
 pub use error::{DisplayStreamError, Result};
-pub use input::{InputHandler, TouchEvent, TouchAction, DesktopCoordinates, DisplayGeometry, InputStatistics};
+pub use input::{
+    DesktopCoordinates, DisplayGeometry, InputHandler, InputStatistics, TouchAction, TouchEvent,
+};
 pub use output::OutputInfo;
-pub use streaming::{StreamingServer, StreamConfig, TransportMode, ConnectionStats};
+pub use streaming::{ConnectionStats, StreamConfig, StreamingServer, TransportMode};
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -125,7 +127,14 @@ pub async fn check_requirements() -> bool {
 
     // Check for xdg-desktop-portal
     let portal_available = std::process::Command::new("gdbus")
-        .args(["introspect", "--session", "--dest", "org.freedesktop.portal.Desktop", "--object-path", "/org/freedesktop/portal/desktop"])
+        .args([
+            "introspect",
+            "--session",
+            "--dest",
+            "org.freedesktop.portal.Desktop",
+            "--object-path",
+            "/org/freedesktop/portal/desktop",
+        ])
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false);

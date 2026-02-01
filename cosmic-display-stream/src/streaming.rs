@@ -310,14 +310,15 @@ impl StreamingServer {
         let mut media_engine = MediaEngine::default();
 
         // Register H.264 codec
-        media_engine
-            .register_default_codecs()
-            .map_err(|e| DisplayStreamError::Streaming(format!("Failed to register codecs: {}", e)))?;
+        media_engine.register_default_codecs().map_err(|e| {
+            DisplayStreamError::Streaming(format!("Failed to register codecs: {}", e))
+        })?;
 
         // Create interceptor registry for RTCP feedback
         let mut registry = Registry::new();
-        registry = register_default_interceptors(registry, &mut media_engine)
-            .map_err(|e| DisplayStreamError::Streaming(format!("Failed to register interceptors: {}", e)))?;
+        registry = register_default_interceptors(registry, &mut media_engine).map_err(|e| {
+            DisplayStreamError::Streaming(format!("Failed to register interceptors: {}", e))
+        })?;
 
         // Build API
         let api = APIBuilder::new()
@@ -407,12 +408,7 @@ impl StreamingServer {
 
                         tokio::spawn(async move {
                             if let Err(e) = Self::handle_signaling_connection(
-                                stream,
-                                peer_addr,
-                                clients,
-                                api,
-                                config,
-                                server_id,
+                                stream, peer_addr, clients, api, config, server_id,
                             )
                             .await
                             {
@@ -551,20 +547,24 @@ impl StreamingServer {
                                 DisplayStreamError::Streaming(format!("Invalid offer: {}", e))
                             })?;
 
-                            peer_connection.set_remote_description(offer).await.map_err(|e| {
-                                DisplayStreamError::Streaming(format!(
-                                    "Failed to set remote description: {}",
-                                    e
-                                ))
-                            })?;
+                            peer_connection
+                                .set_remote_description(offer)
+                                .await
+                                .map_err(|e| {
+                                    DisplayStreamError::Streaming(format!(
+                                        "Failed to set remote description: {}",
+                                        e
+                                    ))
+                                })?;
 
                             // Create answer
-                            let answer = peer_connection.create_answer(None).await.map_err(|e| {
-                                DisplayStreamError::Streaming(format!(
-                                    "Failed to create answer: {}",
-                                    e
-                                ))
-                            })?;
+                            let answer =
+                                peer_connection.create_answer(None).await.map_err(|e| {
+                                    DisplayStreamError::Streaming(format!(
+                                        "Failed to create answer: {}",
+                                        e
+                                    ))
+                                })?;
 
                             // Set local description
                             peer_connection
@@ -592,12 +592,15 @@ impl StreamingServer {
                                 ..Default::default()
                             };
 
-                            peer_connection.add_ice_candidate(candidate).await.map_err(|e| {
-                                DisplayStreamError::Streaming(format!(
-                                    "Failed to add ICE candidate: {}",
-                                    e
-                                ))
-                            })?;
+                            peer_connection
+                                .add_ice_candidate(candidate)
+                                .await
+                                .map_err(|e| {
+                                    DisplayStreamError::Streaming(format!(
+                                        "Failed to add ICE candidate: {}",
+                                        e
+                                    ))
+                                })?;
                         }
                         Ok(other) => {
                             debug!("Received other message: {:?}", other);
@@ -631,10 +634,7 @@ impl StreamingServer {
     }
 
     /// Send a signaling message over WebSocket
-    async fn send_signaling_message<S>(
-        sender: &mut S,
-        msg: &SignalingMessage,
-    ) -> Result<()>
+    async fn send_signaling_message<S>(sender: &mut S, msg: &SignalingMessage) -> Result<()>
     where
         S: futures_util::SinkExt<Message> + Unpin,
         S::Error: std::fmt::Display,
@@ -700,7 +700,7 @@ impl StreamingServer {
                 version: 2,
                 padding: false,
                 extension: false,
-                marker: true, // End of frame
+                marker: true,     // End of frame
                 payload_type: 96, // H.264
                 sequence_number: *seq_num,
                 timestamp: *timestamp,
@@ -725,9 +725,10 @@ impl StreamingServer {
 
     /// Send an encoded frame to all connected clients
     pub async fn send_frame(&self, frame: EncodedFrame) -> Result<()> {
-        self.frame_tx.send(frame).await.map_err(|e| {
-            DisplayStreamError::Streaming(format!("Failed to queue frame: {}", e))
-        })?;
+        self.frame_tx
+            .send(frame)
+            .await
+            .map_err(|e| DisplayStreamError::Streaming(format!("Failed to queue frame: {}", e)))?;
         Ok(())
     }
 

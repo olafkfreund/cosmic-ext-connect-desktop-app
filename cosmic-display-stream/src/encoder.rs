@@ -200,9 +200,7 @@ impl VideoEncoder {
         })?;
 
         // Detect or use specified encoder
-        let encoder_type = config
-            .encoder_type
-            .unwrap_or_else(|| detect_best_encoder());
+        let encoder_type = config.encoder_type.unwrap_or_else(|| detect_best_encoder());
 
         info!(
             "Creating video encoder: {} ({}x{} @ {} fps, {} bps)",
@@ -367,9 +365,9 @@ impl VideoEncoder {
 
         info!("Starting video encoder pipeline");
 
-        self.pipeline.set_state(gst::State::Playing).map_err(|e| {
-            DisplayStreamError::Encoder(format!("Failed to start pipeline: {}", e))
-        })?;
+        self.pipeline
+            .set_state(gst::State::Playing)
+            .map_err(|e| DisplayStreamError::Encoder(format!("Failed to start pipeline: {}", e)))?;
 
         self.running = true;
         Ok(())
@@ -383,9 +381,9 @@ impl VideoEncoder {
 
         info!("Stopping video encoder pipeline");
 
-        self.pipeline.set_state(gst::State::Null).map_err(|e| {
-            DisplayStreamError::Encoder(format!("Failed to stop pipeline: {}", e))
-        })?;
+        self.pipeline
+            .set_state(gst::State::Null)
+            .map_err(|e| DisplayStreamError::Encoder(format!("Failed to stop pipeline: {}", e)))?;
 
         self.running = false;
         Ok(())
@@ -407,9 +405,8 @@ impl VideoEncoder {
         }
 
         // Create GStreamer buffer from frame data
-        let mut buffer = gst::Buffer::with_size(frame.len()).map_err(|e| {
-            DisplayStreamError::Encoder(format!("Failed to create buffer: {}", e))
-        })?;
+        let mut buffer = gst::Buffer::with_size(frame.len())
+            .map_err(|e| DisplayStreamError::Encoder(format!("Failed to create buffer: {}", e)))?;
 
         {
             let buffer_ref = buffer.get_mut().ok_or_else(|| {
@@ -420,16 +417,16 @@ impl VideoEncoder {
             buffer_ref.set_pts(gst::ClockTime::from_useconds(timestamp as u64));
 
             // Copy frame data
-            let mut map = buffer_ref.map_writable().map_err(|e| {
-                DisplayStreamError::Encoder(format!("Failed to map buffer: {}", e))
-            })?;
+            let mut map = buffer_ref
+                .map_writable()
+                .map_err(|e| DisplayStreamError::Encoder(format!("Failed to map buffer: {}", e)))?;
             map.copy_from_slice(frame);
         }
 
         // Push buffer to pipeline
-        self.appsrc.push_buffer(buffer).map_err(|e| {
-            DisplayStreamError::Encoder(format!("Failed to push buffer: {}", e))
-        })?;
+        self.appsrc
+            .push_buffer(buffer)
+            .map_err(|e| DisplayStreamError::Encoder(format!("Failed to push buffer: {}", e)))?;
 
         // Try to pull encoded frame
         self.pull_encoded_frame()
@@ -451,7 +448,10 @@ impl VideoEncoder {
     /// Pull an encoded frame from the pipeline
     fn pull_encoded_frame(&self) -> Result<Option<EncodedFrame>> {
         // Try to pull a sample with a short timeout
-        match self.appsink.try_pull_sample(gst::ClockTime::from_mseconds(1)) {
+        match self
+            .appsink
+            .try_pull_sample(gst::ClockTime::from_mseconds(1))
+        {
             Some(sample) => {
                 let buffer = sample.buffer().ok_or_else(|| {
                     DisplayStreamError::Encoder("Sample has no buffer".to_string())
@@ -461,19 +461,11 @@ impl VideoEncoder {
                     DisplayStreamError::Encoder(format!("Failed to map encoded buffer: {}", e))
                 })?;
 
-                let pts = buffer
-                    .pts()
-                    .map(|t| t.useconds() as i64)
-                    .unwrap_or(0);
-                let duration = buffer
-                    .duration()
-                    .map(|t| t.useconds() as i64)
-                    .unwrap_or(0);
+                let pts = buffer.pts().map(|t| t.useconds() as i64).unwrap_or(0);
+                let duration = buffer.duration().map(|t| t.useconds() as i64).unwrap_or(0);
 
                 // Check for keyframe flag
-                let is_keyframe = !buffer
-                    .flags()
-                    .contains(gst::BufferFlags::DELTA_UNIT);
+                let is_keyframe = !buffer.flags().contains(gst::BufferFlags::DELTA_UNIT);
 
                 Ok(Some(EncodedFrame {
                     data: map.to_vec(),

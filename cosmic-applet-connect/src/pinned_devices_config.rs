@@ -38,8 +38,8 @@ impl PinnedDevicesConfig {
         if config_path.exists() {
             let contents = fs::read_to_string(&config_path)
                 .context("Failed to read pinned devices config file")?;
-            let config: PinnedDevicesConfig = toml::from_str(&contents)
-                .context("Failed to parse pinned devices config file")?;
+            let config: PinnedDevicesConfig =
+                toml::from_str(&contents).context("Failed to parse pinned devices config file")?;
             Ok(config)
         } else {
             Ok(PinnedDevicesConfig::default())
@@ -59,10 +59,7 @@ impl PinnedDevicesConfig {
 
         fs::write(&config_path, contents).context("Failed to write pinned devices config file")?;
 
-        tracing::debug!(
-            "Saved pinned devices config to {}",
-            config_path.display()
-        );
+        tracing::debug!("Saved pinned devices config to {}", config_path.display());
         Ok(())
     }
 

@@ -38,10 +38,10 @@ impl OutputInfo {
     /// HDMI dummy plugs typically have names like "HDMI-2", "HDMI-A-2", etc.
     /// and are marked as virtual displays by the compositor.
     pub fn is_hdmi_dummy(&self) -> bool {
-        self.is_virtual &&
-            (self.name.starts_with("HDMI-") ||
-             self.name.starts_with("HDMI-A-") ||
-             self.name.starts_with("HDMI-B-"))
+        self.is_virtual
+            && (self.name.starts_with("HDMI-")
+                || self.name.starts_with("HDMI-A-")
+                || self.name.starts_with("HDMI-B-"))
     }
 
     /// Format output description for display
@@ -63,46 +63,19 @@ mod tests {
 
     #[test]
     fn test_hdmi_dummy_detection() {
-        let hdmi_dummy = OutputInfo::new(
-            "HDMI-2".to_string(),
-            1920,
-            1080,
-            60,
-            true
-        );
+        let hdmi_dummy = OutputInfo::new("HDMI-2".to_string(), 1920, 1080, 60, true);
         assert!(hdmi_dummy.is_hdmi_dummy());
 
-        let hdmi_real = OutputInfo::new(
-            "HDMI-1".to_string(),
-            1920,
-            1080,
-            60,
-            false
-        );
+        let hdmi_real = OutputInfo::new("HDMI-1".to_string(), 1920, 1080, 60, false);
         assert!(!hdmi_real.is_hdmi_dummy());
 
-        let dp_virtual = OutputInfo::new(
-            "DP-1".to_string(),
-            1920,
-            1080,
-            60,
-            true
-        );
+        let dp_virtual = OutputInfo::new("DP-1".to_string(), 1920, 1080, 60, true);
         assert!(!dp_virtual.is_hdmi_dummy());
     }
 
     #[test]
     fn test_description_formatting() {
-        let output = OutputInfo::new(
-            "HDMI-2".to_string(),
-            1920,
-            1080,
-            60,
-            true
-        );
-        assert_eq!(
-            output.description(),
-            "HDMI-2 (1920x1080 @ 60Hz, virtual)"
-        );
+        let output = OutputInfo::new("HDMI-2".to_string(), 1920, 1080, 60, true);
+        assert_eq!(output.description(), "HDMI-2 (1920x1080 @ 60Hz, virtual)");
     }
 }

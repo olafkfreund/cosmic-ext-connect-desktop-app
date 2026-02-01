@@ -116,7 +116,10 @@ impl NotificationHandler {
 
         // Check if this messenger is enabled
         if !self.config.is_messenger_enabled(messenger_id) {
-            debug!("Messenger {} is disabled, ignoring notification", messenger_id);
+            debug!(
+                "Messenger {} is disabled, ignoring notification",
+                messenger_id
+            );
             return None;
         }
 
@@ -165,7 +168,12 @@ impl NotificationHandler {
 
     /// Format notification summary for display
     pub fn format_summary(&self, data: &NotificationData) -> String {
-        if data.title.is_empty() { &data.app_name } else { &data.title }.clone()
+        if data.title.is_empty() {
+            &data.app_name
+        } else {
+            &data.title
+        }
+        .clone()
     }
 
     /// Format notification body for display

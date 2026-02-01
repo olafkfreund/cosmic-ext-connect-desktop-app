@@ -54,8 +54,7 @@ impl AppletConfig {
             fs::create_dir_all(parent).context("Failed to create config directory")?;
         }
 
-        let contents =
-            toml::to_string_pretty(self).context("Failed to serialize applet config")?;
+        let contents = toml::to_string_pretty(self).context("Failed to serialize applet config")?;
 
         fs::write(&config_path, contents).context("Failed to write applet config file")?;
 

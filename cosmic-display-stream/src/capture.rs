@@ -71,7 +71,10 @@ impl ScreenCapture {
     /// # }
     /// ```
     pub async fn new(output_name: &str) -> Result<Self> {
-        info!("Creating screen capture session for output: {}", output_name);
+        info!(
+            "Creating screen capture session for output: {}",
+            output_name
+        );
 
         // Validate that the output exists and is an HDMI dummy
         let output_info = Self::discover_output(output_name).await?;
@@ -79,13 +82,12 @@ impl ScreenCapture {
         if !output_info.is_hdmi_dummy() {
             warn!(
                 "Output '{}' is not an HDMI dummy display (virtual: {}, name pattern: {})",
-                output_name,
-                output_info.is_virtual,
-                output_info.name
+                output_name, output_info.is_virtual, output_info.name
             );
-            return Err(DisplayStreamError::InvalidConfiguration(
-                format!("Output '{}' is not an HDMI dummy display", output_name)
-            ));
+            return Err(DisplayStreamError::InvalidConfiguration(format!(
+                "Output '{}' is not an HDMI dummy display",
+                output_name
+            )));
         }
 
         Ok(Self {
@@ -177,7 +179,7 @@ impl ScreenCapture {
         // This allows the module to compile while we complete the implementation
 
         return Err(DisplayStreamError::CaptureSessionFailed(
-            "Screen capture implementation in progress - ashpd integration pending".to_string()
+            "Screen capture implementation in progress - ashpd integration pending".to_string(),
         ));
 
         // Placeholder code for when implementation is complete:
@@ -212,7 +214,9 @@ impl ScreenCapture {
 
         // Disconnect PipeWire stream
         if let Some(mut stream) = self.pipewire_stream.take() {
-            stream.disconnect().await
+            stream
+                .disconnect()
+                .await
                 .map_err(|e| DisplayStreamError::PipeWire(e.to_string()))?;
         }
 
@@ -290,8 +294,8 @@ mod tests {
             Ok(_) => {
                 // Success case (if HDMI dummy exists)
             }
-            Err(DisplayStreamError::OutputNotFound(_)) |
-            Err(DisplayStreamError::InvalidConfiguration(_)) => {
+            Err(DisplayStreamError::OutputNotFound(_))
+            | Err(DisplayStreamError::InvalidConfiguration(_)) => {
                 // Expected errors if no HDMI dummy
             }
             Err(e) => panic!("Unexpected error: {}", e),

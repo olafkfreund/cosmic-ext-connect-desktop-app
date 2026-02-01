@@ -140,7 +140,9 @@ impl Application for MessagesPopup {
 
                 // Show the GTK WebView window
                 if let Some(url) = self.webview_manager.current_url() {
-                    if let Err(e) = gtk_webview::show_messenger_window(&messenger_id, url, &self.config) {
+                    if let Err(e) =
+                        gtk_webview::show_messenger_window(&messenger_id, url, &self.config)
+                    {
                         error!("Failed to show WebView window: {}", e);
                     }
                 }
@@ -175,7 +177,8 @@ impl Application for MessagesPopup {
                 if self.visible {
                     if let Some(messenger_id) = self.webview_manager.current() {
                         if let Some(url) = self.webview_manager.current_url() {
-                            let _ = gtk_webview::show_messenger_window(messenger_id, url, &self.config);
+                            let _ =
+                                gtk_webview::show_messenger_window(messenger_id, url, &self.config);
                         }
                     }
                 } else {
@@ -196,7 +199,11 @@ impl Application for MessagesPopup {
                         self.visible = true;
                         // Show GTK WebView window
                         if let Some(url) = self.webview_manager.current_url() {
-                            let _ = gtk_webview::show_messenger_window(&messenger_id, url, &self.config);
+                            let _ = gtk_webview::show_messenger_window(
+                                &messenger_id,
+                                url,
+                                &self.config,
+                            );
                         }
                     }
                 }
@@ -278,7 +285,9 @@ impl Application for MessagesPopup {
                         self.visible = true;
                         // Show the GTK WebView window
                         if let Some(url) = self.webview_manager.current_url() {
-                            if let Err(e) = gtk_webview::show_messenger_window(&id, url, &self.config) {
+                            if let Err(e) =
+                                gtk_webview::show_messenger_window(&id, url, &self.config)
+                            {
                                 error!("Failed to show WebView window: {}", e);
                             }
                         }
@@ -294,7 +303,11 @@ impl Application for MessagesPopup {
                         if self.visible {
                             if let Some(messenger_id) = self.webview_manager.current() {
                                 if let Some(url) = self.webview_manager.current_url() {
-                                    let _ = gtk_webview::show_messenger_window(messenger_id, url, &self.config);
+                                    let _ = gtk_webview::show_messenger_window(
+                                        messenger_id,
+                                        url,
+                                        &self.config,
+                                    );
                                 }
                             }
                         } else {
@@ -364,7 +377,10 @@ impl Application for MessagesPopup {
                     info!("D-Bus subscription starting...");
                     // Small delay on first run to let D-Bus initialize
                     Timer::after(std::time::Duration::from_millis(100)).await;
-                    info!("D-Bus receiver available: {}", DBUS_RECEIVER.get().is_some());
+                    info!(
+                        "D-Bus receiver available: {}",
+                        DBUS_RECEIVER.get().is_some()
+                    );
                 }
 
                 // Poll for D-Bus commands
@@ -511,9 +527,8 @@ impl MessagesPopup {
 
         for messenger in &self.config.enabled_messengers {
             let messenger_id = messenger.id.clone();
-            let toggle = toggler(messenger.enabled).on_toggle(move |v| {
-                Message::ToggleMessengerEnabled(messenger_id.clone(), v)
-            });
+            let toggle = toggler(messenger.enabled)
+                .on_toggle(move |v| Message::ToggleMessengerEnabled(messenger_id.clone(), v));
 
             content = content.push(
                 row::with_capacity(3)
@@ -541,8 +556,8 @@ impl MessagesPopup {
         content = content.push(divider::horizontal::default());
         content = content.push(text::title4("Notifications"));
 
-        let notif_toggle =
-            toggler(self.config.notifications.show_notifications).on_toggle(Message::SetNotifications);
+        let notif_toggle = toggler(self.config.notifications.show_notifications)
+            .on_toggle(Message::SetNotifications);
         content = content.push(
             row::with_capacity(3)
                 .push(text::body("Show notifications"))

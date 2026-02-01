@@ -147,11 +147,7 @@ impl NotificationImage {
         let image = image::open(path)
             .with_context(|| format!("Failed to load image from path: {:?}", path))?;
 
-        trace!(
-            "Loaded image: {}x{}",
-            image.width(),
-            image.height()
-        );
+        trace!("Loaded image: {}x{}", image.width(), image.height());
 
         // Resize if necessary
         let resized = Self::resize_if_needed(image, MAX_IMAGE_DIMENSION);
@@ -264,15 +260,17 @@ impl NotificationImage {
             // Convert RGB to RGBA by adding alpha channel
             for x in 0..width as usize {
                 let pixel_start = row_start + (x * 3);
-                rgba_pixels.push(image_data.data[pixel_start]);     // R
+                rgba_pixels.push(image_data.data[pixel_start]); // R
                 rgba_pixels.push(image_data.data[pixel_start + 1]); // G
                 rgba_pixels.push(image_data.data[pixel_start + 2]); // B
-                rgba_pixels.push(255);                               // A (fully opaque)
+                rgba_pixels.push(255); // A (fully opaque)
             }
         }
 
         let image_buffer = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(width, height, rgba_pixels)
-            .ok_or_else(|| anyhow::anyhow!("Failed to create RGBA image buffer from RGB data"))?;
+            .ok_or_else(|| {
+            anyhow::anyhow!("Failed to create RGBA image buffer from RGB data")
+        })?;
 
         Ok(DynamicImage::ImageRgba8(image_buffer))
     }
@@ -315,7 +313,8 @@ mod tests {
     #[test]
     fn test_resize_if_needed_no_resize() {
         // Create a small test image
-        let image = DynamicImage::ImageRgba8(ImageBuffer::from_pixel(100, 100, Rgba([255, 0, 0, 255])));
+        let image =
+            DynamicImage::ImageRgba8(ImageBuffer::from_pixel(100, 100, Rgba([255, 0, 0, 255])));
         let resized = NotificationImage::resize_if_needed(image.clone(), 256);
 
         assert_eq!(resized.width(), 100);
@@ -325,7 +324,8 @@ mod tests {
     #[test]
     fn test_resize_if_needed_width_larger() {
         // Create an image wider than max dimension
-        let image = DynamicImage::ImageRgba8(ImageBuffer::from_pixel(512, 256, Rgba([255, 0, 0, 255])));
+        let image =
+            DynamicImage::ImageRgba8(ImageBuffer::from_pixel(512, 256, Rgba([255, 0, 0, 255])));
         let resized = NotificationImage::resize_if_needed(image, 256);
 
         assert_eq!(resized.width(), 256);
@@ -335,7 +335,8 @@ mod tests {
     #[test]
     fn test_resize_if_needed_height_larger() {
         // Create an image taller than max dimension
-        let image = DynamicImage::ImageRgba8(ImageBuffer::from_pixel(128, 512, Rgba([255, 0, 0, 255])));
+        let image =
+            DynamicImage::ImageRgba8(ImageBuffer::from_pixel(128, 512, Rgba([255, 0, 0, 255])));
         let resized = NotificationImage::resize_if_needed(image, 256);
 
         assert_eq!(resized.width(), 64);
@@ -348,8 +349,8 @@ mod tests {
         let width = 2;
         let height = 2;
         let data = vec![
-            255, 0, 0, 255,  255, 0, 0, 255,  // Row 1
-            255, 0, 0, 255,  255, 0, 0, 255,  // Row 2
+            255, 0, 0, 255, 255, 0, 0, 255, // Row 1
+            255, 0, 0, 255, 255, 0, 0, 255, // Row 2
         ];
 
         let image_data = ImageData {
@@ -375,8 +376,8 @@ mod tests {
         let width = 2;
         let height = 2;
         let data = vec![
-            0, 255, 0,  0, 255, 0,  // Row 1
-            0, 255, 0,  0, 255, 0,  // Row 2
+            0, 255, 0, 0, 255, 0, // Row 1
+            0, 255, 0, 0, 255, 0, // Row 2
         ];
 
         let image_data = ImageData {
@@ -402,8 +403,8 @@ mod tests {
         let width = 2;
         let height = 2;
         let data = vec![
-            255, 0, 0, 255,  255, 0, 0, 255,  0, 0, 0, 0,  // Row 1 + padding
-            255, 0, 0, 255,  255, 0, 0, 255,  0, 0, 0, 0,  // Row 2 + padding
+            255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 0, 0, // Row 1 + padding
+            255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 0, 0, // Row 2 + padding
         ];
 
         let image_data = ImageData {
@@ -426,7 +427,8 @@ mod tests {
     #[test]
     fn test_to_png() {
         // Create a small test image
-        let image = DynamicImage::ImageRgba8(ImageBuffer::from_pixel(10, 10, Rgba([255, 0, 0, 255])));
+        let image =
+            DynamicImage::ImageRgba8(ImageBuffer::from_pixel(10, 10, Rgba([255, 0, 0, 255])));
         let notification_image = NotificationImage { image };
 
         let png_result = notification_image.to_png();

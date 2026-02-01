@@ -338,7 +338,11 @@ impl NotificationListenerConfig {
     /// Check if an application should be captured
     fn should_capture_app(&self, app_name: &str) -> bool {
         // Check exclusion list first
-        if self.excluded_apps.iter().any(|excluded| excluded == app_name) {
+        if self
+            .excluded_apps
+            .iter()
+            .any(|excluded| excluded == app_name)
+        {
             return false;
         }
 
@@ -348,7 +352,9 @@ impl NotificationListenerConfig {
         }
 
         // Check inclusion list
-        self.included_apps.iter().any(|included| included == app_name)
+        self.included_apps
+            .iter()
+            .any(|included| included == app_name)
     }
 
     /// Check if a notification should be captured based on hints
@@ -546,7 +552,9 @@ impl NotificationListener {
             Vec<String>,
             HashMap<String, Value<'_>>,
             i32,
-        ) = body.deserialize().context("Failed to deserialize Notify parameters")?;
+        ) = body
+            .deserialize()
+            .context("Failed to deserialize Notify parameters")?;
 
         // Parse actions into (id, label) pairs
         let mut action_pairs = Vec::new();
@@ -583,7 +591,10 @@ impl NotificationListener {
     }
 
     /// Parse DBus hints into HintValue map
-    fn parse_hints(&self, hints_map: HashMap<String, zbus::zvariant::Value<'_>>) -> Result<HashMap<String, HintValue>> {
+    fn parse_hints(
+        &self,
+        hints_map: HashMap<String, zbus::zvariant::Value<'_>>,
+    ) -> Result<HashMap<String, HintValue>> {
         use zbus::zvariant::Value;
 
         let mut hints = HashMap::new();
@@ -645,7 +656,11 @@ impl NotificationListener {
 
         let bits_per_sample = match &fields[4] {
             Value::I32(i) => *i,
-            _ => return Err(anyhow::anyhow!("Invalid bits_per_sample type in image-data")),
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Invalid bits_per_sample type in image-data"
+                ))
+            }
         };
 
         let channels = match &fields[5] {
@@ -729,10 +744,9 @@ mod tests {
         assert_eq!(notification.urgency(), 1);
 
         // Set urgency via hint
-        notification.hints.insert(
-            "urgency".to_string(),
-            HintValue::Byte(2),
-        );
+        notification
+            .hints
+            .insert("urgency".to_string(), HintValue::Byte(2));
         assert_eq!(notification.urgency(), 2);
     }
 
@@ -742,10 +756,9 @@ mod tests {
 
         assert!(!notification.is_transient());
 
-        notification.hints.insert(
-            "transient".to_string(),
-            HintValue::Boolean(true),
-        );
+        notification
+            .hints
+            .insert("transient".to_string(), HintValue::Boolean(true));
         assert!(notification.is_transient());
     }
 
@@ -790,20 +803,18 @@ mod tests {
         // Test transient filter
         config.include_transient = false;
         let mut transient_notif = notification.clone();
-        transient_notif.hints.insert(
-            "transient".to_string(),
-            HintValue::Boolean(true),
-        );
+        transient_notif
+            .hints
+            .insert("transient".to_string(), HintValue::Boolean(true));
         assert!(!config.should_capture_notification(&transient_notif));
 
         // Test low urgency filter
         config.include_transient = true;
         config.include_low_urgency = false;
         let mut low_urgency_notif = notification.clone();
-        low_urgency_notif.hints.insert(
-            "urgency".to_string(),
-            HintValue::Byte(0),
-        );
+        low_urgency_notif
+            .hints
+            .insert("urgency".to_string(), HintValue::Byte(0));
         assert!(!config.should_capture_notification(&low_urgency_notif));
     }
 
@@ -836,10 +847,9 @@ mod tests {
             data: vec![255u8; 4096],
         };
 
-        notification.hints.insert(
-            "icon_data".to_string(),
-            HintValue::ImageData(icon.clone()),
-        );
+        notification
+            .hints
+            .insert("icon_data".to_string(), HintValue::ImageData(icon.clone()));
         assert!(notification.icon_data().is_some());
         assert_eq!(notification.icon_data().unwrap().width, 32);
     }
@@ -866,10 +876,9 @@ mod tests {
 
         assert!(!notification.action_icons());
 
-        notification.hints.insert(
-            "action-icons".to_string(),
-            HintValue::Boolean(true),
-        );
+        notification
+            .hints
+            .insert("action-icons".to_string(), HintValue::Boolean(true));
         assert!(notification.action_icons());
     }
 
@@ -878,10 +887,9 @@ mod tests {
         let mut notification = create_test_notification();
 
         // Add various hints
-        notification.hints.insert(
-            "urgency".to_string(),
-            HintValue::Byte(2),
-        );
+        notification
+            .hints
+            .insert("urgency".to_string(), HintValue::Byte(2));
         notification.hints.insert(
             "category".to_string(),
             HintValue::String("im.received".to_string()),
@@ -898,10 +906,9 @@ mod tests {
             "sound-file".to_string(),
             HintValue::String("/tmp/sound.ogg".to_string()),
         );
-        notification.hints.insert(
-            "action-icons".to_string(),
-            HintValue::Boolean(true),
-        );
+        notification
+            .hints
+            .insert("action-icons".to_string(), HintValue::Boolean(true));
 
         let rich_data = notification.rich_data();
 

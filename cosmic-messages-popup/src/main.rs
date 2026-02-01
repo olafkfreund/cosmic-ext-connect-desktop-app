@@ -136,7 +136,11 @@ fn main() -> cosmic::iced::Result {
 
     // Configure COSMIC application settings
     let settings = cosmic::app::Settings::default()
-        .size_limits(cosmic::iced::Limits::NONE.min_width(300.0).min_height(400.0))
+        .size_limits(
+            cosmic::iced::Limits::NONE
+                .min_width(300.0)
+                .min_height(400.0),
+        )
         .exit_on_close(false);
 
     // Run the application
@@ -157,8 +161,7 @@ mod tests {
 
     #[test]
     fn test_args_with_options() {
-        let args =
-            Args::parse_from(["cosmic-messages-popup", "--show", "--messenger", "whatsapp"]);
+        let args = Args::parse_from(["cosmic-messages-popup", "--show", "--messenger", "whatsapp"]);
         assert!(args.show);
         assert_eq!(args.messenger, Some("whatsapp".to_string()));
     }
