@@ -124,6 +124,19 @@ const OUTGOING_CAPABILITY: &str = "cconnect.camera.request";
 const CAMERA_FRAME: &str = "cconnect.camera";
 const CAMERA_REQUEST: &str = "cconnect.camera.request";
 
+/// Build the list of incoming capabilities for camera plugin
+fn camera_incoming_capabilities() -> Vec<String> {
+    vec![
+        INCOMING_CAPABILITY.to_string(),
+        "cconnect.camera.frame".to_string(),
+        "cconnect.camera.status".to_string(),
+        "cconnect.camera.capability".to_string(),
+        "kdeconnect.camera".to_string(),
+        "kdeconnect.camera.frame".to_string(),
+        "kdeconnect.camera.status".to_string(),
+    ]
+}
+
 /// Camera information
 ///
 /// Describes an available camera on the device.
@@ -639,17 +652,10 @@ impl Plugin for CameraPlugin {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        // Note: INCOMING_CAPABILITY and CAMERA_FRAME are both "cconnect.camera"
-        // so we only include unique capabilities
-        vec![
-            INCOMING_CAPABILITY.to_string(),
-            "kdeconnect.camera".to_string(),
-        ]
+        camera_incoming_capabilities()
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
-        // Note: OUTGOING_CAPABILITY and CAMERA_REQUEST are both "cconnect.camera.request"
-        // so we only include unique capabilities
         vec![OUTGOING_CAPABILITY.to_string()]
     }
 
@@ -706,8 +712,66 @@ impl Plugin for CameraPlugin {
                     }
                 }
             }
-        } else if packet.is_type(CAMERA_FRAME) || packet.is_type("kdeconnect.camera") {
+        } else if packet.is_type(CAMERA_FRAME)
+            || packet.is_type("cconnect.camera.frame")
+            || packet.is_type("kdeconnect.camera")
+            || packet.is_type("kdeconnect.camera.frame")
+        {
             self.handle_camera_frame(packet, device).await?;
+        } else if packet.is_type("cconnect.camera.status")
+            || packet.is_type("kdeconnect.camera.status")
+        {
+            // Handle camera status updates from remote device
+            let streaming = packet
+                .body
+                .get("streaming")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            info!(
+                "Camera status update from {}: streaming={}",
+                device.name(),
+                streaming
+            );
+            // Update local session state based on remote status
+            if streaming {
+                // Mark that we're receiving a camera stream
+                if self.session.lock().await.is_none() {
+                    let camera_id = packet
+                        .body
+                        .get("cameraId")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("0")
+                        .to_string();
+                    let resolution = packet
+                        .body
+                        .get("resolution")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("1280x720")
+                        .to_string();
+                    let fps = packet
+                        .body
+                        .get("fps")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(30) as u8;
+                    let session =
+                        CameraSession::new(&camera_id, &resolution, fps, CameraQuality::Medium);
+                    *self.session.lock().await = Some(session);
+                    info!("Camera session started: {}@{} {}fps", camera_id, resolution, fps);
+                }
+            } else {
+                // Remote stopped streaming
+                *self.session.lock().await = None;
+                info!("Camera session ended");
+            }
+        } else if packet.is_type("cconnect.camera.capability")
+            || packet.is_type("kdeconnect.camera.capability")
+        {
+            // Handle camera capability announcement from remote device
+            debug!(
+                "Camera capability announcement from {}: {:?}",
+                device.name(),
+                packet.body
+            );
         }
 
         Ok(())
@@ -724,17 +788,10 @@ impl PluginFactory for CameraPluginFactory {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        // Note: INCOMING_CAPABILITY and CAMERA_FRAME are both "cconnect.camera"
-        // so we only include unique capabilities
-        vec![
-            INCOMING_CAPABILITY.to_string(),
-            "kdeconnect.camera".to_string(),
-        ]
+        camera_incoming_capabilities()
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
-        // Note: OUTGOING_CAPABILITY and CAMERA_REQUEST are both "cconnect.camera.request"
-        // so we only include unique capabilities
         vec![OUTGOING_CAPABILITY.to_string()]
     }
 
