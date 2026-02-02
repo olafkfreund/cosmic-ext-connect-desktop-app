@@ -35,11 +35,11 @@ impl StreamReceiver {
         // Bind to port 0 (random available port)
         let listener = TcpListener::bind("0.0.0.0:0")
             .await
-            .map_err(|e| crate::ProtocolError::Io(e))?;
+            .map_err(crate::ProtocolError::Io)?;
 
         let port = listener
             .local_addr()
-            .map_err(|e| crate::ProtocolError::Io(e))?
+            .map_err(crate::ProtocolError::Io)?
             .port();
 
         info!("StreamReceiver listening on port {}", port);
@@ -55,7 +55,7 @@ impl StreamReceiver {
             let (stream, addr) = listener
                 .accept()
                 .await
-                .map_err(|e| crate::ProtocolError::Io(e))?;
+                .map_err(crate::ProtocolError::Io)?;
 
             info!("Accepted stream connection from {}", addr);
             self.active_stream = Some(stream);
@@ -82,7 +82,7 @@ impl StreamReceiver {
             stream
                 .read_exact(&mut header)
                 .await
-                .map_err(|e| crate::ProtocolError::Io(e))?;
+                .map_err(crate::ProtocolError::Io)?;
 
             // Verify magic
             if &header[0..4] != MAGIC_HEADER {
@@ -114,7 +114,7 @@ impl StreamReceiver {
             stream
                 .read_exact(&mut payload)
                 .await
-                .map_err(|e| crate::ProtocolError::Io(e))?;
+                .map_err(crate::ProtocolError::Io)?;
 
             Ok((frame_type, timestamp, payload))
         } else {

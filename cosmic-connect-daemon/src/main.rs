@@ -1490,7 +1490,7 @@ impl Daemon {
                             &notification.body,
                             notification.timestamp as i64,
                             image_bytes.as_deref(),
-                            &actions,
+                            actions,
                             urgency,
                             notification.category(),
                             None, // app_icon - could be enhanced later
@@ -2654,7 +2654,7 @@ impl Daemon {
                         .or_insert((now - Duration::from_secs(3600), 0));
 
                     // Exponential backoff: 2^count seconds (cap at 60s)
-                    let backoff = Duration::from_secs(2u64.pow((*count).min(6) as u32));
+                    let backoff = Duration::from_secs(2u64.pow((*count).min(6)));
 
                     if now.duration_since(*last_attempt) >= backoff {
                         info!(
@@ -2683,7 +2683,7 @@ impl Daemon {
                             });
                         }
                     }
-                } else if should_connect == false {
+                } else if !should_connect {
                     // Reset attempts if connected or not paired
                     let manager = device_manager.read().await;
                     if let Some(device) = manager.get_device(&device_id) {

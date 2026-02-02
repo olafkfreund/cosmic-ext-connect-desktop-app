@@ -453,7 +453,7 @@ impl CConnectInterface {
         // Spawn the pairing request on the Tokio runtime
         // This is needed because zbus uses its own executor that isn't Tokio
         let _device_id_clone = device_id.clone();
-        let _result = self
+        self
             .tokio_handle
             .spawn(async move {
                 let pairing_service = pairing_service.read().await;
@@ -4278,7 +4278,7 @@ impl OpenInterface {
         self.connection_manager
             .read()
             .await
-            .send_packet(&device.id(), &packet)
+            .send_packet(device.id(), &packet)
             .await
             .map_err(|e| {
                 error!("Failed to send open URL packet: {}", e);

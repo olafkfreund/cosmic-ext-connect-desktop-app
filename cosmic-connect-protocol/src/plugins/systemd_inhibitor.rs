@@ -202,11 +202,10 @@ impl SystemdInhibitor {
 
     /// Check if inhibitor locks are supported on this system
     pub async fn is_available(&mut self) -> bool {
-        if self.connection.is_none() {
-            if self.connect().await.is_err() {
+        if self.connection.is_none()
+            && self.connect().await.is_err() {
                 return false;
             }
-        }
 
         let connection = match &self.connection {
             Some(c) => c,

@@ -92,8 +92,10 @@ const MIN_BUFFER_SIZE_MS: u32 = 50; // 50ms min buffer
 /// Audio codec type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum AudioCodec {
     /// Opus codec - best quality/latency tradeoff (recommended)
+    #[default]
     Opus,
     /// PCM - uncompressed, lowest latency
     Pcm,
@@ -101,11 +103,6 @@ pub enum AudioCodec {
     Aac,
 }
 
-impl Default for AudioCodec {
-    fn default() -> Self {
-        Self::Opus
-    }
-}
 
 impl AudioCodec {
     /// Get codec name as string
@@ -224,14 +221,13 @@ impl StreamConfig {
         }
 
         // Validate bitrate for compressed codecs
-        if matches!(self.codec, AudioCodec::Opus | AudioCodec::Aac) {
-            if self.bitrate < 32000 || self.bitrate > 512000 {
+        if matches!(self.codec, AudioCodec::Opus | AudioCodec::Aac)
+            && (self.bitrate < 32000 || self.bitrate > 512000) {
                 warn!(
                     "Bitrate {}bps may not be optimal. Recommended: 64-320 kbps",
                     self.bitrate
                 );
             }
-        }
 
         Ok(())
     }

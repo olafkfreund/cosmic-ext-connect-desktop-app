@@ -5,19 +5,13 @@ use std::path::PathBuf;
 
 /// Applet configuration for persistent settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct AppletConfig {
     /// Whether the user has completed the first-run onboarding
     #[serde(default)]
     pub onboarding_complete: bool,
 }
 
-impl Default for AppletConfig {
-    fn default() -> Self {
-        Self {
-            onboarding_complete: false,
-        }
-    }
-}
 
 impl AppletConfig {
     /// Get the config file path

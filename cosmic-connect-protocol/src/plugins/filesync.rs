@@ -90,8 +90,10 @@ const DEFAULT_VERSION_KEEP: usize = 5; // Keep 5 previous versions
 /// Conflict resolution strategy
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ConflictStrategy {
     /// Use the most recently modified file (default)
+    #[default]
     LastModifiedWins,
     /// Keep both files, rename with timestamp
     KeepBoth,
@@ -101,11 +103,6 @@ pub enum ConflictStrategy {
     SizeBased,
 }
 
-impl Default for ConflictStrategy {
-    fn default() -> Self {
-        Self::LastModifiedWins
-    }
-}
 
 impl ConflictStrategy {
     pub fn as_str(&self) -> &'static str {
@@ -577,12 +574,12 @@ impl FileSyncPlugin {
 
     /// Compute BLAKE3 hash of a file
     fn compute_file_hash<P: AsRef<std::path::Path>>(path: P) -> Result<String> {
-        let mut file = fs::File::open(path).map_err(|e| ProtocolError::Io(e))?;
+        let mut file = fs::File::open(path).map_err(ProtocolError::Io)?;
         let mut hasher = blake3::Hasher::new();
         let mut buffer = [0; 65536]; // 64KB buffer
 
         loop {
-            let count = file.read(&mut buffer).map_err(|e| ProtocolError::Io(e))?;
+            let count = file.read(&mut buffer).map_err(ProtocolError::Io)?;
             if count == 0 {
                 break;
             }
@@ -1114,7 +1111,7 @@ impl FileSyncPlugin {
                         let port = server.port();
                         let size = tokio::fs::metadata(&local_path)
                             .await
-                            .map_err(|e| ProtocolError::Io(e))?
+                            .map_err(ProtocolError::Io)?
                             .len();
 
                         // Create transfer packet
@@ -1401,15 +1398,13 @@ impl Plugin for FileSyncPlugin {
                         let strategy = conflict.suggested_strategy;
                         if strategy == ConflictStrategy::Manual {
                             self.pending_conflicts.push(conflict.clone());
-                        } else {
-                            if let Err(e) = self.resolve_conflict(conflict, strategy).await {
-                                warn!(
-                                    "Failed to auto-resolve conflict for {}: {}",
-                                    conflict.path.display(),
-                                    e
-                                );
-                                self.pending_conflicts.push(conflict.clone());
-                            }
+                        } else if let Err(e) = self.resolve_conflict(conflict, strategy).await {
+                            warn!(
+                                "Failed to auto-resolve conflict for {}: {}",
+                                conflict.path.display(),
+                                e
+                            );
+                            self.pending_conflicts.push(conflict.clone());
                         }
                     }
                 }

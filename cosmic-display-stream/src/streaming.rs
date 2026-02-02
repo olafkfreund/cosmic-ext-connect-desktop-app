@@ -23,7 +23,7 @@
 //!
 //! - WebRTC peer connections with ICE for NAT traversal
 //! - WebSocket-based signaling server
-//! - Support for WiFi and USB (ADB port forwarding) connections
+//! - Support for `WiFi` and USB (ADB port forwarding) connections
 //! - Connection statistics and monitoring
 //! - Adaptive bitrate hints
 //!
@@ -79,7 +79,7 @@ use webrtc::track::track_local::{TrackLocal, TrackLocalWriter};
 /// Transport mode for streaming
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TransportMode {
-    /// Stream over WiFi network
+    /// Stream over `WiFi` network
     #[default]
     WiFi,
     /// Stream over USB via ADB port forwarding
@@ -88,6 +88,7 @@ pub enum TransportMode {
 
 impl TransportMode {
     /// Get a human-readable name for this transport mode
+    #[must_use] 
     pub fn display_name(&self) -> &'static str {
         match self {
             Self::WiFi => "WiFi",
@@ -103,7 +104,7 @@ pub struct StreamConfig {
     pub signaling_port: u16,
     /// Bind address for the server
     pub bind_address: String,
-    /// Transport mode (WiFi or USB)
+    /// Transport mode (`WiFi` or USB)
     pub transport: TransportMode,
     /// STUN servers for ICE
     pub stun_servers: Vec<String>,
@@ -131,11 +132,13 @@ impl Default for StreamConfig {
 
 impl StreamConfig {
     /// Create a new streaming configuration with default values
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Set the signaling server port
+    #[must_use] 
     pub fn with_signaling_port(mut self, port: u16) -> Self {
         self.signaling_port = port;
         self
@@ -148,6 +151,7 @@ impl StreamConfig {
     }
 
     /// Set the transport mode
+    #[must_use] 
     pub fn with_transport(mut self, transport: TransportMode) -> Self {
         self.transport = transport;
         self
@@ -160,12 +164,14 @@ impl StreamConfig {
     }
 
     /// Set maximum number of clients
+    #[must_use] 
     pub fn with_max_clients(mut self, max: usize) -> Self {
         self.max_clients = max;
         self
     }
 
     /// Get the full signaling server address
+    #[must_use] 
     pub fn signaling_address(&self) -> String {
         format!("{}:{}", self.bind_address, self.signaling_port)
     }
@@ -278,7 +284,7 @@ impl StreamingServer {
     /// # Returns
     ///
     /// A new `StreamingServer` instance
-    pub async fn new(config: StreamConfig) -> Result<Self> {
+    pub fn new(config: StreamConfig) -> Result<Self> {
         info!(
             "Creating streaming server on {} ({})",
             config.signaling_address(),
@@ -311,13 +317,13 @@ impl StreamingServer {
 
         // Register H.264 codec
         media_engine.register_default_codecs().map_err(|e| {
-            DisplayStreamError::Streaming(format!("Failed to register codecs: {}", e))
+            DisplayStreamError::Streaming(format!("Failed to register codecs: {e}"))
         })?;
 
         // Create interceptor registry for RTCP feedback
         let mut registry = Registry::new();
         registry = register_default_interceptors(registry, &mut media_engine).map_err(|e| {
-            DisplayStreamError::Streaming(format!("Failed to register interceptors: {}", e))
+            DisplayStreamError::Streaming(format!("Failed to register interceptors: {e}"))
         })?;
 
         // Build API
@@ -343,7 +349,7 @@ impl StreamingServer {
         self.signaling_handle = Some(signaling_handle);
 
         // Start frame broadcast task
-        self.start_frame_broadcaster().await;
+        self.start_frame_broadcaster();
 
         *running = true;
         info!(
@@ -385,7 +391,7 @@ impl StreamingServer {
     async fn start_signaling_server(&self) -> Result<tokio::task::JoinHandle<()>> {
         let addr = self.config.signaling_address();
         let listener = TcpListener::bind(&addr).await.map_err(|e| {
-            DisplayStreamError::Streaming(format!("Failed to bind signaling server: {}", e))
+            DisplayStreamError::Streaming(format!("Failed to bind signaling server: {e}"))
         })?;
 
         let clients = self.clients.clone();
@@ -436,7 +442,7 @@ impl StreamingServer {
         server_id: String,
     ) -> Result<()> {
         let ws_stream = accept_async(stream).await.map_err(|e| {
-            DisplayStreamError::Streaming(format!("WebSocket handshake failed: {}", e))
+            DisplayStreamError::Streaming(format!("WebSocket handshake failed: {e}"))
         })?;
 
         let (mut ws_sender, mut ws_receiver) = ws_stream.split();
@@ -464,7 +470,7 @@ impl StreamingServer {
         };
 
         let peer_connection = Arc::new(api.new_peer_connection(rtc_config).await.map_err(|e| {
-            DisplayStreamError::Streaming(format!("Failed to create peer connection: {}", e))
+            DisplayStreamError::Streaming(format!("Failed to create peer connection: {e}"))
         })?);
 
         // Create video track
@@ -482,7 +488,7 @@ impl StreamingServer {
         let rtp_sender = peer_connection
             .add_track(Arc::clone(&video_track) as Arc<dyn TrackLocal + Send + Sync>)
             .await
-            .map_err(|e| DisplayStreamError::Streaming(format!("Failed to add track: {}", e)))?;
+            .map_err(|e| DisplayStreamError::Streaming(format!("Failed to add track: {e}")))?;
 
         // Handle RTCP packets (for stats)
         tokio::spawn(async move {
@@ -544,7 +550,7 @@ impl StreamingServer {
 
                             // Set remote description
                             let offer = RTCSessionDescription::offer(sdp).map_err(|e| {
-                                DisplayStreamError::Streaming(format!("Invalid offer: {}", e))
+                                DisplayStreamError::Streaming(format!("Invalid offer: {e}"))
                             })?;
 
                             peer_connection
@@ -552,8 +558,7 @@ impl StreamingServer {
                                 .await
                                 .map_err(|e| {
                                     DisplayStreamError::Streaming(format!(
-                                        "Failed to set remote description: {}",
-                                        e
+                                        "Failed to set remote description: {e}"
                                     ))
                                 })?;
 
@@ -561,8 +566,7 @@ impl StreamingServer {
                             let answer =
                                 peer_connection.create_answer(None).await.map_err(|e| {
                                     DisplayStreamError::Streaming(format!(
-                                        "Failed to create answer: {}",
-                                        e
+                                        "Failed to create answer: {e}"
                                     ))
                                 })?;
 
@@ -572,8 +576,7 @@ impl StreamingServer {
                                 .await
                                 .map_err(|e| {
                                     DisplayStreamError::Streaming(format!(
-                                        "Failed to set local description: {}",
-                                        e
+                                        "Failed to set local description: {e}"
                                     ))
                                 })?;
 
@@ -597,8 +600,7 @@ impl StreamingServer {
                                 .await
                                 .map_err(|e| {
                                     DisplayStreamError::Streaming(format!(
-                                        "Failed to add ICE candidate: {}",
-                                        e
+                                        "Failed to add ICE candidate: {e}"
                                     ))
                                 })?;
                         }
@@ -640,19 +642,19 @@ impl StreamingServer {
         S::Error: std::fmt::Display,
     {
         let json = serde_json::to_string(msg).map_err(|e| {
-            DisplayStreamError::Streaming(format!("Failed to serialize message: {}", e))
+            DisplayStreamError::Streaming(format!("Failed to serialize message: {e}"))
         })?;
 
         sender
             .send(Message::Text(json.into()))
             .await
-            .map_err(|e| DisplayStreamError::Streaming(format!("Failed to send message: {}", e)))?;
+            .map_err(|e| DisplayStreamError::Streaming(format!("Failed to send message: {e}")))?;
 
         Ok(())
     }
 
     /// Start the frame broadcaster task
-    async fn start_frame_broadcaster(&self) {
+    fn start_frame_broadcaster(&self) {
         let clients = self.clients.clone();
         let frame_rx = self.frame_rx.clone();
         let running = self.running.clone();
@@ -704,7 +706,7 @@ impl StreamingServer {
                 payload_type: 96, // H.264
                 sequence_number: *seq_num,
                 timestamp: *timestamp,
-                ssrc: 0x12345678,
+                ssrc: 0x1234_5678,
                 ..Default::default()
             },
             payload: frame.data.clone().into(),
@@ -712,7 +714,7 @@ impl StreamingServer {
 
         // Write RTP packet
         track.write_rtp(&rtp_packet).await.map_err(|e| {
-            DisplayStreamError::Streaming(format!("Failed to write RTP packet: {}", e))
+            DisplayStreamError::Streaming(format!("Failed to write RTP packet: {e}"))
         })?;
 
         // Increment sequence number and timestamp
@@ -728,7 +730,7 @@ impl StreamingServer {
         self.frame_tx
             .send(frame)
             .await
-            .map_err(|e| DisplayStreamError::Streaming(format!("Failed to queue frame: {}", e)))?;
+            .map_err(|e| DisplayStreamError::Streaming(format!("Failed to queue frame: {e}")))?;
         Ok(())
     }
 
@@ -751,8 +753,8 @@ impl StreamingServer {
                 packets_lost: 0,
                 frames_sent: 0,
                 duration_secs: duration.as_secs(),
-                ice_state: format!("{:?}", ice_state),
-                connection_state: format!("{:?}", pc_state),
+                ice_state: format!("{ice_state:?}"),
+                connection_state: format!("{pc_state:?}"),
             })
         } else {
             None
@@ -770,11 +772,13 @@ impl StreamingServer {
     }
 
     /// Get the server configuration
+    #[must_use] 
     pub fn config(&self) -> &StreamConfig {
         &self.config
     }
 
     /// Get the server ID
+    #[must_use] 
     pub fn server_id(&self) -> &str {
         &self.server_id
     }

@@ -1,6 +1,6 @@
-//! PipeWire stream handling for video frames
+//! `PipeWire` stream handling for video frames
 //!
-//! This module provides integration with PipeWire to receive raw video frames
+//! This module provides integration with `PipeWire` to receive raw video frames
 //! from the screen capture session.
 
 use crate::capture::VideoFrame;
@@ -17,9 +17,9 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
-/// PipeWire stream wrapper for receiving video frames
+/// `PipeWire` stream wrapper for receiving video frames
 pub struct PipeWireStream {
-    /// PipeWire node ID
+    /// `PipeWire` node ID
     node_id: u32,
 
     /// Whether the stream is connected
@@ -35,7 +35,7 @@ pub struct PipeWireStream {
     properties: Arc<std::sync::Mutex<Option<StreamProperties>>>,
 }
 
-/// Stream properties extracted from PipeWire
+/// Stream properties extracted from `PipeWire`
 #[derive(Debug, Clone)]
 pub struct StreamProperties {
     /// Video width in pixels
@@ -44,7 +44,7 @@ pub struct StreamProperties {
     /// Video height in pixels
     pub height: u32,
 
-    /// Video format (e.g., "BGRx", "RGBx")
+    /// Video format (e.g., "`BGRx`", "`RGBx`")
     pub format: String,
 
     /// Framerate
@@ -52,16 +52,16 @@ pub struct StreamProperties {
 }
 
 impl PipeWireStream {
-    /// Connect to a PipeWire node
+    /// Connect to a `PipeWire` node
     ///
     /// # Arguments
     ///
-    /// * `node_id` - PipeWire node ID from the portal session
+    /// * `node_id` - `PipeWire` node ID from the portal session
     /// * `frame_sender` - Channel to send captured frames
     ///
     /// # Returns
     ///
-    /// A connected PipeWire stream ready to receive frames
+    /// A connected `PipeWire` stream ready to receive frames
     pub async fn connect(node_id: u32, frame_sender: mpsc::Sender<VideoFrame>) -> Result<Self> {
         info!("Connecting to PipeWire node: {}", node_id);
 
@@ -92,8 +92,8 @@ impl PipeWireStream {
         })
     }
 
-    /// Disconnect from the PipeWire stream
-    pub async fn disconnect(&mut self) -> Result<()> {
+    /// Disconnect from the `PipeWire` stream
+    pub fn disconnect(&mut self) -> Result<()> {
         info!("Disconnecting from PipeWire node: {}", self.node_id);
 
         // Signal thread to stop
@@ -114,17 +114,17 @@ impl PipeWireStream {
     }
 
     /// Check if the stream is connected
-    pub async fn is_connected(&self) -> bool {
+    pub fn is_connected(&self) -> bool {
         self.connected.load(Ordering::SeqCst)
     }
 
     /// Get the current stream properties
-    pub async fn properties(&self) -> Option<StreamProperties> {
+    pub fn properties(&self) -> Option<StreamProperties> {
         self.properties.lock().ok().and_then(|p| p.clone())
     }
 }
 
-/// Run the PipeWire main loop (called from background thread)
+/// Run the `PipeWire` main loop (called from background thread)
 fn run_pipewire_loop(
     node_id: u32,
     frame_sender: mpsc::Sender<VideoFrame>,
@@ -137,8 +137,7 @@ fn run_pipewire_loop(
     // Create main loop
     let mainloop = MainLoop::new(None).map_err(|e| {
         crate::error::DisplayStreamError::PipeWire(format!(
-            "Failed to create PipeWire main loop: {}",
-            e
+            "Failed to create PipeWire main loop: {e}"
         ))
     })?;
 
@@ -146,12 +145,12 @@ fn run_pipewire_loop(
 
     // Create context
     let context = Context::new(&mainloop).map_err(|e| {
-        crate::error::DisplayStreamError::PipeWire(format!("Failed to create context: {}", e))
+        crate::error::DisplayStreamError::PipeWire(format!("Failed to create context: {e}"))
     })?;
 
     // Connect to PipeWire server
     let core = context.connect(None).map_err(|e| {
-        crate::error::DisplayStreamError::PipeWire(format!("Failed to connect to PipeWire: {}", e))
+        crate::error::DisplayStreamError::PipeWire(format!("Failed to connect to PipeWire: {e}"))
     })?;
 
     // Create stream
@@ -165,7 +164,7 @@ fn run_pipewire_loop(
         },
     )
     .map_err(|e| {
-        crate::error::DisplayStreamError::PipeWire(format!("Failed to create stream: {}", e))
+        crate::error::DisplayStreamError::PipeWire(format!("Failed to create stream: {e}"))
     })?;
 
     // Frame counter for sequencing
@@ -266,8 +265,7 @@ fn run_pipewire_loop(
         .register()
         .map_err(|e| {
             crate::error::DisplayStreamError::PipeWire(format!(
-                "Failed to register listener: {}",
-                e
+                "Failed to register listener: {e}"
             ))
         })?;
 
@@ -281,8 +279,7 @@ fn run_pipewire_loop(
         )
         .map_err(|e| {
             crate::error::DisplayStreamError::PipeWire(format!(
-                "Failed to connect stream to node {}: {}",
-                node_id, e
+                "Failed to connect stream to node {node_id}: {e}"
             ))
         })?;
 

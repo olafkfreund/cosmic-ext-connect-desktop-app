@@ -138,8 +138,7 @@ impl NotificationBuilder {
             .into_iter()
             .map(Value::U8)
             .collect::<Vec<_>>()
-            .try_into()
-            .expect("Failed to create byte array");
+            .into();
 
         // Create image-data structure as per freedesktop spec using StructureBuilder
         let image_struct = StructureBuilder::new()

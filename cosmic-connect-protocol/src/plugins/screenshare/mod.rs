@@ -164,18 +164,15 @@ fn screenshare_incoming_capabilities() -> Vec<String> {
 /// Screen share mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ShareMode {
     /// Share entire screen
+    #[default]
     FullScreen,
     /// Share specific window
     Window,
 }
 
-impl Default for ShareMode {
-    fn default() -> Self {
-        Self::FullScreen
-    }
-}
 
 impl ShareMode {
     pub fn as_str(&self) -> &'static str {
@@ -189,8 +186,10 @@ impl ShareMode {
 /// Video codec for encoding
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum VideoCodec {
     /// H.264 codec (widely supported)
+    #[default]
     H264,
     /// VP8 codec (WebRTC standard)
     Vp8,
@@ -198,11 +197,6 @@ pub enum VideoCodec {
     Vp9,
 }
 
-impl Default for VideoCodec {
-    fn default() -> Self {
-        Self::H264
-    }
-}
 
 impl VideoCodec {
     pub fn as_str(&self) -> &'static str {

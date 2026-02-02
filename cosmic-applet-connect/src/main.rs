@@ -876,7 +876,7 @@ where
     Fut: std::future::Future<Output = anyhow::Result<()>> + Send + 'static,
 {
     let id_cl = device_id.clone();
-    let op_cl = op_type.clone();
+    let op_cl = op_type;
     Task::perform(
         async move {
             if let Ok((client, _)) = DbusClient::connect().await {
@@ -1103,7 +1103,7 @@ impl cosmic::Application for CConnectApplet {
     fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
         match message {
             Message::Loop(inner) => {
-                return self.update(*inner);
+                self.update(*inner)
             }
             Message::PopupClosed(id) => {
                 if self.popup == Some(id) {
@@ -1422,7 +1422,7 @@ impl cosmic::Application for CConnectApplet {
                             }
                         }
                     },
-                    |msg| cosmic::Action::App(msg),
+                    cosmic::Action::App,
                 )
             }
             Message::ShowSmsDialog(device_id) => {
@@ -1484,7 +1484,7 @@ impl cosmic::Application for CConnectApplet {
                             }
                         }
                     },
-                    |msg| cosmic::Action::App(msg),
+                    cosmic::Action::App,
                 )
             }
             Message::RequestBatteryUpdate(device_id) => {
@@ -1541,7 +1541,7 @@ impl cosmic::Application for CConnectApplet {
                 let is_streaming = self
                     .camera_stats
                     .get(&device_id)
-                    .map_or(false, |s| s.is_streaming);
+                    .is_some_and(|s| s.is_streaming);
 
                 if let Some(client) = &self.dbus_client {
                     let client = client.clone();
@@ -2037,13 +2037,13 @@ impl cosmic::Application for CConnectApplet {
 
                 // Validate
                 if let Ok(width) = width_str.parse::<u32>() {
-                    if width < 640 || width > 7680 {
+                    if !(640..=7680).contains(&width) {
                         self.remotedesktop_error =
                             Some("Width must be between 640 and 7680".to_string());
                     } else {
                         // Check height as well to clear error if both are valid
                         if let Ok(height) = self.remotedesktop_height_input.parse::<u32>() {
-                            if height >= 480 && height <= 4320 {
+                            if (480..=4320).contains(&height) {
                                 self.remotedesktop_error = None;
                             }
                         } else {
@@ -2065,13 +2065,13 @@ impl cosmic::Application for CConnectApplet {
 
                 // Validate
                 if let Ok(height) = height_str.parse::<u32>() {
-                    if height < 480 || height > 4320 {
+                    if !(480..=4320).contains(&height) {
                         self.remotedesktop_error =
                             Some("Height must be between 480 and 4320".to_string());
                     } else {
                         // Check width as well to clear error if both are valid
                         if let Ok(width) = self.remotedesktop_width_input.parse::<u32>() {
-                            if width >= 640 && width <= 7680 {
+                            if (640..=7680).contains(&width) {
                                 self.remotedesktop_error = None;
                             }
                         }
@@ -2095,7 +2095,7 @@ impl cosmic::Application for CConnectApplet {
 
                     match (width_res, height_res) {
                         (Ok(w), Ok(h)) => {
-                            if w < 640 || w > 7680 || h < 480 || h > 4320 {
+                            if !(640..=7680).contains(&w) || !(480..=4320).contains(&h) {
                                 self.remotedesktop_error = Some(
                                     "Resolution out of bounds (640x480 - 7680x4320)".to_string(),
                                 );
@@ -2460,22 +2460,22 @@ impl cosmic::Application for CConnectApplet {
             Message::PauseScreenShare(device_id) => {
                 tracing::info!("User requested pause screen share with {}", device_id);
                 self.update_screen_share_pause_state(&device_id, true);
-                return screen_share_control_task(device_id, "pause", |client, id| async move {
+                screen_share_control_task(device_id, "pause", |client, id| async move {
                     client.pause_screen_share(&id).await
-                });
+                })
             }
             Message::ResumeScreenShare(device_id) => {
                 tracing::info!("User requested resume screen share with {}", device_id);
                 self.update_screen_share_pause_state(&device_id, false);
-                return screen_share_control_task(device_id, "resume", |client, id| async move {
+                screen_share_control_task(device_id, "resume", |client, id| async move {
                     client.resume_screen_share(&id).await
-                });
+                })
             }
             Message::StopScreenShare(device_id) => {
                 tracing::info!("User requested stop screen share with {}", device_id);
-                return screen_share_control_task(device_id, "stop", |client, id| async move {
+                screen_share_control_task(device_id, "stop", |client, id| async move {
                     client.stop_screen_share(&id).await
-                });
+                })
             }
             Message::SetScreenShareQuality(quality) => {
                 if let Some(share) = &mut self.active_screen_share {
@@ -2668,9 +2668,9 @@ impl cosmic::Application for CConnectApplet {
             Message::ShowFileSyncSettings(device_id) => {
                 self.file_sync_settings_device = Some(device_id.clone());
                 // Also load folders when showing settings
-                return cosmic::task::message(cosmic::Action::App(Message::LoadSyncFolders(
+                cosmic::task::message(cosmic::Action::App(Message::LoadSyncFolders(
                     device_id,
-                )));
+                )))
             }
             Message::CloseFileSyncSettings => {
                 self.file_sync_settings_device = None;
@@ -4330,7 +4330,7 @@ impl CConnectApplet {
 
         // Get camera stats if available
         let stats = self.camera_stats.get(device_id);
-        let is_streaming = stats.map_or(false, |s| s.is_streaming);
+        let is_streaming = stats.is_some_and(|s| s.is_streaming);
 
         // Camera header with toggle
         let camera_header = row![
@@ -5399,7 +5399,7 @@ impl CConnectApplet {
             if !commands.is_empty() {
                 let mut list = column![].spacing(SPACE_S);
                 // Sort by name
-                let mut sorted_cmds: Vec<_> = commands.into_iter().collect();
+                let mut sorted_cmds: Vec<_> = commands.iter().collect();
                 sorted_cmds.sort_by(|a, b| a.1.name.cmp(&b.1.name));
 
                 for (cmd_id, cmd) in sorted_cmds {
@@ -5567,8 +5567,6 @@ impl CConnectApplet {
             .padding(SPACE_M)
             .into()
     }
-
-    /// RemoteDesktop settings view with quality, FPS, and resolution controls
 
     /// SMS dialog view for sending SMS messages via device
     fn sms_dialog_view(&self, device_id: &str) -> Element<'_, Message> {
@@ -5831,7 +5829,7 @@ impl CConnectApplet {
 
         // Get camera stats if available
         let stats = self.camera_stats.get(device_id);
-        let is_streaming = stats.map_or(false, |s| s.is_streaming);
+        let is_streaming = stats.is_some_and(|s| s.is_streaming);
 
         // Camera selection dropdown
         let camera_idx = stats.map_or(0, |s| if s.camera_id == 0 { 0 } else { 1 });
@@ -5969,7 +5967,7 @@ impl CConnectApplet {
 
         let mut transfers_col = column![header].spacing(SPACE_S);
 
-        for (_id, state) in &self.active_transfers {
+        for state in self.active_transfers.values() {
             let progress = if state.total > 0 {
                 (state.current as f32 / state.total as f32) * 100.0
             } else {
@@ -6195,10 +6193,7 @@ impl CConnectApplet {
                     if let Err(e) = client.mpris_control(&player_arg, &action).await {
                         tracing::error!("Failed to control MPRIS player: {}", e);
                     }
-                    match client.get_player_state(&player_arg).await {
-                        Ok(state) => Some(state),
-                        Err(_) => None,
-                    }
+                    (client.get_player_state(&player_arg).await).ok()
                 } else {
                     None
                 }

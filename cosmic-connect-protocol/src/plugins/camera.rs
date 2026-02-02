@@ -180,20 +180,17 @@ impl CameraInfo {
 /// Camera facing direction
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum CameraFacing {
     /// Front-facing camera (selfie)
     Front,
     /// Back-facing camera (main)
+    #[default]
     Back,
     /// External camera
     External,
 }
 
-impl Default for CameraFacing {
-    fn default() -> Self {
-        Self::Back
-    }
-}
 
 impl CameraFacing {
     pub fn as_str(&self) -> &'static str {
@@ -260,20 +257,17 @@ impl CameraSession {
 /// Camera quality settings
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum CameraQuality {
     /// Low quality (high compression)
     Low,
     /// Medium quality (balanced)
+    #[default]
     Medium,
     /// High quality (low compression)
     High,
 }
 
-impl Default for CameraQuality {
-    fn default() -> Self {
-        Self::Medium
-    }
-}
 
 impl CameraQuality {
     pub fn as_str(&self) -> &'static str {

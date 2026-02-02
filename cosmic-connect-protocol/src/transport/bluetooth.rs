@@ -150,7 +150,7 @@ impl BluetoothConnection {
         self.stream
             .shutdown()
             .await
-            .map_err(|e| ProtocolError::Io(e))?;
+            .map_err(ProtocolError::Io)?;
 
         Ok(())
     }
@@ -213,13 +213,13 @@ impl Transport for BluetoothConnection {
         self.stream
             .write_all(&len_bytes)
             .await
-            .map_err(|e| ProtocolError::Io(e))?;
+            .map_err(ProtocolError::Io)?;
 
         // Write packet data
         self.stream
             .write_all(&bytes)
             .await
-            .map_err(|e| ProtocolError::Io(e))?;
+            .map_err(ProtocolError::Io)?;
 
         debug!("Packet sent successfully to {}", self.remote_address_str);
         Ok(())
@@ -241,7 +241,7 @@ impl Transport for BluetoothConnection {
                     "Read timeout waiting for packet length",
                 ))
             })?
-            .map_err(|e| ProtocolError::Io(e))?;
+            .map_err(ProtocolError::Io)?;
 
         let len = u32::from_be_bytes(len_buf) as usize;
 
@@ -263,7 +263,7 @@ impl Transport for BluetoothConnection {
                     "Read timeout waiting for packet data",
                 ))
             })?
-            .map_err(|e| ProtocolError::Io(e))?;
+            .map_err(ProtocolError::Io)?;
 
         let packet = Packet::from_bytes(&packet_data)?;
         debug!(

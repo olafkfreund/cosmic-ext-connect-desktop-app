@@ -9,7 +9,7 @@
 //!
 //! ### Phase 1: Screen Capture
 //! - Use xdg-desktop-portal for screen capture permissions
-//! - Connect to PipeWire streams for video data
+//! - Connect to `PipeWire` streams for video data
 //! - Filter for HDMI dummy display outputs only
 //! - Receive raw video frames
 //!
@@ -23,7 +23,7 @@
 //! - Stream encoded video over WebRTC
 //! - WebSocket-based signaling server for peer connection setup
 //! - ICE/STUN for NAT traversal
-//! - Support for WiFi and USB (ADB) transport modes
+//! - Support for `WiFi` and USB (ADB) transport modes
 //!
 //! ### Phase 4: Input Event Handling (Current)
 //! - Receive touch events from Android client
@@ -74,7 +74,7 @@
 //!
 //! - COSMIC Desktop (Wayland)
 //! - xdg-desktop-portal-cosmic
-//! - PipeWire runtime
+//! - `PipeWire` runtime
 //! - HDMI dummy plug hardware (or virtual display)
 //!
 //! ## Configuration
@@ -111,13 +111,13 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Check if the runtime environment supports display streaming
 ///
 /// This performs basic checks to verify that required components are available:
-/// - PipeWire runtime
+/// - `PipeWire` runtime
 /// - xdg-desktop-portal
 ///
 /// # Returns
 ///
 /// `true` if the environment is suitable for display streaming
-pub async fn check_requirements() -> bool {
+pub fn check_requirements() -> bool {
     // Check for PipeWire
     let pipewire_available = std::process::Command::new("pw-cli")
         .arg("info")

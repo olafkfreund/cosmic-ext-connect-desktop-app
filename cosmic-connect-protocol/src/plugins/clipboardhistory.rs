@@ -7,7 +7,7 @@
 //!
 //! **Packet Types**:
 //! - Incoming: `cconnect.cliphistory.sync`, `cconnect.cliphistory.add`, `cconnect.cliphistory.pin`,
-//!             `cconnect.cliphistory.delete`, `cconnect.cliphistory.search`
+//!   `cconnect.cliphistory.delete`, `cconnect.cliphistory.search`
 //! - Outgoing: `cconnect.cliphistory.sync`, `cconnect.cliphistory.add`, `cconnect.cliphistory.result`
 //!
 //! **Capabilities**: `cconnect.cliphistory`

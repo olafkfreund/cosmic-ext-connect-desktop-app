@@ -1,11 +1,11 @@
-//! Screen capture using xdg-desktop-portal and PipeWire
+//! Screen capture using xdg-desktop-portal and `PipeWire`
 //!
 //! This module implements screen capture for COSMIC Desktop using the
-//! xdg-desktop-portal ScreenCast interface. It handles:
+//! xdg-desktop-portal `ScreenCast` interface. It handles:
 //!
 //! 1. Creating a screen cast session through the portal
 //! 2. Requesting permission to capture a specific display output
-//! 3. Connecting to the PipeWire stream for video frames
+//! 3. Connecting to the `PipeWire` stream for video frames
 //! 4. Filtering for HDMI dummy displays only
 
 use crate::error::{DisplayStreamError, Result};
@@ -36,7 +36,7 @@ pub enum SessionState {
 ///
 /// This struct manages the lifecycle of a screen capture session,
 /// from requesting permission through the portal to receiving video
-/// frames from PipeWire.
+/// frames from `PipeWire`.
 pub struct ScreenCapture {
     /// Target output name (e.g., "HDMI-2")
     target_output: String,
@@ -47,7 +47,7 @@ pub struct ScreenCapture {
     /// Portal session handle (if active)
     session_handle: Option<String>,
 
-    /// PipeWire stream (if connected)
+    /// `PipeWire` stream (if connected)
     pipewire_stream: Option<PipeWireStream>,
 
     /// Output information (cached after discovery)
@@ -88,8 +88,7 @@ impl ScreenCapture {
                 output_name, output_info.is_virtual, output_info.name
             );
             return Err(DisplayStreamError::InvalidConfiguration(format!(
-                "Output '{}' is not an HDMI dummy display",
-                output_name
+                "Output '{output_name}' is not an HDMI dummy display"
             )));
         }
 
@@ -138,7 +137,7 @@ impl ScreenCapture {
         let output = tokio::process::Command::new("wlr-randr")
             .output()
             .await
-            .map_err(|e| DisplayStreamError::OutputNotFound(format!("wlr-randr failed: {}", e)))?;
+            .map_err(|e| DisplayStreamError::OutputNotFound(format!("wlr-randr failed: {e}")))?;
 
         if !output.status.success() {
             return Err(DisplayStreamError::OutputNotFound(
@@ -175,7 +174,7 @@ impl ScreenCapture {
                     }
                 }
                 if let Some(hz_part) = line.split("Hz").next() {
-                    if let Some(hz_str) = hz_part.split(',').last() {
+                    if let Some(hz_str) = hz_part.split(',').next_back() {
                         refresh = hz_str.trim().parse::<f32>().map(|f| f as u32).unwrap_or(60);
                     }
                 }
@@ -190,8 +189,7 @@ impl ScreenCapture {
 
         if !found_output {
             return Err(DisplayStreamError::OutputNotFound(format!(
-                "Output '{}' not found in wlr-randr output",
-                output_name
+                "Output '{output_name}' not found in wlr-randr output"
             )));
         }
 
@@ -208,7 +206,7 @@ impl ScreenCapture {
     ///
     /// This will:
     /// 1. Request screen capture permission through xdg-desktop-portal
-    /// 2. Connect to the PipeWire stream
+    /// 2. Connect to the `PipeWire` stream
     /// 3. Begin receiving video frames
     ///
     /// # Returns
@@ -220,7 +218,7 @@ impl ScreenCapture {
     /// Returns an error if:
     /// - Permission is denied by the user
     /// - The portal session fails to start
-    /// - PipeWire connection fails
+    /// - `PipeWire` connection fails
     pub async fn start_capture(&mut self) -> Result<FrameStream> {
         if self.state != SessionState::Idle {
             return Err(DisplayStreamError::StreamAlreadyStarted);
@@ -231,14 +229,14 @@ impl ScreenCapture {
 
         // Create the screencast portal proxy
         let screencast = Screencast::new().await.map_err(|e| {
-            DisplayStreamError::Portal(format!("Failed to create screencast: {}", e))
+            DisplayStreamError::Portal(format!("Failed to create screencast: {e}"))
         })?;
 
         // Create a session
         let session = screencast
             .create_session()
             .await
-            .map_err(|e| DisplayStreamError::Portal(format!("Failed to create session: {}", e)))?;
+            .map_err(|e| DisplayStreamError::Portal(format!("Failed to create session: {e}")))?;
 
         debug!("Portal session created");
 
@@ -253,7 +251,7 @@ impl ScreenCapture {
                 PersistMode::DoNot,         // Don't persist
             )
             .await
-            .map_err(|e| DisplayStreamError::Portal(format!("Failed to select sources: {}", e)))?;
+            .map_err(|e| DisplayStreamError::Portal(format!("Failed to select sources: {e}")))?;
 
         debug!("Sources selected, starting portal session");
         self.state = SessionState::Connecting;
@@ -263,11 +261,11 @@ impl ScreenCapture {
             .start(&session, None)
             .await
             .map_err(|e| {
-                DisplayStreamError::CaptureSessionFailed(format!("Failed to start session: {}", e))
+                DisplayStreamError::CaptureSessionFailed(format!("Failed to start session: {e}"))
             })?
             .response()
             .map_err(|e| {
-                DisplayStreamError::CaptureSessionFailed(format!("Portal response error: {}", e))
+                DisplayStreamError::CaptureSessionFailed(format!("Portal response error: {e}"))
             })?;
 
         // Get streams from response
@@ -288,7 +286,7 @@ impl ScreenCapture {
         );
 
         // Store session handle
-        self.session_handle = Some(format!("{:?}", session));
+        self.session_handle = Some(format!("{session:?}"));
 
         // Create frame channel
         let (tx, rx) = mpsc::channel(32);
@@ -310,7 +308,7 @@ impl ScreenCapture {
 
     /// Stop the screen capture session
     ///
-    /// This will disconnect from PipeWire and close the portal session.
+    /// This will disconnect from `PipeWire` and close the portal session.
     pub async fn stop_capture(&mut self) -> Result<()> {
         if self.state != SessionState::Capturing {
             return Err(DisplayStreamError::StreamNotStarted);
@@ -322,7 +320,6 @@ impl ScreenCapture {
         if let Some(mut stream) = self.pipewire_stream.take() {
             stream
                 .disconnect()
-                .await
                 .map_err(|e| DisplayStreamError::PipeWire(e.to_string()))?;
         }
 
@@ -338,16 +335,19 @@ impl ScreenCapture {
     }
 
     /// Get the current output information
+    #[must_use] 
     pub fn get_output_info(&self) -> Option<&OutputInfo> {
         self.output_info.as_ref()
     }
 
     /// Get the current session state
+    #[must_use] 
     pub fn state(&self) -> SessionState {
         self.state
     }
 
     /// Check if the session is actively capturing
+    #[must_use] 
     pub fn is_capturing(&self) -> bool {
         self.state == SessionState::Capturing
     }
@@ -360,6 +360,7 @@ pub struct FrameStream {
 
 impl FrameStream {
     /// Create a new frame stream from a receiver
+    #[must_use] 
     pub fn new(receiver: mpsc::Receiver<VideoFrame>) -> Self {
         Self { receiver }
     }
@@ -393,7 +394,7 @@ pub struct VideoFrame {
     /// Frame height in pixels
     pub height: u32,
 
-    /// Frame format (e.g., "BGRx", "RGBx")
+    /// Frame format (e.g., "`BGRx`", "`RGBx`")
     pub format: String,
 
     /// Frame timestamp in microseconds
@@ -405,6 +406,7 @@ pub struct VideoFrame {
 
 impl VideoFrame {
     /// Create a new video frame
+    #[must_use] 
     pub fn new(
         data: Vec<u8>,
         width: u32,
@@ -424,11 +426,13 @@ impl VideoFrame {
     }
 
     /// Get the frame data size in bytes
+    #[must_use] 
     pub fn size(&self) -> usize {
         self.data.len()
     }
 
     /// Get bytes per pixel based on format
+    #[must_use] 
     pub fn bytes_per_pixel(&self) -> usize {
         match self.format.as_str() {
             "BGRx" | "RGBx" | "BGRA" | "RGBA" => 4,

@@ -288,7 +288,7 @@ impl InputHandler {
     /// Returns error if enigo initialization fails (e.g., no libei support)
     fn ensure_enigo_initialized(&self) -> Result<bool> {
         let mut enigo_guard = self.enigo.lock().map_err(|e| {
-            DisplayStreamError::Input(format!("Failed to acquire enigo lock: {}", e))
+            DisplayStreamError::Input(format!("Failed to acquire enigo lock: {e}"))
         })?;
 
         if enigo_guard.is_none() {
@@ -552,7 +552,7 @@ impl InputHandler {
         }
 
         let mut enigo_guard = self.enigo.lock().map_err(|e| {
-            DisplayStreamError::Input(format!("Failed to acquire enigo lock: {}", e))
+            DisplayStreamError::Input(format!("Failed to acquire enigo lock: {e}"))
         })?;
 
         if let Some(enigo) = enigo_guard.as_mut() {
@@ -564,8 +564,7 @@ impl InputHandler {
                 );
                 self.events_failed += 1;
                 return Err(DisplayStreamError::Input(format!(
-                    "Failed to move mouse: {}",
-                    e
+                    "Failed to move mouse: {e}"
                 )));
             }
 
@@ -574,8 +573,7 @@ impl InputHandler {
                 error!("Failed to press mouse button: {}", e);
                 self.events_failed += 1;
                 return Err(DisplayStreamError::Input(format!(
-                    "Failed to press mouse button: {}",
-                    e
+                    "Failed to press mouse button: {e}"
                 )));
             }
 
@@ -604,7 +602,7 @@ impl InputHandler {
         }
 
         let mut enigo_guard = self.enigo.lock().map_err(|e| {
-            DisplayStreamError::Input(format!("Failed to acquire enigo lock: {}", e))
+            DisplayStreamError::Input(format!("Failed to acquire enigo lock: {e}"))
         })?;
 
         if let Some(enigo) = enigo_guard.as_mut() {
@@ -615,8 +613,7 @@ impl InputHandler {
                 );
                 self.events_failed += 1;
                 return Err(DisplayStreamError::Input(format!(
-                    "Failed to move mouse: {}",
-                    e
+                    "Failed to move mouse: {e}"
                 )));
             }
 
@@ -645,7 +642,7 @@ impl InputHandler {
         }
 
         let mut enigo_guard = self.enigo.lock().map_err(|e| {
-            DisplayStreamError::Input(format!("Failed to acquire enigo lock: {}", e))
+            DisplayStreamError::Input(format!("Failed to acquire enigo lock: {e}"))
         })?;
 
         if let Some(enigo) = enigo_guard.as_mut() {
@@ -657,8 +654,7 @@ impl InputHandler {
                 );
                 self.events_failed += 1;
                 return Err(DisplayStreamError::Input(format!(
-                    "Failed to move mouse: {}",
-                    e
+                    "Failed to move mouse: {e}"
                 )));
             }
 
@@ -667,8 +663,7 @@ impl InputHandler {
                 error!("Failed to release mouse button: {}", e);
                 self.events_failed += 1;
                 return Err(DisplayStreamError::Input(format!(
-                    "Failed to release mouse button: {}",
-                    e
+                    "Failed to release mouse button: {e}"
                 )));
             }
 

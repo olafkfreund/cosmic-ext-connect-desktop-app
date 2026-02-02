@@ -6,19 +6,13 @@ use std::path::PathBuf;
 
 /// Configuration for pinned/favorited devices
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct PinnedDevicesConfig {
     /// Set of device IDs that are pinned/favorited
     #[serde(default)]
     pub pinned_devices: HashSet<String>,
 }
 
-impl Default for PinnedDevicesConfig {
-    fn default() -> Self {
-        Self {
-            pinned_devices: HashSet::new(),
-        }
-    }
-}
 
 impl PinnedDevicesConfig {
     /// Get the config file path

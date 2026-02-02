@@ -84,8 +84,10 @@ pub struct ContactInfo {
 /// Notification preference for a device
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum NotificationPreference {
     /// Show all notifications from this device
+    #[default]
     All,
     /// Show only important notifications (messaging apps, calls, etc.)
     Important,
@@ -93,11 +95,6 @@ pub enum NotificationPreference {
     None,
 }
 
-impl Default for NotificationPreference {
-    fn default() -> Self {
-        Self::All
-    }
-}
 
 impl std::fmt::Display for NotificationPreference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

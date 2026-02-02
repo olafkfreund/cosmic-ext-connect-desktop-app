@@ -103,8 +103,7 @@ impl ContactsDatabase {
         // Ensure directory exists
         if let Some(parent) = db_path.as_ref().parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                ProtocolError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                ProtocolError::Io(std::io::Error::other(
                     format!("Failed to create database directory: {}", e),
                 ))
             })?;

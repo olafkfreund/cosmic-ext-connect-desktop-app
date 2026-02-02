@@ -22,7 +22,8 @@ pub struct OutputInfo {
 }
 
 impl OutputInfo {
-    /// Create a new OutputInfo
+    /// Create a new `OutputInfo`
+    #[must_use] 
     pub fn new(name: String, width: u32, height: u32, refresh_rate: u32, is_virtual: bool) -> Self {
         Self {
             name,
@@ -37,6 +38,7 @@ impl OutputInfo {
     ///
     /// HDMI dummy plugs typically have names like "HDMI-2", "HDMI-A-2", etc.
     /// and are marked as virtual displays by the compositor.
+    #[must_use] 
     pub fn is_hdmi_dummy(&self) -> bool {
         self.is_virtual
             && (self.name.starts_with("HDMI-")
@@ -45,6 +47,7 @@ impl OutputInfo {
     }
 
     /// Format output description for display
+    #[must_use] 
     pub fn description(&self) -> String {
         format!(
             "{} ({}x{} @ {}Hz{})",

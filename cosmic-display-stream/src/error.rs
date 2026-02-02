@@ -16,7 +16,7 @@ pub enum DisplayStreamError {
     #[error("Portal error: {0}")]
     Portal(String),
 
-    /// Error with PipeWire stream
+    /// Error with `PipeWire` stream
     #[error("PipeWire error: {0}")]
     PipeWire(String),
 

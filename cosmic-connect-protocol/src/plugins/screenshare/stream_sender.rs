@@ -72,12 +72,12 @@ impl StreamSender {
 
         let stream = TcpStream::connect(&addr)
             .await
-            .map_err(|e| crate::ProtocolError::Io(e))?;
+            .map_err(crate::ProtocolError::Io)?;
 
         // Set TCP_NODELAY for low latency
         stream
             .set_nodelay(true)
-            .map_err(|e| crate::ProtocolError::Io(e))?;
+            .map_err(crate::ProtocolError::Io)?;
 
         info!("Connected to viewer at {}", addr);
         self.stream = Some(stream);
@@ -162,7 +162,7 @@ impl StreamSender {
             stream
                 .flush()
                 .await
-                .map_err(|e| crate::ProtocolError::Io(e))?;
+                .map_err(crate::ProtocolError::Io)?;
         }
         Ok(())
     }

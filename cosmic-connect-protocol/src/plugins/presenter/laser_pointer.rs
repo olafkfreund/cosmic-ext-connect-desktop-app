@@ -113,10 +113,9 @@ impl SharedState {
     }
 
     fn get_position(&self) -> (f64, f64) {
-        self.position
+        *self.position
             .lock()
             .unwrap_or_else(|_| panic!("Failed to lock position"))
-            .clone()
     }
 
     fn set_config(&self, config: LaserPointerConfig) {

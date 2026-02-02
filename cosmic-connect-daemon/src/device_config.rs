@@ -13,8 +13,10 @@ use tracing::{debug, info, warn};
 /// Notification preference for a device
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum NotificationPreference {
     /// Show all notifications from this device
+    #[default]
     All,
     /// Show only important notifications (messaging apps, calls, etc.)
     Important,
@@ -22,11 +24,6 @@ pub enum NotificationPreference {
     None,
 }
 
-impl Default for NotificationPreference {
-    fn default() -> Self {
-        Self::All
-    }
-}
 
 /// Per-device configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

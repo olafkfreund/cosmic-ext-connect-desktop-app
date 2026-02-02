@@ -1,6 +1,6 @@
 //! Video encoding module for H.264 with hardware acceleration
 //!
-//! This module provides video encoding functionality using GStreamer,
+//! This module provides video encoding functionality using `GStreamer`,
 //! supporting hardware-accelerated encoding via VAAPI (Intel/AMD) and
 //! NVENC (NVIDIA), with a software fallback.
 //!
@@ -51,7 +51,7 @@ pub enum EncoderType {
 }
 
 impl EncoderType {
-    /// Get the GStreamer element name for this encoder type
+    /// Get the `GStreamer` element name for this encoder type
     fn element_name(&self) -> &'static str {
         match self {
             Self::Vaapi => "vaapih264enc",
@@ -61,6 +61,7 @@ impl EncoderType {
     }
 
     /// Get a human-readable name for this encoder type
+    #[must_use] 
     pub fn display_name(&self) -> &'static str {
         match self {
             Self::Vaapi => "VAAPI (Intel/AMD)",
@@ -105,11 +106,13 @@ impl Default for EncoderConfig {
 
 impl EncoderConfig {
     /// Create a new encoder configuration with default values
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Set the video resolution
+    #[must_use] 
     pub fn with_resolution(mut self, width: u32, height: u32) -> Self {
         self.width = width;
         self.height = height;
@@ -117,30 +120,35 @@ impl EncoderConfig {
     }
 
     /// Set the target bitrate in bits per second
+    #[must_use] 
     pub fn with_bitrate(mut self, bitrate: u32) -> Self {
         self.bitrate = bitrate;
         self
     }
 
     /// Set the framerate
+    #[must_use] 
     pub fn with_framerate(mut self, framerate: u32) -> Self {
         self.framerate = framerate;
         self
     }
 
     /// Set the preferred encoder type
+    #[must_use] 
     pub fn with_encoder_type(mut self, encoder_type: EncoderType) -> Self {
         self.encoder_type = Some(encoder_type);
         self
     }
 
     /// Enable or disable low-latency mode
+    #[must_use] 
     pub fn with_low_latency(mut self, enabled: bool) -> Self {
         self.low_latency = enabled;
         self
     }
 
     /// Set the keyframe interval
+    #[must_use] 
     pub fn with_keyframe_interval(mut self, interval: u32) -> Self {
         self.keyframe_interval = interval;
         self
@@ -160,9 +168,9 @@ pub struct EncodedFrame {
     pub is_keyframe: bool,
 }
 
-/// Video encoder using GStreamer with hardware acceleration
+/// Video encoder using `GStreamer` with hardware acceleration
 pub struct VideoEncoder {
-    /// GStreamer pipeline
+    /// `GStreamer` pipeline
     pipeline: gst::Pipeline,
     /// App source for pushing raw frames
     appsrc: gst_app::AppSrc,
@@ -190,17 +198,17 @@ impl VideoEncoder {
     /// # Errors
     ///
     /// Returns an error if:
-    /// - GStreamer initialization fails
+    /// - `GStreamer` initialization fails
     /// - No suitable encoder is available
     /// - Pipeline creation fails
     pub fn new(config: EncoderConfig) -> Result<Self> {
         // Initialize GStreamer
         gst::init().map_err(|e| {
-            DisplayStreamError::Encoder(format!("Failed to initialize GStreamer: {}", e))
+            DisplayStreamError::Encoder(format!("Failed to initialize GStreamer: {e}"))
         })?;
 
         // Detect or use specified encoder
-        let encoder_type = config.encoder_type.unwrap_or_else(|| detect_best_encoder());
+        let encoder_type = config.encoder_type.unwrap_or_else(detect_best_encoder);
 
         info!(
             "Creating video encoder: {} ({}x{} @ {} fps, {} bps)",
@@ -224,7 +232,7 @@ impl VideoEncoder {
         })
     }
 
-    /// Build the GStreamer encoding pipeline
+    /// Build the `GStreamer` encoding pipeline
     fn build_pipeline(
         config: &EncoderConfig,
         encoder_type: EncoderType,
@@ -251,7 +259,7 @@ impl VideoEncoder {
             .name("convert")
             .build()
             .map_err(|e| {
-                DisplayStreamError::Encoder(format!("Failed to create videoconvert: {}", e))
+                DisplayStreamError::Encoder(format!("Failed to create videoconvert: {e}"))
             })?;
 
         // Create encoder based on type
@@ -262,7 +270,7 @@ impl VideoEncoder {
             .name("parser")
             .build()
             .map_err(|e| {
-                DisplayStreamError::Encoder(format!("Failed to create h264parse: {}", e))
+                DisplayStreamError::Encoder(format!("Failed to create h264parse: {e}"))
             })?;
 
         let appsink = gst_app::AppSink::builder()
@@ -285,7 +293,7 @@ impl VideoEncoder {
                 appsink.upcast_ref(),
             ])
             .map_err(|e| {
-                DisplayStreamError::Encoder(format!("Failed to add elements to pipeline: {}", e))
+                DisplayStreamError::Encoder(format!("Failed to add elements to pipeline: {e}"))
             })?;
 
         // Link elements
@@ -297,7 +305,7 @@ impl VideoEncoder {
             appsink.upcast_ref(),
         ])
         .map_err(|e| {
-            DisplayStreamError::Encoder(format!("Failed to link pipeline elements: {}", e))
+            DisplayStreamError::Encoder(format!("Failed to link pipeline elements: {e}"))
         })?;
 
         Ok((pipeline, appsrc, appsink))
@@ -312,8 +320,7 @@ impl VideoEncoder {
             .build()
             .map_err(|e| {
                 DisplayStreamError::Encoder(format!(
-                    "Failed to create encoder '{}': {}. Try a different encoder type.",
-                    element_name, e
+                    "Failed to create encoder '{element_name}': {e}. Try a different encoder type."
                 ))
             })?;
 
@@ -367,7 +374,7 @@ impl VideoEncoder {
 
         self.pipeline
             .set_state(gst::State::Playing)
-            .map_err(|e| DisplayStreamError::Encoder(format!("Failed to start pipeline: {}", e)))?;
+            .map_err(|e| DisplayStreamError::Encoder(format!("Failed to start pipeline: {e}")))?;
 
         self.running = true;
         Ok(())
@@ -383,7 +390,7 @@ impl VideoEncoder {
 
         self.pipeline
             .set_state(gst::State::Null)
-            .map_err(|e| DisplayStreamError::Encoder(format!("Failed to stop pipeline: {}", e)))?;
+            .map_err(|e| DisplayStreamError::Encoder(format!("Failed to stop pipeline: {e}")))?;
 
         self.running = false;
         Ok(())
@@ -393,7 +400,7 @@ impl VideoEncoder {
     ///
     /// # Arguments
     ///
-    /// * `frame` - Raw video frame data (BGRx format)
+    /// * `frame` - Raw video frame data (`BGRx` format)
     /// * `timestamp` - Presentation timestamp in microseconds
     ///
     /// # Returns
@@ -406,7 +413,7 @@ impl VideoEncoder {
 
         // Create GStreamer buffer from frame data
         let mut buffer = gst::Buffer::with_size(frame.len())
-            .map_err(|e| DisplayStreamError::Encoder(format!("Failed to create buffer: {}", e)))?;
+            .map_err(|e| DisplayStreamError::Encoder(format!("Failed to create buffer: {e}")))?;
 
         {
             let buffer_ref = buffer.get_mut().ok_or_else(|| {
@@ -419,20 +426,20 @@ impl VideoEncoder {
             // Copy frame data
             let mut map = buffer_ref
                 .map_writable()
-                .map_err(|e| DisplayStreamError::Encoder(format!("Failed to map buffer: {}", e)))?;
+                .map_err(|e| DisplayStreamError::Encoder(format!("Failed to map buffer: {e}")))?;
             map.copy_from_slice(frame);
         }
 
         // Push buffer to pipeline
         self.appsrc
             .push_buffer(buffer)
-            .map_err(|e| DisplayStreamError::Encoder(format!("Failed to push buffer: {}", e)))?;
+            .map_err(|e| DisplayStreamError::Encoder(format!("Failed to push buffer: {e}")))?;
 
         // Try to pull encoded frame
         self.pull_encoded_frame()
     }
 
-    /// Encode a VideoFrame from the capture module
+    /// Encode a `VideoFrame` from the capture module
     pub fn encode_video_frame(&mut self, frame: &VideoFrame) -> Result<Option<EncodedFrame>> {
         // Verify format compatibility
         if frame.format != "BGRx" && frame.format != "BGRA" {
@@ -458,11 +465,11 @@ impl VideoEncoder {
                 })?;
 
                 let map = buffer.map_readable().map_err(|e| {
-                    DisplayStreamError::Encoder(format!("Failed to map encoded buffer: {}", e))
+                    DisplayStreamError::Encoder(format!("Failed to map encoded buffer: {e}"))
                 })?;
 
-                let pts = buffer.pts().map(|t| t.useconds() as i64).unwrap_or(0);
-                let duration = buffer.duration().map(|t| t.useconds() as i64).unwrap_or(0);
+                let pts = buffer.pts().map_or(0, |t| t.useconds() as i64);
+                let duration = buffer.duration().map_or(0, |t| t.useconds() as i64);
 
                 // Check for keyframe flag
                 let is_keyframe = !buffer.flags().contains(gst::BufferFlags::DELTA_UNIT);
@@ -497,16 +504,19 @@ impl VideoEncoder {
     }
 
     /// Get the current encoder configuration
+    #[must_use] 
     pub fn config(&self) -> &EncoderConfig {
         &self.config
     }
 
     /// Get the encoder type being used
+    #[must_use] 
     pub fn encoder_type(&self) -> EncoderType {
         self.encoder_type
     }
 
     /// Check if the encoder is running
+    #[must_use] 
     pub fn is_running(&self) -> bool {
         self.running
     }
@@ -571,12 +581,14 @@ pub fn detect_best_encoder() -> EncoderType {
     EncoderType::Software
 }
 
-/// Check if a specific GStreamer encoder element is available
+/// Check if a specific `GStreamer` encoder element is available
+#[must_use] 
 pub fn is_encoder_available(element_name: &str) -> bool {
     gst::ElementFactory::find(element_name).is_some()
 }
 
 /// Get a list of all available encoder types
+#[must_use] 
 pub fn available_encoders() -> Vec<EncoderType> {
     let mut encoders = Vec::new();
 

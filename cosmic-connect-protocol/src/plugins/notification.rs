@@ -210,10 +210,12 @@ use super::{Plugin, PluginFactory};
 /// ```
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum NotificationUrgency {
     /// Low priority notification (urgency=0)
     Low = 0,
     /// Normal priority notification (urgency=1, default)
+    #[default]
     Normal = 1,
     /// Critical/urgent notification (urgency=2)
     Critical = 2,
@@ -256,11 +258,6 @@ impl NotificationUrgency {
     }
 }
 
-impl Default for NotificationUrgency {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
 
 /// Notification action button
 ///

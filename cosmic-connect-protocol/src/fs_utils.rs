@@ -50,7 +50,7 @@ pub async fn check_disk_space(path: impl AsRef<Path>, required_bytes: u64) -> Re
             Ok(stat) => {
                 // Available bytes = available blocks * fragment size
                 // fragment_size is the actual unit of allocation
-                let available_bytes = stat.blocks_available() as u64 * stat.fragment_size() as u64;
+                let available_bytes = stat.blocks_available() * stat.fragment_size();
 
                 debug!(
                     "Disk space check for {}: available={} bytes, required={} bytes",
