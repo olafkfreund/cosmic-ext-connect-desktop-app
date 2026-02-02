@@ -211,9 +211,15 @@ impl ConnectionManager {
         let last_connection_time = self.last_connection_time.clone();
 
         let server_task = tokio::spawn(async move {
+            let mut consecutive_errors = 0u32;
+            const MAX_BACKOFF_SECS: u64 = 30;
+
             loop {
                 match server.accept().await {
                     Ok((connection, core_identity)) => {
+                        // Reset error count on success
+                        consecutive_errors = 0;
+
                         let remote_addr = connection.remote_addr();
                         let device_name = core_identity
                             .get_body_field::<String>("deviceName")
@@ -240,7 +246,40 @@ impl ConnectionManager {
                         );
                     }
                     Err(e) => {
-                        error!("Error accepting connection: {}", e);
+                        consecutive_errors = consecutive_errors.saturating_add(1);
+                        let error_str = e.to_string();
+
+                        // Check for resource exhaustion errors
+                        let is_resource_error = error_str.contains("Too many open files")
+                            || error_str.contains("os error 24")
+                            || error_str.contains("EMFILE")
+                            || error_str.contains("ENFILE");
+
+                        if is_resource_error {
+                            // Longer backoff for resource exhaustion
+                            let backoff_secs = std::cmp::min(
+                                consecutive_errors.saturating_mul(5) as u64,
+                                MAX_BACKOFF_SECS,
+                            );
+                            error!(
+                                "Resource exhaustion error ({}), backing off for {}s: {}",
+                                consecutive_errors, backoff_secs, e
+                            );
+                            tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
+                        } else if consecutive_errors > 10 {
+                            // General backoff for repeated errors
+                            let backoff_secs =
+                                std::cmp::min(consecutive_errors as u64 / 10, MAX_BACKOFF_SECS);
+                            warn!(
+                                "Repeated accept errors ({}), backing off for {}s: {}",
+                                consecutive_errors, backoff_secs, e
+                            );
+                            tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
+                        } else {
+                            // Brief delay for occasional errors
+                            error!("Error accepting connection: {}", e);
+                            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        }
                     }
                 }
             }
