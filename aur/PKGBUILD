@@ -1,0 +1,148 @@
+# Maintainer: Your Name <your.email@example.com>
+
+pkgname=cosmic-connect
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Device connectivity for COSMIC Desktop"
+arch=('x86_64')
+url="https://github.com/olafkfreund/cosmic-connect-desktop-app"
+license=('GPL-3.0-or-later')
+install=cosmic-connect.install
+depends=(
+  'dbus'
+  'gcc-libs'
+  'glibc'
+  'gstreamer'
+  'gst-plugins-base'
+  'gst-plugins-good'
+  'gst-plugins-bad'
+  'gtk3'
+  'libpulse'
+  'openssl'
+  'pipewire'
+  'wayland'
+  'webkit2gtk-4.1'
+)
+makedepends=(
+  'cargo'
+  'git'
+  'pkg-config'
+  'rust'
+)
+optdepends=(
+  'wireplumber: PipeWire session manager for RemoteDesktop plugin'
+  'gst-plugins-ugly: Additional codec support for display streaming'
+  'gst-libav: FFmpeg-based codec support'
+)
+provides=('cosmic-connect')
+conflicts=('cosmic-connect-git')
+source=(
+  "$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz"
+  'cosmic-connect-daemon.service'
+)
+sha256sums=(
+  'SKIP'  # Update with actual checksum: updpkgsums
+  'SKIP'
+)
+
+prepare() {
+  cd "$pkgname-desktop-app-$pkgver"
+
+  # Update Cargo.lock if needed
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-desktop-app-$pkgver"
+
+  # Build with RemoteDesktop feature enabled
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+
+  cargo build \
+    --frozen \
+    --release \
+    --workspace \
+    --bins \
+    --features cosmic-connect-daemon/remotedesktop,cosmic-connect-protocol/remotedesktop
+}
+
+check() {
+  cd "$pkgname-desktop-app-$pkgver"
+
+  # Skip tests that require DBus session
+  # cargo test --frozen --workspace || true
+}
+
+package() {
+  cd "$pkgname-desktop-app-$pkgver"
+
+  # Install binaries
+  install -Dm755 target/release/cosmic-applet-connect -t "$pkgdir/usr/bin/"
+  install -Dm755 target/release/cosmic-connect-daemon -t "$pkgdir/usr/bin/"
+  install -Dm755 target/release/cosmic-connect-manager -t "$pkgdir/usr/bin/"
+  install -Dm755 target/release/cosmic-messages -t "$pkgdir/usr/bin/"
+  install -Dm755 target/release/cosmic-messages-popup -t "$pkgdir/usr/bin/"
+  install -Dm755 target/release/cosmic-display-stream -t "$pkgdir/usr/bin/"
+
+  # Install systemd user service
+  install -Dm644 "$srcdir/cosmic-connect-daemon.service" \
+    "$pkgdir/usr/lib/systemd/user/cosmic-connect-daemon.service"
+
+  # Install DBus service for activation
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/dbus-1/services/org.cosmicde.CosmicConnect.service" <<EOF
+[D-BUS Service]
+Name=org.cosmicde.CosmicConnect
+Exec=/usr/bin/cosmic-connect-daemon
+SystemdService=cosmic-connect-daemon.service
+EOF
+
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/dbus-1/services/org.cosmicde.MessagesPopup.service" <<EOF
+[D-BUS Service]
+Name=org.cosmicde.MessagesPopup
+Exec=/usr/bin/cosmic-messages-popup --daemon
+EOF
+
+  # Install desktop entries
+  install -Dm644 cosmic-applet-connect/data/cosmic-applet-connect.desktop \
+    "$pkgdir/usr/share/applications/cosmic-applet-connect.desktop"
+
+  install -Dm644 cosmic-messages-popup/data/org.cosmicde.MessagesPopup.desktop \
+    "$pkgdir/usr/share/applications/org.cosmicde.MessagesPopup.desktop"
+
+  # Install manager desktop entry
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/cosmic-connect-manager.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=COSMIC Connect Manager
+Comment=Manage connected devices for COSMIC Desktop
+GenericName=Device Manager
+Keywords=Cosmic;Iced;connect;phone;device;sync;manager;
+Icon=phone-symbolic
+Exec=/usr/bin/cosmic-connect-manager
+Categories=Settings;HardwareSettings;
+Terminal=false
+StartupNotify=true
+EOF
+
+  # Install Flatpak desktop entries (for compatibility)
+  install -Dm644 flatpak/org.cosmicde.CosmicConnect.desktop \
+    "$pkgdir/usr/share/applications/org.cosmicde.CosmicConnect.desktop"
+
+  install -Dm644 flatpak/org.cosmicde.CosmicConnect.Applet.desktop \
+    "$pkgdir/usr/share/applications/org.cosmicde.CosmicConnect.Applet.desktop"
+
+  # Install AppStream metadata
+  install -Dm644 flatpak/org.cosmicde.CosmicConnect.metainfo.xml \
+    "$pkgdir/usr/share/metainfo/org.cosmicde.CosmicConnect.metainfo.xml"
+
+  # Install icon
+  install -Dm644 connect_logo.png \
+    "$pkgdir/usr/share/icons/hicolor/256x256/apps/org.cosmicde.CosmicConnect.png"
+
+  # Install documentation
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
+
+# vim:set ts=2 sw=2 et:

@@ -67,9 +67,11 @@ impl OpusCodec {
             ProtocolError::InvalidPacket(format!("Failed to create Opus encoder: {:?}", e))
         })?;
 
-        encoder.set_bitrate(opus::Bitrate::Bits(bitrate as i32)).map_err(|e| {
-            ProtocolError::InvalidPacket(format!("Failed to set Opus bitrate: {:?}", e))
-        })?;
+        encoder
+            .set_bitrate(opus::Bitrate::Bits(bitrate as i32))
+            .map_err(|e| {
+                ProtocolError::InvalidPacket(format!("Failed to set Opus bitrate: {:?}", e))
+            })?;
 
         let decoder = OpusDecoder::new(sample_rate, opus_channels).map_err(|e| {
             ProtocolError::InvalidPacket(format!("Failed to create Opus decoder: {:?}", e))
@@ -128,7 +130,11 @@ impl OpusCodec {
 
         output.truncate(encoded_size);
 
-        debug!("Encoded {} samples to {} bytes", samples.len(), encoded_size);
+        debug!(
+            "Encoded {} samples to {} bytes",
+            samples.len(),
+            encoded_size
+        );
 
         Ok(output)
     }
@@ -157,7 +163,11 @@ impl OpusCodec {
             .map(|&s| s as f32 / 32767.0)
             .collect();
 
-        debug!("Decoded {} bytes to {} samples", packet.len(), samples.len());
+        debug!(
+            "Decoded {} bytes to {} samples",
+            packet.len(),
+            samples.len()
+        );
 
         Ok(samples)
     }
@@ -210,28 +220,29 @@ impl OpusCodec {
     /// Create new Opus codec (stub - always fails)
     pub fn new(_sample_rate: u32, _channels: u8, _bitrate: u32) -> Result<Self> {
         Err(ProtocolError::InvalidPacket(
-            "Opus codec not available - compile with 'opus' feature and install libopus-dev".to_string()
+            "Opus codec not available - compile with 'opus' feature and install libopus-dev"
+                .to_string(),
         ))
     }
 
     /// Encode (stub)
     pub fn encode(&mut self, _samples: &[AudioSample]) -> Result<Vec<u8>> {
         Err(ProtocolError::InvalidPacket(
-            "Opus codec not available".to_string()
+            "Opus codec not available".to_string(),
         ))
     }
 
     /// Decode (stub)
     pub fn decode(&mut self, _packet: &[u8]) -> Result<Vec<AudioSample>> {
         Err(ProtocolError::InvalidPacket(
-            "Opus codec not available".to_string()
+            "Opus codec not available".to_string(),
         ))
     }
 
     /// Decode PLC (stub)
     pub fn decode_plc(&mut self) -> Result<Vec<AudioSample>> {
         Err(ProtocolError::InvalidPacket(
-            "Opus codec not available".to_string()
+            "Opus codec not available".to_string(),
         ))
     }
 
@@ -260,7 +271,10 @@ pub struct PcmCodec {
 impl PcmCodec {
     /// Create new PCM codec
     pub fn new(sample_rate: u32, channels: u8) -> Self {
-        debug!("Created PCM codec: {}Hz, {} channels", sample_rate, channels);
+        debug!(
+            "Created PCM codec: {}Hz, {} channels",
+            sample_rate, channels
+        );
         Self {
             sample_rate,
             channels,
@@ -440,21 +454,22 @@ impl AacCodec {
     /// Create new AAC codec (stub - always fails)
     pub fn new(sample_rate: u32, channels: u8, bitrate: u32) -> Result<Self> {
         Err(ProtocolError::InvalidPacket(
-            "AAC codec not available - compile with 'aac' feature and install required libraries".to_string()
+            "AAC codec not available - compile with 'aac' feature and install required libraries"
+                .to_string(),
         ))
     }
 
     /// Encode (stub)
     pub fn encode(&mut self, _samples: &[AudioSample]) -> Result<Vec<u8>> {
         Err(ProtocolError::InvalidPacket(
-            "AAC codec not available".to_string()
+            "AAC codec not available".to_string(),
         ))
     }
 
     /// Decode (stub)
     pub fn decode(&mut self, _packet: &[u8]) -> Result<Vec<AudioSample>> {
         Err(ProtocolError::InvalidPacket(
-            "AAC codec not available".to_string()
+            "AAC codec not available".to_string(),
         ))
     }
 
@@ -527,7 +542,10 @@ mod tests {
         assert!(plc_samples.is_ok());
 
         let samples = plc_samples.unwrap();
-        assert_eq!(samples.len(), codec.frame_size() * codec.channels() as usize);
+        assert_eq!(
+            samples.len(),
+            codec.frame_size() * codec.channels() as usize
+        );
     }
 
     #[test]

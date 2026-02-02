@@ -169,15 +169,14 @@ impl WaylandCapture {
         self.state = CaptureState::PermissionRequested;
 
         // Create the screencast portal proxy
-        let screencast = Screencast::new()
-            .await
-            .map_err(|e| crate::ProtocolError::invalid_state(format!("Failed to create screencast: {}", e)))?;
+        let screencast = Screencast::new().await.map_err(|e| {
+            crate::ProtocolError::invalid_state(format!("Failed to create screencast: {}", e))
+        })?;
 
         // Create a session
-        let session = screencast
-            .create_session()
-            .await
-            .map_err(|e| crate::ProtocolError::invalid_state(format!("Failed to create session: {}", e)))?;
+        let session = screencast.create_session().await.map_err(|e| {
+            crate::ProtocolError::invalid_state(format!("Failed to create session: {}", e))
+        })?;
 
         debug!("Portal session created");
 
@@ -185,14 +184,16 @@ impl WaylandCapture {
         screencast
             .select_sources(
                 &session,
-                CursorMode::Embedded,      // Include cursor in the stream
+                CursorMode::Embedded,       // Include cursor in the stream
                 SourceType::Monitor.into(), // Capture monitors only
                 false,                      // Don't allow multiple sources
                 None,                       // No restore token
                 PersistMode::DoNot,         // Don't persist
             )
             .await
-            .map_err(|e| crate::ProtocolError::invalid_state(format!("Failed to select sources: {}", e)))?;
+            .map_err(|e| {
+                crate::ProtocolError::invalid_state(format!("Failed to select sources: {}", e))
+            })?;
 
         debug!("Sources selected, starting portal session");
 
@@ -211,7 +212,7 @@ impl WaylandCapture {
         // Get streams from response
         if streams.streams().is_empty() {
             return Err(crate::ProtocolError::invalid_state(
-                "No streams returned from portal"
+                "No streams returned from portal",
             ));
         }
 
@@ -250,9 +251,9 @@ impl WaylandCapture {
             ));
         }
 
-        let node_id = self.pipewire_node.ok_or_else(|| {
-            crate::ProtocolError::invalid_state("No PipeWire node ID available")
-        })?;
+        let node_id = self
+            .pipewire_node
+            .ok_or_else(|| crate::ProtocolError::invalid_state("No PipeWire node ID available"))?;
 
         // Create frame channel
         let (tx, rx) = mpsc::channel(32);
@@ -293,22 +294,18 @@ impl WaylandCapture {
         }
 
         // Try to receive a frame from the channel (non-blocking with timeout)
-        let frame_rx = self.frame_receiver.as_mut().ok_or_else(|| {
-            crate::ProtocolError::invalid_state("Frame channel not initialized")
-        })?;
+        let frame_rx = self
+            .frame_receiver
+            .as_mut()
+            .ok_or_else(|| crate::ProtocolError::invalid_state("Frame channel not initialized"))?;
 
         // Wait for next frame with timeout
-        match tokio::time::timeout(
-            tokio::time::Duration::from_millis(100),
-            frame_rx.recv()
-        ).await {
+        match tokio::time::timeout(tokio::time::Duration::from_millis(100), frame_rx.recv()).await {
             Ok(Some(frame)) => {
                 debug!("Captured frame {}x{}", frame.width, frame.height);
                 Ok(frame)
             }
-            Ok(None) => {
-                Err(crate::ProtocolError::invalid_state("Frame channel closed"))
-            }
+            Ok(None) => Err(crate::ProtocolError::invalid_state("Frame channel closed")),
             Err(_) => {
                 // Timeout - generate fallback frame
                 let width = self.stream_width.load(Ordering::Relaxed);
@@ -442,10 +439,7 @@ fn run_pipewire_loop(
 
     // Create main loop
     let mainloop = MainLoop::new(None).map_err(|e| {
-        crate::ProtocolError::invalid_state(format!(
-            "Failed to create PipeWire main loop: {}",
-            e
-        ))
+        crate::ProtocolError::invalid_state(format!("Failed to create PipeWire main loop: {}", e))
     })?;
 
     let loop_ = mainloop.loop_();
@@ -470,9 +464,7 @@ fn run_pipewire_loop(
             *pw::keys::MEDIA_ROLE => "Screen",
         },
     )
-    .map_err(|e| {
-        crate::ProtocolError::invalid_state(format!("Failed to create stream: {}", e))
-    })?;
+    .map_err(|e| crate::ProtocolError::invalid_state(format!("Failed to create stream: {}", e)))?;
 
     // Frame counter for sequencing (unused for now, but may be useful for debugging)
     let _frame_sequence = Arc::new(AtomicU64::new(0));

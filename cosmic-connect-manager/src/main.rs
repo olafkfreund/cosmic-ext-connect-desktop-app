@@ -1358,8 +1358,7 @@ impl CosmicConnectManager {
             }
 
             // Make contacts list scrollable
-            let scrollable_contacts = scrollable(contacts_column)
-                .height(Length::Fixed(400.0));
+            let scrollable_contacts = scrollable(contacts_column).height(Length::Fixed(400.0));
 
             content = content.push(scrollable_contacts);
         }
@@ -1414,7 +1413,11 @@ impl CosmicConnectManager {
         ];
 
         for (plugin_id, plugin_name) in plugins {
-            let enabled = self.device_settings_plugins.get(plugin_id).copied().unwrap_or(false);
+            let enabled = self
+                .device_settings_plugins
+                .get(plugin_id)
+                .copied()
+                .unwrap_or(false);
             let plugin_id_owned = plugin_id.to_string();
             content = content.push(
                 row::with_capacity(2)
@@ -1589,10 +1592,30 @@ impl CosmicConnectManager {
 
         // Power action buttons
         let power_actions = [
-            ("suspend", "Suspend", "Sleep mode, quick resume", "media-playback-pause-symbolic"),
-            ("hibernate", "Hibernate", "Save to disk, slower resume", "document-save-symbolic"),
-            ("shutdown", "Shutdown", "Power off completely", "system-shutdown-symbolic"),
-            ("restart", "Restart", "Reboot the device", "system-reboot-symbolic"),
+            (
+                "suspend",
+                "Suspend",
+                "Sleep mode, quick resume",
+                "media-playback-pause-symbolic",
+            ),
+            (
+                "hibernate",
+                "Hibernate",
+                "Save to disk, slower resume",
+                "document-save-symbolic",
+            ),
+            (
+                "shutdown",
+                "Shutdown",
+                "Power off completely",
+                "system-shutdown-symbolic",
+            ),
+            (
+                "restart",
+                "Restart",
+                "Reboot the device",
+                "system-reboot-symbolic",
+            ),
         ];
 
         for (action, title, description, icon_name) in power_actions {
@@ -2056,13 +2079,20 @@ impl Application for CosmicConnectManager {
                             // Start camera with default 720p settings
                             // camera_id: 0 (back camera), 1280x720 @ 30fps, 2000kbps
                             cosmic::task::future(async move {
-                                match client.start_camera(&device_id, 0, 1280, 720, 30, 2000).await {
+                                match client
+                                    .start_camera(&device_id, 0, 1280, 720, 30, 2000)
+                                    .await
+                                {
                                     Ok(_) => {
-                                        tracing::info!("Camera started successfully on device {}", device_id);
+                                        tracing::info!(
+                                            "Camera started successfully on device {}",
+                                            device_id
+                                        );
                                         Message::AddHistoryEvent(HistoryEvent {
                                             icon_name: "camera-web-symbolic".to_string(),
                                             event_type: "Camera started".to_string(),
-                                            description: "Streaming 720p @ 30fps to V4L2 loopback".to_string(),
+                                            description: "Streaming 720p @ 30fps to V4L2 loopback"
+                                                .to_string(),
                                             timestamp: chrono::Local::now(),
                                         })
                                     }
@@ -2147,7 +2177,9 @@ impl Application for CosmicConnectManager {
                                 let device_id_clone = device_id.clone();
                                 cosmic::task::future(async move {
                                     match client.get_run_commands(device_id).await {
-                                        Ok(commands) => Message::CommandsLoaded(device_id_clone, commands),
+                                        Ok(commands) => {
+                                            Message::CommandsLoaded(device_id_clone, commands)
+                                        }
                                         Err(e) => {
                                             tracing::error!("Failed to get run commands: {}", e);
                                             Message::None
@@ -2520,19 +2552,45 @@ impl Application for CosmicConnectManager {
             Message::DeviceSettingsLoaded(config) => {
                 self.device_settings_nickname = config.nickname.clone().unwrap_or_default();
                 self.device_settings_plugins.clear();
-                self.device_settings_plugins.insert("ping".to_string(), config.plugins.enable_ping.unwrap_or(true));
-                self.device_settings_plugins.insert("battery".to_string(), config.plugins.enable_battery.unwrap_or(true));
-                self.device_settings_plugins.insert("notification".to_string(), config.plugins.enable_notification.unwrap_or(true));
-                self.device_settings_plugins.insert("share".to_string(), config.plugins.enable_share.unwrap_or(true));
-                self.device_settings_plugins.insert("clipboard".to_string(), config.plugins.enable_clipboard.unwrap_or(true));
-                self.device_settings_plugins.insert("mpris".to_string(), config.plugins.enable_mpris.unwrap_or(true));
-                self.device_settings_plugins.insert("remotedesktop".to_string(), config.plugins.enable_remotedesktop.unwrap_or(false));
-                self.device_settings_plugins.insert("findmyphone".to_string(), config.plugins.enable_findmyphone.unwrap_or(true));
+                self.device_settings_plugins.insert(
+                    "ping".to_string(),
+                    config.plugins.enable_ping.unwrap_or(true),
+                );
+                self.device_settings_plugins.insert(
+                    "battery".to_string(),
+                    config.plugins.enable_battery.unwrap_or(true),
+                );
+                self.device_settings_plugins.insert(
+                    "notification".to_string(),
+                    config.plugins.enable_notification.unwrap_or(true),
+                );
+                self.device_settings_plugins.insert(
+                    "share".to_string(),
+                    config.plugins.enable_share.unwrap_or(true),
+                );
+                self.device_settings_plugins.insert(
+                    "clipboard".to_string(),
+                    config.plugins.enable_clipboard.unwrap_or(true),
+                );
+                self.device_settings_plugins.insert(
+                    "mpris".to_string(),
+                    config.plugins.enable_mpris.unwrap_or(true),
+                );
+                self.device_settings_plugins.insert(
+                    "remotedesktop".to_string(),
+                    config.plugins.enable_remotedesktop.unwrap_or(false),
+                );
+                self.device_settings_plugins.insert(
+                    "findmyphone".to_string(),
+                    config.plugins.enable_findmyphone.unwrap_or(true),
+                );
                 self.device_settings_config = Some(config);
                 Task::none()
             }
             Message::SaveDeviceSettings => {
-                if let (Some(client), Some(device_id)) = (&self.dbus_client, &self.settings_device_id) {
+                if let (Some(client), Some(device_id)) =
+                    (&self.dbus_client, &self.settings_device_id)
+                {
                     let client = client.clone();
                     let device_id = device_id.clone();
                     let nickname = self.device_settings_nickname.clone();
@@ -2540,12 +2598,16 @@ impl Application for CosmicConnectManager {
                     self.show_device_settings = false;
                     cosmic::task::future(async move {
                         if !nickname.is_empty() {
-                            if let Err(e) = client.set_device_nickname(&device_id, &nickname).await {
+                            if let Err(e) = client.set_device_nickname(&device_id, &nickname).await
+                            {
                                 tracing::error!("Failed to set nickname: {}", e);
                             }
                         }
                         for (plugin, enabled) in plugins {
-                            if let Err(e) = client.set_device_plugin_enabled(&device_id, &plugin, enabled).await {
+                            if let Err(e) = client
+                                .set_device_plugin_enabled(&device_id, &plugin, enabled)
+                                .await
+                            {
                                 tracing::error!("Failed to set plugin {} state: {}", plugin, e);
                             }
                         }
@@ -2624,7 +2686,11 @@ impl Application for CosmicConnectManager {
                         if let Err(e) = client.power_action(&device_id, &action).await {
                             tracing::error!("Failed to execute power action '{}': {}", action, e);
                         } else {
-                            tracing::info!("Power action '{}' sent to device {}", action, device_id);
+                            tracing::info!(
+                                "Power action '{}' sent to device {}",
+                                action,
+                                device_id
+                            );
                         }
                         Message::None
                     })

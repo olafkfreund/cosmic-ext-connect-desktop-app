@@ -219,10 +219,7 @@ mod tests {
             serde_json::to_string(&AuthType::Unlock).unwrap(),
             r#""unlock""#
         );
-        assert_eq!(
-            serde_json::to_string(&AuthType::Sudo).unwrap(),
-            r#""sudo""#
-        );
+        assert_eq!(serde_json::to_string(&AuthType::Sudo).unwrap(), r#""sudo""#);
         assert_eq!(
             serde_json::to_string(&AuthType::Polkit).unwrap(),
             r#""polkit""#

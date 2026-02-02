@@ -7,7 +7,7 @@ use crate::{ProtocolError, Result};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 /// Check if sufficient disk space is available
 ///
@@ -28,39 +28,71 @@ use tracing::{debug, warn};
 pub async fn check_disk_space(path: impl AsRef<Path>, required_bytes: u64) -> Result<()> {
     let path = path.as_ref();
 
-    // Get available space using statvfs (Unix) or GetDiskFreeSpaceEx (Windows)
     #[cfg(unix)]
     {
-        let _metadata = fs::metadata(path).await.map_err(|e| {
-            ProtocolError::from_io_error(e, &format!("checking disk space at {}", path.display()))
-        })?;
+        use nix::sys::statvfs::statvfs;
 
-        // On Unix, we can use statvfs to get filesystem stats
-        // For now, we'll use a simpler heuristic approach
-        // In production, consider using the `fs2` or `nix` crate for accurate space checks
-        debug!(
-            "Disk space check for {} (required: {} bytes)",
-            path.display(),
-            required_bytes
-        );
+        // Find the path to check - use the path itself if it exists, or its parent
+        let check_path = if path.exists() {
+            path.to_path_buf()
+        } else if let Some(parent) = path.parent() {
+            if parent.exists() {
+                parent.to_path_buf()
+            } else {
+                // Fall back to root if parent doesn't exist
+                PathBuf::from("/")
+            }
+        } else {
+            PathBuf::from("/")
+        };
+
+        match statvfs(&check_path) {
+            Ok(stat) => {
+                // Available bytes = available blocks * fragment size
+                // fragment_size is the actual unit of allocation
+                let available_bytes = stat.blocks_available() as u64 * stat.fragment_size() as u64;
+
+                debug!(
+                    "Disk space check for {}: available={} bytes, required={} bytes",
+                    path.display(),
+                    available_bytes,
+                    required_bytes
+                );
+
+                if available_bytes < required_bytes {
+                    let available_mb = available_bytes / (1024 * 1024);
+                    let required_mb = required_bytes / (1024 * 1024);
+                    return Err(ProtocolError::ResourceExhausted(format!(
+                        "Insufficient disk space: {} MB available, {} MB required",
+                        available_mb, required_mb
+                    )));
+                }
+
+                info!(
+                    "Disk space check passed: {} MB available",
+                    available_bytes / (1024 * 1024)
+                );
+            }
+            Err(e) => {
+                // Log the error but don't fail - let the OS handle it during write
+                warn!(
+                    "Could not check disk space for {}: {}. Proceeding anyway.",
+                    path.display(),
+                    e
+                );
+            }
+        }
     }
 
-    #[cfg(windows)]
+    #[cfg(not(unix))]
     {
-        // Windows disk space check would go here
-        // Consider using `fs2::available_space` or similar
+        // On non-Unix platforms, log that we're skipping the check
         debug!(
-            "Disk space check for {} (required: {} bytes)",
+            "Disk space check for {} (required: {} bytes) - not implemented for this platform",
             path.display(),
             required_bytes
         );
     }
-
-    // TODO: Implement actual disk space check
-    // For now, we'll let the OS handle it during write
-    // A proper implementation would use:
-    // - Unix: statvfs() to get f_bavail * f_bsize
-    // - Windows: GetDiskFreeSpaceExW()
 
     Ok(())
 }
@@ -378,5 +410,38 @@ mod tests {
 
         // Should not error
         cleanup_partial_file(&file_path).await;
+    }
+
+    #[tokio::test]
+    async fn test_check_disk_space_existing_dir() {
+        let temp = TempDir::new().unwrap();
+
+        // Should succeed for reasonable space requirement
+        let result = check_disk_space(temp.path(), 1024).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_check_disk_space_nonexistent_path() {
+        let temp = TempDir::new().unwrap();
+        let nonexistent = temp.path().join("does_not_exist/file.txt");
+
+        // Should succeed (falls back to parent or root)
+        let result = check_disk_space(&nonexistent, 1024).await;
+        assert!(result.is_ok());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_check_disk_space_impossible_requirement() {
+        let temp = TempDir::new().unwrap();
+
+        // Require an impossibly large amount (1 PB)
+        let result = check_disk_space(temp.path(), 1024 * 1024 * 1024 * 1024 * 1024).await;
+        assert!(result.is_err());
+
+        // Error should mention insufficient space
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Insufficient disk space"));
     }
 }

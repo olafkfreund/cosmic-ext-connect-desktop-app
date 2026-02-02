@@ -1,6 +1,6 @@
 # CLAUDE.md - COSMIC Connect Development Guidelines
 
-## ⚠️ MANDATORY Pre-Commit Checks
+##  MANDATORY Pre-Commit Checks
 
 ### REQUIRED: Two-Step Pre-Commit Process
 

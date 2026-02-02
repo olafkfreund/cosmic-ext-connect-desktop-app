@@ -1,0 +1,20 @@
+--- a/cosmic-connect-daemon.service
++++ b/cosmic-connect-daemon.service
+@@ -5,7 +5,7 @@ After=network.target
+
+ [Service]
+ Type=simple
+-ExecStart=%h/.cargo/bin/cosmic-connect-daemon
++ExecStart=/usr/bin/cosmic-connect-daemon
+ Restart=on-failure
+ RestartSec=5s
+
+@@ -13,8 +13,6 @@ RestartSec=5s
+ NoNewPrivileges=true
+ PrivateTmp=true
+ ProtectSystem=strict
+-ProtectHome=read-only
+-ReadWritePaths=%h/.config/kdeconnect %h/.local/share/kdeconnect
+
+ # Allow network access
+ PrivateNetwork=false

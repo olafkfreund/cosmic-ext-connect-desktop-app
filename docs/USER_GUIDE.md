@@ -272,18 +272,18 @@ In **Device Details**, click **"Plugin Settings"** to:
 
 | Plugin | Direction | Description |
 |--------|-----------|-------------|
-| **Ping** | ↔️ | Test connectivity |
-| **Battery** | 📱→💻 | Monitor phone battery |
-| **Notification** | 📱→💻 | Mirror phone notifications |
-| **Share** | ↔️ | Share files and URLs |
-| **Clipboard** | ↔️ | Sync clipboard text |
-| **MPRIS** | 📱→💻 | Control desktop media players |
-| **Remote Input** | 📱→💻 | Use phone as mouse/keyboard |
-| **Run Command** | 📱→💻 | Execute desktop commands |
-| **Find Phone** | 💻→📱 | Ring device |
-| **Telephony** | 📱→💻 | Call/SMS notifications |
-| **Contacts** | 📱→💻 | Sync contacts database |
-| **Network Share** | 📱→💻 | Mount phone filesystem |
+| **Ping** | ↔ | Test connectivity |
+| **Battery** | → | Monitor phone battery |
+| **Notification** | → | Mirror phone notifications |
+| **Share** | ↔ | Share files and URLs |
+| **Clipboard** | ↔ | Sync clipboard text |
+| **MPRIS** | → | Control desktop media players |
+| **Remote Input** | → | Use phone as mouse/keyboard |
+| **Run Command** | → | Execute desktop commands |
+| **Find Phone** | → | Ring device |
+| **Telephony** | → | Call/SMS notifications |
+| **Contacts** | → | Sync contacts database |
+| **Network Share** | → | Mount phone filesystem |
 
 ## Troubleshooting
 

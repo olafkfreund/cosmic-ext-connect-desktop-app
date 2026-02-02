@@ -583,9 +583,11 @@ impl ChatPlugin {
 
         self.add_message(message);
 
-        // TODO: Send notification if enabled
-        // This would require notification plugin integration, which should be
-        // handled by the daemon/manager layer, not within this plugin
+        // Note: Desktop notifications for incoming messages are handled by the
+        // daemon/manager layer via DBus signals, not within this plugin. This
+        // separation keeps the protocol plugin focused on message handling while
+        // allowing platform-specific notification integration at a higher level.
+        // See: cosmic-connect-daemon/src/dbus.rs for notification integration.
 
         Ok(())
     }

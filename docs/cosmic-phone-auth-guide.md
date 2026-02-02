@@ -754,7 +754,7 @@ Found: Olaf's Pixel 8 (192.168.1.42)
 # cosmic-phone-pair --pair "Olaf's Pixel 8"
 Pairing request sent to device.
 Please confirm on your phone...
-✓ Paired successfully!
+ Paired successfully!
 Device ID: a1b2c3d4-e5f6-7890-abcd-ef1234567890
 Certificate stored in ~/.config/cosmic-phone-auth/devices.json
 ```

@@ -96,9 +96,6 @@ mod tests {
         assert_eq!(PACKET_TYPE_AUTH_REQUEST, "cconnect.auth.request");
         assert_eq!(PACKET_TYPE_AUTH_RESPONSE, "cconnect.auth.response");
         assert_eq!(PACKET_TYPE_AUTH_CANCEL, "cconnect.auth.cancel");
-        assert_eq!(
-            PACKET_TYPE_AUTH_CAPABILITIES,
-            "cconnect.auth.capabilities"
-        );
+        assert_eq!(PACKET_TYPE_AUTH_CAPABILITIES, "cconnect.auth.capabilities");
     }
 }

@@ -1,0 +1,50 @@
+post_install() {
+  # Update icon cache
+  gtk-update-icon-cache -q -t -f usr/share/icons/hicolor 2>/dev/null || true
+
+  # Update desktop database
+  update-desktop-database -q 2>/dev/null || true
+
+  echo ""
+  echo "==> COSMIC Connect has been installed!"
+  echo ""
+  echo "    To start the daemon, run:"
+  echo "      systemctl --user enable --now cosmic-connect-daemon.service"
+  echo ""
+  echo "    Or it will start automatically via D-Bus activation when needed."
+  echo ""
+  echo "    Add the COSMIC Connect applet to your COSMIC panel to see"
+  echo "    device status and manage connections."
+  echo ""
+}
+
+post_upgrade() {
+  # Update icon cache
+  gtk-update-icon-cache -q -t -f usr/share/icons/hicolor 2>/dev/null || true
+
+  # Update desktop database
+  update-desktop-database -q 2>/dev/null || true
+
+  echo ""
+  echo "==> COSMIC Connect has been upgraded!"
+  echo ""
+  echo "    Restart the daemon to use the new version:"
+  echo "      systemctl --user restart cosmic-connect-daemon.service"
+  echo ""
+}
+
+post_remove() {
+  # Update icon cache
+  gtk-update-icon-cache -q -t -f usr/share/icons/hicolor 2>/dev/null || true
+
+  # Update desktop database
+  update-desktop-database -q 2>/dev/null || true
+
+  echo ""
+  echo "==> COSMIC Connect has been removed."
+  echo ""
+  echo "    Configuration files may still exist in:"
+  echo "      ~/.config/cosmic-connect/"
+  echo "      ~/.local/share/cosmic-connect/"
+  echo ""
+}

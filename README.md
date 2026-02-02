@@ -138,16 +138,16 @@ The **standalone window application** for comprehensive device management.
 
 | Action | Mobile | Desktop | Description |
 |--------|--------|---------|-------------|
-| Ping | ✅ | ✅ | Test connectivity |
-| Send File | ✅ | ✅ | Share files via dialog |
-| Clipboard | ✅ | ✅ | Sync clipboard content |
-| Find Phone | ✅ | ❌ | Ring device to locate |
-| SMS | ✅ | ❌ | Compose text messages |
-| Camera | ✅ | ❌ | Use phone as webcam |
-| Contacts | ✅ | ❌ | Sync contact database |
-| Screen Share | ❌ | ✅ | VNC desktop sharing |
-| Run Command | ❌ | ✅ | Execute remote scripts |
-| Power | ❌ | ✅ | Shutdown/suspend remote |
+| Ping |  |  | Test connectivity |
+| Send File |  |  | Share files via dialog |
+| Clipboard |  |  | Sync clipboard content |
+| Find Phone |  |  | Ring device to locate |
+| SMS |  |  | Compose text messages |
+| Camera |  |  | Use phone as webcam |
+| Contacts |  |  | Sync contact database |
+| Screen Share |  |  | VNC desktop sharing |
+| Run Command |  |  | Execute remote scripts |
+| Power |  |  | Shutdown/suspend remote |
 
 **Launch:**
 ```bash
@@ -173,7 +173,7 @@ The **display streaming library** for using Android tablets as extended displays
 **Architecture:**
 ```
 ┌──────────────┐    PipeWire    ┌──────────────┐    WebRTC    ┌──────────────┐
-│ COSMIC       │ ───────────▶  │  Encoder     │ ──────────▶ │   Android    │
+│ COSMIC       │ ───────────  │  Encoder     │ ────────── │   Android    │
 │ Desktop      │               │  (H.264)     │              │   Tablet     │
 └──────────────┘               └──────────────┘              └──────────────┘
                                       ▲
@@ -250,28 +250,28 @@ cosmic-messages dismiss ID        # Dismiss notification
 
 | Category | Plugin | Status | Description |
 |----------|--------|--------|-------------|
-| **Comm** | Ping | ✅ | Test connectivity |
-| | Battery | ✅ | Monitor battery & charge state |
-| | Notification | ✅ | Mirror notifications |
-| | Share | ✅ | File, text, and URL sharing |
-| | Clipboard | ✅ | Bidirectional clipboard sync |
-| | Telephony | ✅ | Call & SMS notifications |
-| | Contacts | ✅ | Contact synchronization |
-| **Control** | MPRIS | ✅ | Media player remote control |
-| | Remote Input | ✅ | Mouse & keyboard control |
-| | Run Command | ✅ | Execute desktop commands |
-| | Find My Phone | ✅ | Ring remote device |
-| | Presenter | ✅ | Presentation control |
-| **System** | System Monitor | ✅ | Remote CPU/RAM stats |
-| | Lock | ✅ | Remote lock/unlock |
-| | Power | ✅ | Shutdown/reboot/suspend |
-| | Wake-on-LAN | ✅ | Wake sleeping devices |
-| | Screenshot | ✅ | Capture remote screen |
-| | Clipboard History | ✅ | Persistent history |
-| **Files** | Network Share | ✅ | SFTP filesystem mounting |
-| | File Sync | 🚧 | Automatic folder sync |
-| **Adv** | Remote Desktop | ✅ | VNC screen sharing (Receiver) |
-| | Screen Mirroring | 🚧 | H.264 streaming (In Progress) |
+| **Comm** | Ping |  | Test connectivity |
+| | Battery |  | Monitor battery & charge state |
+| | Notification |  | Mirror notifications |
+| | Share |  | File, text, and URL sharing |
+| | Clipboard |  | Bidirectional clipboard sync |
+| | Telephony |  | Call & SMS notifications |
+| | Contacts |  | Contact synchronization |
+| **Control** | MPRIS |  | Media player remote control |
+| | Remote Input |  | Mouse & keyboard control |
+| | Run Command |  | Execute desktop commands |
+| | Find My Phone |  | Ring remote device |
+| | Presenter |  | Presentation control |
+| **System** | System Monitor |  | Remote CPU/RAM stats |
+| | Lock |  | Remote lock/unlock |
+| | Power |  | Shutdown/reboot/suspend |
+| | Wake-on-LAN |  | Wake sleeping devices |
+| | Screenshot |  | Capture remote screen |
+| | Clipboard History |  | Persistent history |
+| **Files** | Network Share |  | SFTP filesystem mounting |
+| | File Sync |  | Automatic folder sync |
+| **Adv** | Remote Desktop |  | VNC screen sharing (Receiver) |
+| | Screen Mirroring |  | H.264 streaming (In Progress) |
 
 ### Rich Notifications (Desktop to Android)
 
@@ -469,7 +469,7 @@ cosmic-connect-daemon
         │
         ▼
   ┌──────────────┐    D-Bus     ┌─────────────────────────────┐
-  │ Notification │─────────────▶│   cosmic-messages-popup     │
+  │ Notification │─────────────│   cosmic-messages-popup     │
   │   Service    │              │                             │
   └──────────────┘              │  ┌───────────────────────┐  │
                                 │  │     WebView (wry)     │  │

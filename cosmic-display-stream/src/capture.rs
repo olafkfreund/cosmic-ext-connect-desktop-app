@@ -176,11 +176,7 @@ impl ScreenCapture {
                 }
                 if let Some(hz_part) = line.split("Hz").next() {
                     if let Some(hz_str) = hz_part.split(',').last() {
-                        refresh = hz_str
-                            .trim()
-                            .parse::<f32>()
-                            .map(|f| f as u32)
-                            .unwrap_or(60);
+                        refresh = hz_str.trim().parse::<f32>().map(|f| f as u32).unwrap_or(60);
                     }
                 }
                 break;
@@ -234,9 +230,9 @@ impl ScreenCapture {
         self.state = SessionState::RequestingPermission;
 
         // Create the screencast portal proxy
-        let screencast = Screencast::new()
-            .await
-            .map_err(|e| DisplayStreamError::Portal(format!("Failed to create screencast: {}", e)))?;
+        let screencast = Screencast::new().await.map_err(|e| {
+            DisplayStreamError::Portal(format!("Failed to create screencast: {}", e))
+        })?;
 
         // Create a session
         let session = screencast
@@ -250,11 +246,11 @@ impl ScreenCapture {
         screencast
             .select_sources(
                 &session,
-                CursorMode::Embedded,     // Include cursor in the stream
+                CursorMode::Embedded,       // Include cursor in the stream
                 SourceType::Monitor.into(), // Capture monitors only
-                false,                     // Don't allow multiple sources
-                None,                      // No restore token
-                PersistMode::DoNot,        // Don't persist
+                false,                      // Don't allow multiple sources
+                None,                       // No restore token
+                PersistMode::DoNot,         // Don't persist
             )
             .await
             .map_err(|e| DisplayStreamError::Portal(format!("Failed to select sources: {}", e)))?;

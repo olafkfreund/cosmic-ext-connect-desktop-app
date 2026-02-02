@@ -1779,10 +1779,7 @@ impl CConnectInterface {
     ///
     /// # Returns
     /// List of contacts with name, phone numbers, and emails
-    async fn get_contacts(
-        &self,
-        device_id: String,
-    ) -> Result<Vec<ContactInfo>, zbus::fdo::Error> {
+    async fn get_contacts(&self, device_id: String) -> Result<Vec<ContactInfo>, zbus::fdo::Error> {
         debug!("DBus: GetContacts called for {}", device_id);
 
         let device_manager = self.device_manager.read().await;
@@ -1806,9 +1803,12 @@ impl CConnectInterface {
 
         // Downcast to ContactsPlugin
         use cosmic_connect_protocol::plugins::contacts::ContactsPlugin;
-        let contacts_plugin = plugin.as_any().downcast_ref::<ContactsPlugin>().ok_or_else(|| {
-            zbus::fdo::Error::Failed("Failed to access contacts plugin".to_string())
-        })?;
+        let contacts_plugin = plugin
+            .as_any()
+            .downcast_ref::<ContactsPlugin>()
+            .ok_or_else(|| {
+                zbus::fdo::Error::Failed("Failed to access contacts plugin".to_string())
+            })?;
 
         // Get all contact UIDs
         let uids = contacts_plugin.get_all_contact_uids();
@@ -1829,7 +1829,11 @@ impl CConnectInterface {
             }
         }
 
-        info!("DBus: Retrieved {} contacts for {}", contacts.len(), device_id);
+        info!(
+            "DBus: Retrieved {} contacts for {}",
+            contacts.len(),
+            device_id
+        );
         Ok(contacts)
     }
 

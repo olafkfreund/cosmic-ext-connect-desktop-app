@@ -46,7 +46,7 @@ You should see packets like:
    ```bash
    tail -100 /tmp/daemon-debug-verbose.log | grep -i error
    ```
-5. **Document result** (✅ Pass / ❌ Fail / ⚠️ Partial)
+5. **Document result** ( Pass /  Fail /  Partial)
 
 ---
 
@@ -102,7 +102,7 @@ tail -100 /tmp/daemon-debug-verbose.log | grep "kdeconnect.battery"
 
 ---
 
-### 3. 🔔 Notification Plugin
+### 3.  Notification Plugin
 
 **Purpose:** Sync notifications between devices
 
@@ -134,7 +134,7 @@ busctl --user call com.system76.CosmicKdeConnect \
 
 ---
 
-### 4. 📁 Share/File Transfer Plugin
+### 4.  Share/File Transfer Plugin
 
 **Purpose:** Send files between devices
 
@@ -170,7 +170,7 @@ busctl --user call com.system76.CosmicKdeConnect \
 
 ---
 
-### 5. 📋 Clipboard Plugin
+### 5.  Clipboard Plugin
 
 **Purpose:** Sync clipboard content
 
@@ -186,7 +186,7 @@ busctl --user call com.system76.CosmicKdeConnect \
 
 **Test Cases:**
 - Plain text
-- Text with emojis 🎉
+- Text with emojis 
 - URLs
 - Multi-line text
 
@@ -199,7 +199,7 @@ busctl --user call com.system76.CosmicKdeConnect \
 
 ---
 
-### 6. 🎵 MPRIS Media Control Plugin
+### 6.  MPRIS Media Control Plugin
 
 **Purpose:** Control phone media playback from desktop
 
@@ -231,7 +231,7 @@ busctl --user call com.system76.CosmicKdeConnect \
 
 ---
 
-### 7. 🖱️ Remote Input Plugin
+### 7.  Remote Input Plugin
 
 **Purpose:** Control phone with desktop mouse/keyboard
 
@@ -269,7 +269,7 @@ busctl --user call com.system76.CosmicKdeConnect \
 
 ---
 
-### 8. 🔍 Find My Phone Plugin
+### 8.  Find My Phone Plugin
 
 **Purpose:** Make phone ring to locate it
 
@@ -331,7 +331,7 @@ busctl --user call com.system76.CosmicKdeConnect \
 
 ---
 
-### 10. 📊 Presenter Plugin
+### 10.  Presenter Plugin
 
 **Purpose:** Use phone as presentation remote
 
@@ -354,7 +354,7 @@ busctl --user call com.system76.CosmicKdeConnect \
 
 ---
 
-### 11. ⚙️ Run Command Plugin
+### 11.  Run Command Plugin
 
 **Purpose:** Execute commands on remote device
 
@@ -422,7 +422,7 @@ Copy this template for each plugin test:
 
 **Date:** 2026-01-15
 **Tester:** [Your Name]
-**Result:** ✅ Pass / ❌ Fail / ⚠️ Partial
+**Result:**  Pass /  Fail /  Partial
 
 ### Test Results
 - Test Case 1: [Result]
@@ -542,13 +542,13 @@ busctl --user call com.system76.CosmicKdeConnect \
 
 sleep 2
 
-echo "🔍 Testing Find My Phone..."
+echo " Testing Find My Phone..."
 busctl --user call com.system76.CosmicKdeConnect \
   /com/system76/CosmicKdeConnect \
   com.system76.CosmicKdeConnect \
   FindMyPhone s "$DEVICE_ID"
 
-echo "✅ Quick tests complete. Check phone for results."
+echo " Quick tests complete. Check phone for results."
 ```
 
 ---
@@ -556,11 +556,11 @@ echo "✅ Quick tests complete. Check phone for results."
 ## Success Criteria Summary
 
 **Project is ready for v1.0 when:**
-- ✅ All 12 plugins pass tests
-- ✅ No critical bugs found
-- ✅ Performance acceptable (< 2s latency for most operations)
-- ✅ Stable over multiple connection cycles
-- ✅ Works with at least 3 different Android devices
+-  All 12 plugins pass tests
+-  No critical bugs found
+-  Performance acceptable (< 2s latency for most operations)
+-  Stable over multiple connection cycles
+-  Works with at least 3 different Android devices
 
 **Current Status:** Testing in progress
 

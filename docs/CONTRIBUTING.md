@@ -1,455 +1,292 @@
-# Contributing to COSMIC KDE Connect
+# Contributing to COSMIC Connect
 
-Thank you for your interest in contributing to COSMIC KDE Connect! This guide will help you get started with development, testing, and submitting contributions.
+Thank you for your interest in contributing to COSMIC Connect! This guide will help you get started.
+
+##  MANDATORY: Pre-Commit Checks
+
+### Before Every Commit - Run BOTH Checks
+
+**Step 1: COSMIC Code Review** (REQUIRED)
+```bash
+@cosmic-code-reviewer /pre-commit-check
+```
+
+**Step 2: Code Simplification** (REQUIRED)
+```bash
+@code-simplifier review the changes we made
+```
+
+These checks are **mandatory** before any commit. They catch:
+- Hard-coded values (colors, dimensions, radii)
+- Unsafe error handling (`.unwrap()`, `.expect()`)
+- COSMIC Desktop pattern violations
+- Code quality issues
+- Redundant patterns
+
+**Exception:** Skip only for trivial changes (typo fixes, comments only).
+
+See [CLAUDE.md](CLAUDE.md) for detailed pre-commit workflow.
+
+---
 
 ## Table of Contents
 
-- [Code of Conduct](#code-of-conduct)
 - [Getting Started](#getting-started)
-- [Development Environment](#development-environment)
-- [Project Structure](#project-structure)
-- [Development Workflow](#development-workflow)
-- [Coding Standards](#coding-standards)
+- [Development Setup](#development-setup)
+- [Claude Code Skill](#claude-code-skill)
+- [Code Style](#code-style)
+- [Commit Guidelines](#commit-guidelines)
+- [Pull Request Process](#pull-request-process)
 - [Testing](#testing)
 - [Documentation](#documentation)
-- [Submitting Changes](#submitting-changes)
-- [Issue Guidelines](#issue-guidelines)
-- [Pull Request Process](#pull-request-process)
-- [Release Process](#release-process)
-
-## Code of Conduct
-
-This project follows the [COSMIC Desktop Code of Conduct](https://github.com/pop-os/cosmic-comp/blob/master/CODE_OF_CONDUCT.md). By participating, you agree to uphold this code.
-
-### Our Standards
-
-- Be respectful and inclusive
-- Welcome newcomers and help them learn
-- Focus on constructive feedback
-- Prioritize the community's best interests
-- Show empathy toward others
 
 ## Getting Started
 
+COSMIC Connect is a device connectivity solution for COSMIC Desktop, implementing the KDE Connect protocol. Before contributing, familiarize yourself with:
+
+- [KDE Connect Protocol](https://community.kde.org/KDEConnect)
+- [COSMIC Desktop](https://system76.com/cosmic)
+- [libcosmic Book](https://pop-os.github.io/libcosmic-book/)
+
+## Development Setup
+
 ### Prerequisites
 
-Before contributing, ensure you have:
-
-- Rust 1.70 or later
-- Just command runner
-- Git for version control
-- A GitHub account
-- Familiarity with Rust and async programming
-
-### First-Time Contributors
-
-1. **Star the repository** to show support
-2. **Read the documentation** in the `docs/` folder
-3. **Check open issues** for beginner-friendly tasks (labeled `good first issue`)
-4. **Join the community** on [COSMIC Chat](https://chat.pop-os.org/)
-
-### Finding Issues to Work On
-
-Issues are labeled to help you find suitable tasks:
-
-- `good first issue` - Perfect for newcomers
-- `help wanted` - Community contributions welcome
-- `bug` - Something isn't working
-- `enhancement` - New feature or improvement
-- `documentation` - Documentation improvements
-- `testing` - Testing-related tasks
-
-## Development Environment
-
-### NixOS (Recommended)
-
+#### NixOS (Recommended)
 ```bash
-# Clone the repository
-git clone https://github.com/olafkfreund/cosmic-applet-kdeconnect.git
-cd cosmic-applet-kdeconnect
-
-# Enter development shell
+# The flake.nix includes all dependencies
 nix develop
-
-# Build the project
-just build
-
-# Run tests
-just test
 ```
 
-### Other Linux Distributions
+#### Ubuntu/Debian
+```bash
+sudo apt install cargo cmake just libexpat1-dev libfontconfig-dev \
+    libfreetype-dev libxkbcommon-dev pkgconf libssl-dev
+```
+
+### Clone and Build
 
 ```bash
-# Install system dependencies (Ubuntu/Debian)
-sudo apt install \
-  build-essential \
-  pkg-config \
-  libxkbcommon-dev \
-  libwayland-dev \
-  libdbus-1-dev \
-  libssl-dev \
-  libfontconfig-dev \
-  libfreetype-dev
-
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Install Just
-cargo install just
-
-# Clone and build
-git clone https://github.com/olafkfreund/cosmic-applet-kdeconnect.git
-cd cosmic-applet-kdeconnect
+git clone https://github.com/olafkfreund/cosmic-connect-desktop-app
+cd cosmic-connect-desktop-app
+nix develop  # Or ensure dependencies are installed
 just build
 ```
 
-### Development Tools
-
-We recommend these tools for development:
-
-- **rust-analyzer** - LSP for Rust
-- **cargo-watch** - Auto-rebuild on changes
-- **cargo-edit** - Manage dependencies
-- **cargo-audit** - Security vulnerability scanning
+### Running Tests
 
 ```bash
-# Install development tools
-cargo install cargo-watch cargo-edit cargo-audit
+just test           # Run all tests
+just lint           # Run clippy linter
+just fmt            # Format code
 ```
 
-## Project Structure
+## Claude Code Skill
 
-```
-cosmic-applet-kdeconnect/
-├── .github/
-│   ├── workflows/         # CI/CD pipelines
-│   └── dependabot.yml     # Dependency updates
-├── cosmic-applet-kdeconnect/  # Panel applet
-│   ├── src/
-│   │   └── main.rs        # Applet implementation
-│   └── Cargo.toml
-├── cosmic-kdeconnect/     # Full application (future)
-│   └── src/
-├── kdeconnect-daemon/     # Background service
-│   ├── src/
-│   │   └── main.rs        # Daemon implementation
-│   └── Cargo.toml
-├── kdeconnect-protocol/   # Core protocol library
-│   ├── src/
-│   │   ├── lib.rs         # Public API
-│   │   ├── discovery.rs   # Device discovery
-│   │   ├── pairing.rs     # TLS pairing
-│   │   ├── packet.rs      # Packet serialization
-│   │   ├── device.rs      # Device management
-│   │   ├── transport/     # Network/Bluetooth
-│   │   └── plugins/       # Plugin implementations
-│   ├── tests/
-│   │   ├── integration_tests.rs
-│   │   └── *.rs
-│   └── Cargo.toml
-├── docs/                  # Documentation
-│   ├── INSTALL.md
-│   ├── USER_GUIDE.md
-│   ├── TROUBLESHOOTING.md
-│   └── CONTRIBUTING.md
-├── hooks/                 # Git hooks
-│   ├── pre-commit
-│   └── commit-msg
-├── justfile              # Build commands
-├── Cargo.toml            # Workspace config
-└── README.md
-```
+This project includes a custom Claude Code skill to assist with COSMIC Desktop development best practices.
 
-### Crate Responsibilities
+### Installation
 
-- **kdeconnect-protocol**: Core protocol logic, device management, plugins
-- **kdeconnect-daemon**: Background service, device discovery, connection handling
-- **cosmic-applet-kdeconnect**: UI applet for COSMIC panel
-- **cosmic-kdeconnect**: Full application (planned)
-
-## Development Workflow
-
-### Setting Up Your Fork
+Install the skill for AI-assisted development:
 
 ```bash
-# Fork the repository on GitHub
-# Then clone your fork
-git clone https://github.com/YOUR_USERNAME/cosmic-applet-kdeconnect.git
-cd cosmic-applet-kdeconnect
-
-# Add upstream remote
-git remote add upstream https://github.com/olafkfreund/cosmic-applet-kdeconnect.git
-
-# Verify remotes
-git remote -v
+./.claude/skills/install.sh
 ```
 
-### Creating a Feature Branch
+After installation, **restart Claude Code** to activate the skill.
+
+### Using the Skill
+
+The skill provides 7 specialized agents:
+
+#### Quick Pre-Commit Check
+```bash
+@cosmic-code-reviewer /pre-commit-check
+```
+
+#### Architecture Review
+```bash
+@cosmic-architect review this application structure
+@cosmic-architect /suggest-refactoring
+```
+
+#### Theming Audit
+```bash
+@cosmic-theme-expert /audit-theming
+@cosmic-theme-expert check for hard-coded values
+```
+
+#### Applet Development
+```bash
+@cosmic-applet-specialist review this applet
+@cosmic-applet-specialist /fix-popup
+```
+
+#### Error Handling
+```bash
+@cosmic-error-handler /remove-unwraps
+@cosmic-error-handler audit error handling
+```
+
+#### Performance
+```bash
+@cosmic-performance-optimizer /find-bottlenecks
+@cosmic-performance-optimizer check for blocking operations
+```
+
+#### Comprehensive Review
+```bash
+@cosmic-code-reviewer /full-review
+```
+
+See `.claude/skills/cosmic-ui-design-skill/README.md` for complete documentation.
+
+## Code Style
+
+### Rust Code Style
+
+Follow the project's Rust style guidelines:
+
+- Run `just fmt` before committing
+- Use `just lint` to check for issues
+- Follow patterns in existing code
+- Use `tracing` for logging (not `println!`)
+- Avoid `.unwrap()` and `.expect()` - use proper error handling
+
+### COSMIC-Specific Guidelines
+
+1. **No Hard-Coded Values**
+   - Use `theme::spacing()` for layout spacing
+   - Use theme colors via `theme.cosmic()`
+   - No hard-coded dimensions or corner radii
+
+2. **Widget Composition**
+   - Use libcosmic widgets from `cosmic::widget`
+   - Follow existing UI patterns
+   - Use symbolic icons (`name-symbolic`)
+
+3. **Error Handling**
+   - Use `Result` types and `?` operator
+   - Add proper `tracing` logs for errors
+   - Provide fallback values where appropriate
+
+4. **Async Operations**
+   - Return `Task` for long-running operations
+   - Don't block in `update()` method
+   - Use `tokio::spawn` for CPU-intensive work
+
+See `CLAUDE.md` for detailed development standards.
+
+## Commit Guidelines
+
+### Pre-Commit Checklist
+
+Before creating a commit, **ALWAYS** run the code-simplifier agent:
 
 ```bash
-# Update main
-git checkout main
-git pull upstream main
-
-# Create feature branch
-git checkout -b feature/your-feature-name
-
-# Or for bug fixes
-git checkout -b fix/issue-description
+@code-simplifier review the changes we made
 ```
 
-### Branch Naming Convention
+This ensures:
+- Code clarity and consistency
+- Removal of redundant patterns
+- Better Rust idioms
+- Alignment with codebase conventions
 
-- `feature/` - New features
-- `fix/` - Bug fixes
-- `docs/` - Documentation changes
-- `refactor/` - Code refactoring
-- `test/` - Adding tests
-- `chore/` - Maintenance tasks
+**Exception:** Skip only for trivial changes (typo fixes, comments only).
 
-### Installing Git Hooks
+### Commit Message Format
 
-We provide pre-commit hooks for code quality:
+Use conventional commit format:
 
-```bash
-# Install hooks
-just setup
+```
+<type>(<scope>): <description>
 
-# Or manually
-just install-hooks
+[optional body]
+
+[optional footer]
 ```
 
-Hooks automatically:
-- Format code with `cargo fmt`
-- Run linting with `cargo clippy`
-- Run tests with `cargo test`
-- Enforce commit message format
+**Types:**
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation changes
+- `style`: Code style changes (formatting)
+- `refactor`: Code refactoring
+- `test`: Adding or updating tests
+- `chore`: Maintenance tasks
 
-### Making Changes
+**Examples:**
+```
+feat(telephony): add SMS message handling
+fix(discovery): resolve UDP broadcast issue
+docs(diagnostics): update debugging guide
+```
 
-1. **Write Tests First** (TDD approach)
+### Co-Authoring
+
+If using AI assistance, include:
+```
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+```
+
+## Pull Request Process
+
+### Before Submitting
+
+1. **Run Pre-Commit Checks**
    ```bash
-   # Add test for new functionality
-   cargo test --package kdeconnect-protocol -- your_test --exact
-   ```
-
-2. **Implement Feature**
-   ```bash
-   # Use cargo-watch for auto-rebuild
-   cargo watch -x 'build --package kdeconnect-protocol'
-   ```
-
-3. **Run Full Test Suite**
-   ```bash
+   just check
    just test
+   @cosmic-code-reviewer /pre-commit-check
    ```
 
-4. **Check Code Quality**
-   ```bash
-   just lint
-   just fmt
-   ```
+2. **Update Documentation**
+   - Update README if adding features
+   - Add/update doc comments
+   - Update CHANGELOG if applicable
 
-### Common Just Commands
+3. **Test Thoroughly**
+   - Test with real devices if possible
+   - Verify UI in both light and dark themes
+   - Check for memory leaks in long-running tests
 
-```bash
-# Build all packages
-just build
+### Pull Request Description
 
-# Build in release mode
-just build-release
+Include in your PR description:
 
-# Run tests
-just test
+```markdown
+## Changes
+- Brief description of changes
 
-# Verbose test output
-just test-verbose
+## Testing
+- How you tested the changes
+- Test devices/configurations used
 
-# Format code
-just fmt
+## Screenshots/Videos
+- UI changes should include screenshots
+- Complex interactions should include videos
 
-# Lint code
-just lint
-
-# Security audit
-just audit
-
-# Run specific package tests
-just test-protocol
-just test-daemon
-just test-applet
-
-# Clean build artifacts
-just clean
-
-# Install locally
-just install-local
+## Checklist
+- [ ] Code follows style guidelines
+- [ ] Tests pass (`just test`)
+- [ ] Lint passes (`just lint`)
+- [ ] Documentation updated
+- [ ] AI code review completed
 ```
 
-## Coding Standards
+### Review Process
 
-### Rust Style Guide
-
-Follow the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/):
-
-1. **Naming Conventions**
-   ```rust
-   // Modules: snake_case
-   mod device_manager;
-
-   // Structs/Enums: PascalCase
-   struct DeviceInfo;
-   enum ConnectionState;
-
-   // Functions/methods: snake_case
-   fn connect_to_device() {}
-
-   // Constants: SCREAMING_SNAKE_CASE
-   const MAX_RETRY_COUNT: u32 = 5;
-
-   // Type parameters: PascalCase
-   fn generic_function<T: Trait>() {}
-   ```
-
-2. **Error Handling**
-   ```rust
-   // Use Result for fallible operations
-   fn parse_packet(data: &[u8]) -> Result<Packet, PacketError> {
-       // Implementation
-   }
-
-   // Use ? operator for error propagation
-   let device = Device::from_discovery(info)?;
-
-   // Provide context with .context() or .map_err()
-   fs::read_to_string(path)
-       .context("Failed to read configuration file")?;
-   ```
-
-3. **Documentation**
-   ```rust
-   /// Discovers devices on the local network.
-   ///
-   /// This function broadcasts a UDP packet on port 1716 and listens
-   /// for responses from KDE Connect devices.
-   ///
-   /// # Arguments
-   ///
-   /// * `timeout` - Maximum time to wait for responses
-   ///
-   /// # Returns
-   ///
-   /// A vector of discovered devices.
-   ///
-   /// # Errors
-   ///
-   /// Returns `DiscoveryError` if the network is unavailable.
-   ///
-   /// # Examples
-   ///
-   /// ```
-   /// use kdeconnect_protocol::discover_devices;
-   /// use std::time::Duration;
-   ///
-   /// let devices = discover_devices(Duration::from_secs(5))?;
-   /// for device in devices {
-   ///     println!("Found: {}", device.name);
-   /// }
-   /// ```
-   pub async fn discover_devices(timeout: Duration) -> Result<Vec<Device>, DiscoveryError> {
-       // Implementation
-   }
-   ```
-
-4. **Async Code**
-   ```rust
-   // Use async/await for I/O operations
-   pub async fn send_packet(&self, packet: Packet) -> Result<(), NetworkError> {
-       let data = packet.to_bytes()?;
-       self.stream.write_all(&data).await?;
-       Ok(())
-   }
-
-   // Use tokio::spawn for concurrent tasks
-   tokio::spawn(async move {
-       // Background task
-   });
-
-   // Use proper error handling in async contexts
-   async fn handle_connection(stream: TcpStream) -> Result<(), Box<dyn Error>> {
-       // Implementation
-   }
-   ```
-
-5. **Module Organization**
-   ```rust
-   // Re-export public types from lib.rs
-   pub use device::{Device, DeviceInfo, DeviceManager};
-   pub use pairing::{PairingHandler, PairingStatus};
-
-   // Use privacy levels appropriately
-   pub struct Device { /* public fields */ }
-   pub(crate) struct InternalState { /* crate-visible */ }
-   struct PrivateData { /* private */ }
-   ```
-
-### libcosmic Patterns
-
-When working with the COSMIC applet:
-
-```rust
-// Use Task instead of Command
-fn update(&mut self, message: Message) -> Task<Message> {
-    match message {
-        Message::Action => {
-            // Perform action
-            Task::none()
-        }
-    }
-}
-
-// Use proper lifetime annotations
-fn view(&self) -> Element<'_, Message> {
-    // UI code
-}
-
-// Use surface actions for popups
-Message::OpenPopup => {
-    return cosmic::task::message(cosmic::Action::Cosmic(
-        cosmic::app::Action::Surface(app_popup::<App>(
-            // Popup configuration
-        ))
-    ));
-}
-```
-
-### Code Quality Checklist
-
-Before submitting:
-
-- [ ] Code follows Rust style guidelines
-- [ ] All public APIs are documented
-- [ ] Tests added for new functionality
-- [ ] Existing tests pass
-- [ ] No compiler warnings
-- [ ] `cargo clippy` passes
-- [ ] `cargo fmt` applied
-- [ ] No new security vulnerabilities (`cargo audit`)
+1. Automated checks must pass (CI/CD when available)
+2. Code review by maintainers
+3. Testing on real hardware if applicable
+4. Approval from at least one maintainer
 
 ## Testing
 
-### Test Organization
+### Unit Tests
 
-```
-kdeconnect-protocol/
-├── src/
-│   └── *.rs           # Unit tests in same file
-└── tests/
-    └── *.rs           # Integration tests
-```
-
-### Writing Unit Tests
+Write unit tests for plugins and core functionality:
 
 ```rust
 #[cfg(test)]
@@ -457,431 +294,357 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_device_creation() {
-        let info = DeviceInfo::new("Test", DeviceType::Phone, 1716);
-        let device = Device::from_discovery(info);
-        assert_eq!(device.info.device_name, "Test");
-    }
-
-    #[tokio::test]
-    async fn test_async_function() {
-        let result = some_async_function().await;
-        assert!(result.is_ok());
+    fn test_plugin_functionality() {
+        // Test implementation
     }
 }
 ```
 
-### Writing Integration Tests
+### Integration Tests
 
-```rust
-// tests/integration_tests.rs
-use kdeconnect_protocol::{Device, DeviceManager};
-use tempfile::TempDir;
+For daemon and protocol testing, use integration tests in `tests/` directory.
 
-fn create_test_manager() -> DeviceManager {
-    let temp_dir = TempDir::new().unwrap();
-    let registry_path = temp_dir.path().join("registry.json");
-    DeviceManager::new(registry_path).unwrap()
-}
+### Manual Testing
 
-#[tokio::test]
-async fn test_device_pairing() {
-    let mut manager = create_test_manager();
-    // Test implementation
-}
-```
-
-### Test Categories
-
-1. **Unit Tests**: Test individual functions/methods
-2. **Integration Tests**: Test component interactions
-3. **Protocol Tests**: Test protocol compliance
-4. **UI Tests**: Test applet functionality (manual for now)
-
-### Running Tests
-
-```bash
-# All tests
-just test
-
-# Specific package
-cargo test -p kdeconnect-protocol
-
-# Specific test
-cargo test test_device_creation
-
-# With output
-just test-verbose
-
-# Watch mode
-cargo watch -x test
-```
-
-### Test Coverage
-
-We use `cargo-llvm-cov` for coverage:
-
-```bash
-# Install
-cargo install cargo-llvm-cov
-
-# Generate coverage
-cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
-
-# View HTML report
-cargo llvm-cov --all-features --workspace --html
-open target/llvm-cov/html/index.html
-```
+For UI and hardware integration:
+1. Test with Android/iOS KDE Connect apps
+2. Test all supported plugins
+3. Test pairing and connectivity
+4. Test in both light and dark themes
 
 ## Documentation
 
 ### Code Documentation
 
-- Document all public APIs with `///`
-- Include examples in doc comments
-- Explain why, not just what
-- Link to related functions with `[`function_name`]`
+- Add doc comments to public APIs
+- Include usage examples in doc comments
+- Document error conditions
+- Update module-level documentation
 
 ### User Documentation
 
-Located in `docs/`:
+- Update README for user-facing features
+- Update docs/ directory for detailed guides
+- Include screenshots for UI features
+- Document configuration options
 
-- `INSTALL.md` - Installation instructions
-- `USER_GUIDE.md` - Usage guide
-- `TROUBLESHOOTING.md` - Common issues
-- `CONTRIBUTING.md` - This file
+### Debug Documentation
 
-### Updating Documentation
+See `docs/DEBUGGING.md` for:
+- Diagnostic commands
+- Log analysis
+- Troubleshooting procedures
+- Performance metrics
 
-When adding features:
+## Plugin Development
 
-1. Update relevant doc comments
-2. Update user documentation
-3. Add examples if applicable
-4. Update README.md if needed
+When adding new plugins:
 
-## Submitting Changes
+1. Create plugin in `cosmic-connect-protocol/src/plugins/`
+2. Implement `Plugin` and `PluginFactory` traits
+3. Add config flag in `cosmic-connect-daemon/src/config.rs`
+4. Register factory in `cosmic-connect-daemon/src/main.rs`
+5. Follow existing plugin patterns (ping, battery, etc.)
+6. Add comprehensive tests
+7. Document plugin capabilities
 
-### Commit Message Format
+See existing plugins for reference implementation.
 
-We follow [Conventional Commits](https://www.conventionalcommits.org/):
+## Submitting to nixpkgs
 
-```
-<type>(<scope>): <subject>
+### Overview
 
-<body>
+To make COSMIC Connect available in the official NixOS package repository, we need to submit it to [nixpkgs](https://github.com/NixOS/nixpkgs).
 
-<footer>
-```
+### Prerequisites
 
-**Types**:
-- `feat` - New feature
-- `fix` - Bug fix
-- `docs` - Documentation only
-- `style` - Code style (formatting, etc.)
-- `refactor` - Code refactoring
-- `test` - Adding tests
-- `chore` - Maintenance
+Before submission, ensure:
 
-**Scopes**:
-- `protocol` - Protocol library
-- `daemon` - Daemon service
-- `applet` - COSMIC applet
-- `ci` - CI/CD
-- `deps` - Dependencies
-
-**Examples**:
-
-```
-feat(protocol): add Bluetooth transport support
-
-Implement Bluetooth transport alongside existing TCP transport.
-Devices can now connect via Bluetooth when WiFi is unavailable.
-
-Closes #42
-```
-
-```
-fix(applet): correct device status indicator color
-
-The status indicator was showing green for disconnected devices.
-Changed to use ConnectionState enum properly.
-
-Fixes #156
-```
-
-```
-docs: update installation guide for Fedora 40
-
-Add specific instructions for Fedora 40 dependencies.
-Update firewall configuration commands.
-```
-
-### Pre-Commit Checklist
-
+- [ ] Package builds successfully on latest nixpkgs-unstable
 - [ ] All tests pass
-- [ ] Code is formatted (`cargo fmt`)
-- [ ] No linter warnings (`cargo clippy`)
-- [ ] Documentation updated
-- [ ] Commit message follows convention
-- [ ] Branch is up to date with main
+- [ ] Package follows nixpkgs conventions
+- [ ] You have a GitHub account
+- [ ] You're willing to maintain the package
 
-### Pushing Changes
+### Step-by-Step Submission Process
+
+#### 1. Prepare Package Hashes
+
+The nixpkgs version requires proper source and dependency hashes. Update `nix/pkgs/cosmic-connect.nix`:
+
+**Get the source hash:**
+```bash
+# After tagging a release (e.g., v0.1.0)
+nix-prefetch-url --unpack https://github.com/olafkfreund/cosmic-connect-desktop-app/archive/refs/tags/v0.1.0.tar.gz
+```
+
+**Get the cosmic-connect-core git dependency hash:**
+```bash
+# Find the commit hash from Cargo.lock
+grep -A 2 "cosmic-connect-core" Cargo.lock
+
+# Get the hash
+nix-prefetch-git https://github.com/olafkfreund/cosmic-connect-core.git --rev <COMMIT_HASH>
+```
+
+Update both hashes in `nix/pkgs/cosmic-connect.nix`.
+
+#### 2. Copy Cargo.lock
+
+The package references `./Cargo.lock` which needs to be in the same directory for nixpkgs:
 
 ```bash
-# Ensure tests pass
-just test
+# In your nixpkgs fork
+cp /path/to/cosmic-connect/Cargo.lock pkgs/by-name/co/cosmic-connect/Cargo.lock
+```
 
-# Format code
-just fmt
+#### 3. Fork and Clone nixpkgs
 
-# Push to your fork
-git push origin feature/your-feature
-
-# If you need to update your branch
+```bash
+# Fork https://github.com/NixOS/nixpkgs on GitHub
+git clone https://github.com/YOUR_USERNAME/nixpkgs
+cd nixpkgs
+git remote add upstream https://github.com/NixOS/nixpkgs
 git fetch upstream
-git rebase upstream/main
-git push origin feature/your-feature --force-with-lease
 ```
 
-## Issue Guidelines
-
-### Creating Issues
-
-**Bug Reports** should include:
-
-```markdown
-**Description**
-Clear description of the bug.
-
-**Steps to Reproduce**
-1. Step one
-2. Step two
-3. Expected vs actual result
-
-**Environment**
-- OS: [NixOS 24.11]
-- Rust version: [1.75]
-- Commit/version: [abc123]
-
-**Logs**
-```
-Relevant log output
-```
-
-**Additional Context**
-Any other relevant information.
-```
-
-**Feature Requests** should include:
-
-```markdown
-**Problem Statement**
-What problem does this solve?
-
-**Proposed Solution**
-How should it work?
-
-**Alternatives Considered**
-Other approaches you've thought about.
-
-**Additional Context**
-Use cases, examples, etc.
-```
-
-### Issue Labels
-
-Maintainers will add labels:
-
-- **Priority**: `P0` (critical) to `P3` (low)
-- **Status**: `investigating`, `confirmed`, `blocked`
-- **Area**: `protocol`, `daemon`, `applet`, `docs`
-
-## Pull Request Process
-
-### Before Creating a PR
-
-1. **Create/claim an issue** first
-2. **Discuss approach** if non-trivial
-3. **Ensure tests pass** locally
-4. **Update documentation** if needed
-5. **Rebase on latest main** to avoid conflicts
-
-### Creating a Pull Request
-
-1. **Push to your fork**
-   ```bash
-   git push origin feature/your-feature
-   ```
-
-2. **Open PR on GitHub**
-   - Use descriptive title
-   - Fill out PR template
-   - Link related issues
-   - Request review
-
-### PR Template
-
-```markdown
-## Description
-Clear description of changes.
-
-## Related Issues
-Closes #123
-Relates to #456
-
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Documentation update
-- [ ] Refactoring
-
-## Testing
-- [ ] Unit tests added/updated
-- [ ] Integration tests added/updated
-- [ ] Manual testing completed
-
-## Checklist
-- [ ] Code follows project style
-- [ ] Documentation updated
-- [ ] Tests pass locally
-- [ ] No new compiler warnings
-- [ ] Commit messages follow convention
-
-## Screenshots (if applicable)
-[Add screenshots for UI changes]
-```
-
-### Review Process
-
-1. **Automated Checks** run (CI/CD)
-2. **Maintainer Review** (usually within 1-2 days)
-3. **Address Feedback** if requested
-4. **Approval** from maintainer
-5. **Merge** to main branch
-
-### After PR is Merged
-
-- **Delete your branch** (optional)
-- **Update your fork**
-  ```bash
-  git checkout main
-  git pull upstream main
-  git push origin main
-  ```
-
-## Release Process
-
-### Version Numbering
-
-We follow [Semantic Versioning](https://semver.org/):
-
-- `MAJOR.MINOR.PATCH`
-- `MAJOR` - Breaking changes
-- `MINOR` - New features (backward compatible)
-- `PATCH` - Bug fixes
-
-### Release Checklist
-
-For maintainers:
-
-1. **Update Cargo.toml** versions
-2. **Update CHANGELOG.md**
-3. **Create release tag**
-   ```bash
-   git tag -a v0.2.0 -m "Release v0.2.0"
-   git push upstream v0.2.0
-   ```
-4. **Create GitHub release** with notes
-5. **Publish to crates.io** (if applicable)
-   ```bash
-   cargo publish -p kdeconnect-protocol
-   ```
-
-## Development Tips
-
-### Debugging
+#### 4. Create Feature Branch
 
 ```bash
-# Run with debug output
-RUST_LOG=debug cargo run --package kdeconnect-daemon
-
-# Use specific module logging
-RUST_LOG=kdeconnect_protocol::discovery=trace cargo run
-
-# Debug with gdb
-rust-gdb target/debug/kdeconnect-daemon
+git checkout -b cosmic-connect upstream/master
 ```
 
-### Performance Profiling
+#### 5. Add Package to nixpkgs
+
+Using the new `pkgs/by-name` structure:
 
 ```bash
-# Install flamegraph
-cargo install flamegraph
-
-# Generate flamegraph
-cargo flamegraph --package kdeconnect-daemon
+mkdir -p pkgs/by-name/co/cosmic-connect
+cp /path/to/cosmic-connect/nix/pkgs/cosmic-connect.nix pkgs/by-name/co/cosmic-connect/package.nix
+cp /path/to/cosmic-connect/Cargo.lock pkgs/by-name/co/cosmic-connect/Cargo.lock
 ```
 
-### Useful cargo Commands
+**Important:** The file must be named `package.nix` in the by-name structure, not `cosmic-connect.nix`.
+
+#### 6. Add Maintainer Information
+
+Edit your package to include your maintainer info:
+
+```nix
+maintainers = with lib.maintainers; [ your-github-username ];
+```
+
+If you're not yet in the maintainers list, add yourself to `maintainers/maintainer-list.nix`:
+
+```nix
+your-github-username = {
+  email = "your-email@example.com";
+  github = "your-github-username";
+  githubId = 12345678; # Your GitHub user ID
+  name = "Your Name";
+};
+```
+
+Find your GitHub ID at: `https://api.github.com/users/YOUR_USERNAME`
+
+#### 7. Test the Package
+
+Build the package in your nixpkgs fork:
 
 ```bash
-# Check without building
-cargo check
-
-# Build documentation
-cargo doc --open
-
-# Update dependencies
-cargo update
-
-# Show dependency tree
-cargo tree
-
-# Analyze binary size
-cargo bloat --release
+nix-build -A cosmic-connect
 ```
 
-## Getting Help
+Test installation:
+
+```bash
+nix-shell -p cosmic-connect --command "cosmic-applet-connect --version"
+```
+
+#### 8. Add NixOS Module (Optional)
+
+If including the NixOS module:
+
+```bash
+mkdir -p nixos/modules/services/desktops/cosmic
+cp /path/to/cosmic-connect/nix/module.nix \
+   nixos/modules/services/desktops/cosmic/cosmic-connect.nix
+```
+
+Add to `nixos/modules/module-list.nix`:
+
+```nix
+./services/desktops/cosmic/cosmic-connect.nix
+```
+
+Test the module:
+
+```bash
+nixos-rebuild build-vm -I nixos-config=./test-config.nix
+```
+
+Where `test-config.nix` contains:
+
+```nix
+{ config, pkgs, ... }:
+{
+  imports = [ <nixpkgs/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix> ];
+  services.cosmic-connect.enable = true;
+}
+```
+
+#### 9. Run nixpkgs Checks
+
+```bash
+# Check package evaluation
+nix-instantiate --eval -E 'with import ./. {}; cosmic-connect.meta'
+
+# Run package review script (if available)
+nix-shell -p nix-review --run "nix-review wip"
+```
+
+#### 10. Commit Changes
+
+Follow nixpkgs commit conventions:
+
+```bash
+git add pkgs/by-name/co/cosmic-connect/
+git add maintainers/maintainer-list.nix  # If you added yourself
+
+git commit -m "cosmic-connect: init at 0.1.0"
+```
+
+Commit message format:
+- First line: `package-name: init at VERSION` for new packages
+- Body: Brief description of what the package does
+- Reference: Include homepage URL
+
+Example:
+```
+cosmic-connect: init at 0.1.0
+
+Device connectivity for COSMIC Desktop. Provides seamless integration
+between Android devices and COSMIC Desktop with features like file
+sharing, clipboard sync, notification mirroring, and remote desktop.
+
+https://github.com/olafkfreund/cosmic-connect-desktop-app
+```
+
+#### 11. Push and Create Pull Request
+
+```bash
+git push origin cosmic-connect
+```
+
+Create PR on GitHub with this template:
+
+```markdown
+##### Motivation
+
+Add cosmic-connect package for COSMIC Desktop device connectivity.
+
+##### Description of changes
+
+- Add cosmic-connect package to pkgs/by-name/co/cosmic-connect/
+- Add maintainer entry for [your-username]
+- [Optional] Add NixOS module for cosmic-connect service
+
+##### Things done
+
+- [ ] Built on platform(s)
+   - [ ] x86_64-linux
+   - [ ] aarch64-linux
+- [ ] Tested using sandboxing ([nix.useSandbox](https://nixos.org/nixos/manual/options.html#opt-nix.useSandbox) on NixOS, or option `sandbox` in [`nix.conf`](https://nixos.org/nix/manual/#sec-conf-file) on non-NixOS linux)
+- [ ] Tested execution of all binary files (usually in `./result/bin/`)
+- [ ] Fits [CONTRIBUTING.md](https://github.com/NixOS/nixpkgs/blob/master/CONTRIBUTING.md)
+```
+
+#### 12. Respond to Review
+
+Maintainers will review your PR. Common feedback:
+
+- **License verification**: Ensure GPL-3.0-or-later matches source
+- **Dependency versions**: Verify all dependencies are in nixpkgs
+- **Build on multiple platforms**: May need aarch64-linux testing
+- **Meta information**: Ensure description is accurate
+- **Security**: Review systemd hardening settings
+
+Address feedback by:
+
+```bash
+# Make changes
+git add -u
+git commit --amend
+git push --force origin cosmic-connect
+```
+
+#### 13. After Merge
+
+Once merged to nixpkgs:
+
+1. **Update README**: Add nixpkgs installation instructions
+2. **Close Issue #43**
+3. **Announce**: Share on COSMIC community channels
+4. **Monitor**: Watch for user issues in nixpkgs
+
+### Ongoing Maintenance
+
+As a package maintainer, you'll need to:
+
+- Update the package for new releases
+- Respond to build failures
+- Address security issues promptly
+- Update dependencies when needed
+
+**Updating the package:**
+
+```bash
+# In nixpkgs fork
+git checkout master
+git pull upstream master
+git checkout -b cosmic-connect-0.2.0
+
+# Update version and hashes in package.nix
+# Test build
+nix-build -A cosmic-connect
+
+git commit -am "cosmic-connect: 0.1.0 -> 0.2.0"
+git push origin cosmic-connect-0.2.0
+# Create PR
+```
 
 ### Resources
 
-- **Documentation**: See `docs/` folder
-- **Code Examples**: Check `examples/` (when available)
-- **Tests**: Look at existing tests for patterns
-- **Issues**: Search closed issues for solutions
+- [nixpkgs Contributing Guide](https://github.com/NixOS/nixpkgs/blob/master/CONTRIBUTING.md)
+- [Nixpkgs Manual - Rust](https://nixos.org/manual/nixpkgs/stable/#rust)
+- [NixOS Module Writing](https://nixos.org/manual/nixos/stable/#sec-writing-modules)
+- [pkgs/by-name Documentation](https://github.com/NixOS/nixpkgs/tree/master/pkgs/by-name)
 
-### Communication
+### Getting Help with Submission
 
-- **GitHub Discussions**: For questions and ideas
-- **GitHub Issues**: For bugs and feature requests
-- **COSMIC Chat**: For real-time discussion
+- **nixpkgs Issues**: Ask in your PR comments
+- **NixOS Discourse**: [discourse.nixos.org](https://discourse.nixos.org)
+- **Matrix Chat**: #nixos:nixos.org
+- **Rust Package Help**: Search for similar Rust packages in nixpkgs
 
-### Mentorship
+## Getting Help
 
-New contributors welcome! Look for:
+- **Questions**: Open a GitHub Discussion
+- **Bugs**: Open a GitHub Issue
+- **Security**: See SECURITY.md (if exists)
+- **Chat**: Join COSMIC community channels
+- **nixpkgs Help**: See "Submitting to nixpkgs" section above
 
-- `good first issue` label
-- `mentorship available` label
-- Ask in discussions for guidance
+## Code of Conduct
 
-## Recognition
-
-Contributors are recognized:
-
-- In release notes
-- In the CONTRIBUTORS file (if we create one)
-- By GitHub's contributor graph
+Be respectful, constructive, and professional. We want to build a welcoming community for all contributors.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the same license as the project (GPL-3.0).
+By contributing, you agree that your contributions will be licensed under the GPL-3.0 License.
 
 ---
 
-**Thank you for contributing to COSMIC KDE Connect!**
+**Thank you for contributing to COSMIC Connect!** 
 
-For questions about this guide, open a [GitHub Discussion](https://github.com/olafkfreund/cosmic-applet-kdeconnect/discussions).
-
-**Last Updated**: 2026-01-13
-**Version**: 1.0.0
+Your contributions help make device connectivity on COSMIC Desktop better for everyone.

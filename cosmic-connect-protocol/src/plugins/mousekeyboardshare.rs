@@ -470,7 +470,8 @@ impl MouseKeyboardSharePlugin {
 
                             // Send mouse_enter packet to remote device
                             if let Some(ref tx) = self.packet_sender {
-                                let enter_packet = self.create_enter_packet(edge, mapping.remote_edge);
+                                let enter_packet =
+                                    self.create_enter_packet(edge, mapping.remote_edge);
                                 let device_id = mapping.device_id.clone();
 
                                 let tx_clone = tx.clone();
@@ -514,9 +515,9 @@ impl MouseKeyboardSharePlugin {
                     .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
                 let packet = Packet::new("cconnect.mkshare.mouse", body);
 
-                tx.send((device_id.clone(), packet))
-                    .await
-                    .map_err(|e| ProtocolError::Plugin(format!("Failed to send mouse event: {}", e)))?;
+                tx.send((device_id.clone(), packet)).await.map_err(|e| {
+                    ProtocolError::Plugin(format!("Failed to send mouse event: {}", e))
+                })?;
 
                 debug!("Forwarded mouse event to {}", device_id);
             }
@@ -532,9 +533,9 @@ impl MouseKeyboardSharePlugin {
                     .map_err(|e| ProtocolError::InvalidPacket(e.to_string()))?;
                 let packet = Packet::new("cconnect.mkshare.keyboard", body);
 
-                tx.send((device_id.clone(), packet))
-                    .await
-                    .map_err(|e| ProtocolError::Plugin(format!("Failed to send keyboard event: {}", e)))?;
+                tx.send((device_id.clone(), packet)).await.map_err(|e| {
+                    ProtocolError::Plugin(format!("Failed to send keyboard event: {}", e))
+                })?;
 
                 debug!("Forwarded keyboard event to {}", device_id);
             }

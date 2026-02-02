@@ -324,9 +324,7 @@ fn run_capture_loop(
             *pw::keys::MEDIA_ROLE => "Communication",
         },
     )
-    .map_err(|e| {
-        crate::ProtocolError::Plugin(format!("Failed to create capture stream: {}", e))
-    })?;
+    .map_err(|e| crate::ProtocolError::Plugin(format!("Failed to create capture stream: {}", e)))?;
 
     let running_clone = running.clone();
 
@@ -516,8 +514,10 @@ fn run_playback_loop(
 
                             // Update chunk metadata
                             let chunk = data.chunk_mut();
-                            *chunk.size_mut() = (samples_to_write * std::mem::size_of::<f32>()) as u32;
-                            *chunk.stride_mut() = (std::mem::size_of::<f32>() as i32) * (config.channels as i32);
+                            *chunk.size_mut() =
+                                (samples_to_write * std::mem::size_of::<f32>()) as u32;
+                            *chunk.stride_mut() =
+                                (std::mem::size_of::<f32>() as i32) * (config.channels as i32);
                         } else {
                             // No data available - write silence
                             let chunk = data.chunk_mut();

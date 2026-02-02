@@ -110,6 +110,32 @@ impl ContactsPlugin {
         }
     }
 
+    /// Parse TYPE parameter from vCard property line
+    ///
+    /// Handles formats like:
+    /// - `TEL;TYPE=CELL:+1234567890` -> Some("CELL")
+    /// - `TEL;TYPE=HOME,VOICE:+1234567890` -> Some("HOME")
+    /// - `EMAIL;TYPE=WORK:test@example.com` -> Some("WORK")
+    /// - `TEL:+1234567890` -> None
+    fn parse_vcard_type_param(line: &str) -> Option<String> {
+        // Split line into property name/params and value
+        let property_part = line.split(':').next()?;
+
+        // Look for TYPE= in the parameters
+        for param in property_part.split(';').skip(1) {
+            let param_upper = param.to_uppercase();
+            if param_upper.starts_with("TYPE=") {
+                // Extract the type value, handling comma-separated values
+                let type_value = &param[5..]; // Skip "TYPE="
+                                              // Take first value if comma-separated (e.g., "HOME,VOICE" -> "HOME")
+                let first_type = type_value.split(',').next()?;
+                return Some(first_type.to_uppercase());
+            }
+        }
+
+        None
+    }
+
     /// Initialize database storage
     ///
     /// Call this to enable persistent storage for contacts.
@@ -261,17 +287,21 @@ impl ContactsPlugin {
             if line.starts_with("FN:") {
                 name = Some(line[3..].to_string());
             } else if line.starts_with("TEL") {
+                // Parse TEL lines - format: TEL;TYPE=CELL:+1234567890 or TEL:+1234567890
+                let phone_type = Self::parse_vcard_type_param(line);
                 if let Some(number) = line.split(':').nth(1) {
                     phone_numbers.push(PhoneNumber {
                         number: number.to_string(),
-                        phone_type: None, // TODO: Parse type from vCard
+                        phone_type,
                     });
                 }
             } else if line.starts_with("EMAIL") {
+                // Parse EMAIL lines - format: EMAIL;TYPE=WORK:test@example.com or EMAIL:test@example.com
+                let email_type = Self::parse_vcard_type_param(line);
                 if let Some(email) = line.split(':').nth(1) {
                     emails.push(Email {
                         address: email.to_string(),
-                        email_type: None, // TODO: Parse type from vCard
+                        email_type,
                     });
                 }
             }
@@ -585,5 +615,44 @@ mod tests {
 
         assert_eq!(plugin.get_contact_count(), 0);
         assert!(plugin.get_vcard("test").is_none());
+    }
+
+    #[test]
+    fn test_parse_vcard_type_param() {
+        // Test basic TYPE= parsing
+        assert_eq!(
+            ContactsPlugin::parse_vcard_type_param("TEL;TYPE=CELL:+1234567890"),
+            Some("CELL".to_string())
+        );
+
+        // Test lowercase type
+        assert_eq!(
+            ContactsPlugin::parse_vcard_type_param("TEL;TYPE=home:+1234567890"),
+            Some("HOME".to_string())
+        );
+
+        // Test comma-separated types (takes first)
+        assert_eq!(
+            ContactsPlugin::parse_vcard_type_param("TEL;TYPE=HOME,VOICE:+1234567890"),
+            Some("HOME".to_string())
+        );
+
+        // Test email type
+        assert_eq!(
+            ContactsPlugin::parse_vcard_type_param("EMAIL;TYPE=WORK:test@example.com"),
+            Some("WORK".to_string())
+        );
+
+        // Test no type parameter
+        assert_eq!(
+            ContactsPlugin::parse_vcard_type_param("TEL:+1234567890"),
+            None
+        );
+
+        // Test multiple parameters with type
+        assert_eq!(
+            ContactsPlugin::parse_vcard_type_param("TEL;PREF;TYPE=CELL:+1234567890"),
+            Some("CELL".to_string())
+        );
     }
 }

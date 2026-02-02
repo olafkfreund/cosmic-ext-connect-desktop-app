@@ -146,7 +146,7 @@ pub enum TransportPreference {
 
 ## Implementation Status
 
-### ✅ Completed
+###  Completed
 
 1. **Transport Trait Abstraction**
    - Core trait interface
@@ -170,14 +170,14 @@ pub enum TransportPreference {
    - btleplug added to workspace
    - All required crates configured
 
-### 🚧 In Progress
+###  In Progress
 
 5. **Bluetooth Discovery**
    - Need to integrate with existing UDP discovery
    - Add BLE advertisement support
    - Device information exchange over Bluetooth
 
-### 📝 Planned
+###  Planned
 
 6. **Integration with Existing Code**
    - Update ConnectionManager to use Transport trait

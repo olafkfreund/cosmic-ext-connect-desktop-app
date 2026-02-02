@@ -2,13 +2,13 @@
 
 Welcome to the COSMIC Connect documentation! This page serves as the central hub for all project documentation.
 
-## 🚀 Quick Start
+##  Quick Start
 
 - **[Setup Guide](development/Setup.md)** - Get started with development
 - **[Contributing](development/Contributing.md)** - How to contribute to the project
 - **[README](../README.md)** - Project overview and quick start
 
-## 📐 Architecture
+##  Architecture
 
 Understand the system design and technical architecture:
 
@@ -22,7 +22,7 @@ Understand the system design and technical architecture:
 - **cosmic-connect-protocol** - Desktop-specific protocol extensions
 - **FFI Bindings** - Kotlin/Swift support via uniffi-rs
 
-## 💻 Development
+##  Development
 
 Everything you need to develop COSMIC Connect:
 
@@ -45,7 +45,7 @@ Everything you need to develop COSMIC Connect:
 4. Build: `cargo build`
 5. Run tests: `cargo test`
 
-## 📊 Project Management
+##  Project Management
 
 Track project progress and planning:
 
@@ -56,7 +56,7 @@ Track project progress and planning:
 
 ### Implementation Status
 
-✅ **98% Complete** - Production ready for COSMIC Desktop
+ **98% Complete** - Production ready for COSMIC Desktop
 
 **Core Features:**
 - Device discovery (mDNS + UDP)
@@ -92,7 +92,7 @@ COSMIC Connect uses an extensible plugin system:
 
 Plugins are defined in `cosmic-connect-protocol/src/plugins/`. See [Development Guide](development/Development-Guide.md) for details.
 
-## 🌐 Multi-Platform Ecosystem
+##  Multi-Platform Ecosystem
 
 COSMIC Connect is part of a larger ecosystem:
 
@@ -121,7 +121,7 @@ cosmic-connect-core (Shared Library)
                                      └── Kotlin via FFI
 ```
 
-## 🧪 Testing
+##  Testing
 
 - **114 Unit Tests** - Comprehensive test coverage
 - **12 Integration Tests** - End-to-end testing
@@ -154,7 +154,7 @@ cargo test -- --nocapture            # Verbose output
 - **DBus**: zbus
 - **FFI**: uniffi-rs
 
-## 🗂️ Documentation Index
+##  Documentation Index
 
 ### By Category
 
@@ -179,7 +179,7 @@ cargo test -- --nocapture            # Verbose output
 #### Archive
 - [Old Project Context](archive/old-context.md) - Historical reference
 
-## 🤝 Contributing
+##  Contributing
 
 We welcome contributions! Please see:
 
@@ -200,13 +200,13 @@ test: Tests
 chore: Build/tooling
 ```
 
-## 📧 Support
+##  Support
 
 - **Issues**: [GitHub Issues](https://github.com/olafkfreund/cosmic-connect-desktop-app/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/olafkfreund/cosmic-connect-desktop-app/discussions)
 - **COSMIC Community**: [Pop!_OS Mattermost](https://chat.pop-os.org/)
 
-## 📄 License
+##  License
 
 This project is licensed under the **GNU General Public License v3.0 or later**.
 

@@ -1,0 +1,39 @@
+[Unit]
+Description=COSMIC Connect Daemon
+Documentation=https://github.com/olafkfreund/cosmic-connect-desktop-app
+After=network.target
+
+[Service]
+Type=dbus
+BusName=org.cosmicde.CosmicConnect
+ExecStart=/usr/bin/cosmic-connect-daemon
+Restart=on-failure
+RestartSec=5s
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Allow network access for device discovery
+PrivateNetwork=false
+
+# Resource limits
+MemoryMax=512M
+TasksMax=256
+
+# Environment
+Environment="RUST_LOG=info"
+Environment="RUST_BACKTRACE=1"
+
+[Install]
+WantedBy=default.target

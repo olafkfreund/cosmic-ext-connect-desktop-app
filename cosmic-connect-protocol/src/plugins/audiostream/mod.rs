@@ -366,21 +366,26 @@ pub struct AudioStreamPlugin {
 impl AudioStreamPlugin {
     /// Create new audio stream plugin instance
     pub fn new() -> Self {
-        let mut supported_codecs = Vec::new();
+        let supported_codecs = {
+            #[allow(unused_mut)]
+            let mut codecs = Vec::new();
 
-        #[cfg(feature = "audiostream")]
-        {
-            // PCM is always supported when audiostream feature is enabled
-            supported_codecs.push(AudioCodec::Pcm);
+            #[cfg(feature = "audiostream")]
+            {
+                // PCM is always supported when audiostream feature is enabled
+                codecs.push(AudioCodec::Pcm);
 
-            // Opus only if the opus feature is enabled
-            #[cfg(feature = "opus")]
-            supported_codecs.push(AudioCodec::Opus);
+                // Opus only if the opus feature is enabled
+                #[cfg(feature = "opus")]
+                codecs.push(AudioCodec::Opus);
 
-            // AAC only if the aac feature is enabled
-            #[cfg(feature = "aac")]
-            supported_codecs.push(AudioCodec::Aac);
-        }
+                // AAC only if the aac feature is enabled
+                #[cfg(feature = "aac")]
+                codecs.push(AudioCodec::Aac);
+            }
+
+            codecs
+        };
 
         Self {
             device_id: None,
@@ -418,7 +423,9 @@ impl AudioStreamPlugin {
                         let backend_config = BackendConfig {
                             sample_rate: config.sample_rate,
                             channels: config.channels,
-                            buffer_size: (config.sample_rate as usize * config.buffer_size_ms as usize) / 1000,
+                            buffer_size: (config.sample_rate as usize
+                                * config.buffer_size_ms as usize)
+                                / 1000,
                         };
                         let backend = AudioBackend::new(backend_config)?;
                         self.audio_backend = Some(Arc::new(RwLock::new(backend)));
@@ -437,10 +444,8 @@ impl AudioStreamPlugin {
                             )?);
                         }
                         AudioCodec::Pcm => {
-                            stream.pcm_codec = Some(PcmCodec::new(
-                                config.sample_rate,
-                                config.channels,
-                            ));
+                            stream.pcm_codec =
+                                Some(PcmCodec::new(config.sample_rate, config.channels));
                         }
                         AudioCodec::Aac => {
                             stream.aac_codec = Some(AacCodec::new(
@@ -473,7 +478,9 @@ impl AudioStreamPlugin {
                         let backend_config = BackendConfig {
                             sample_rate: config.sample_rate,
                             channels: config.channels,
-                            buffer_size: (config.sample_rate as usize * config.buffer_size_ms as usize) / 1000,
+                            buffer_size: (config.sample_rate as usize
+                                * config.buffer_size_ms as usize)
+                                / 1000,
                         };
                         let backend = AudioBackend::new(backend_config)?;
                         self.audio_backend = Some(Arc::new(RwLock::new(backend)));
@@ -492,10 +499,8 @@ impl AudioStreamPlugin {
                             )?);
                         }
                         AudioCodec::Pcm => {
-                            stream.pcm_codec = Some(PcmCodec::new(
-                                config.sample_rate,
-                                config.channels,
-                            ));
+                            stream.pcm_codec =
+                                Some(PcmCodec::new(config.sample_rate, config.channels));
                         }
                         AudioCodec::Aac => {
                             stream.aac_codec = Some(AacCodec::new(
@@ -656,8 +661,10 @@ impl AudioStreamPlugin {
                     if let Some(sender) = &packet_sender {
                         if let Some(dev_id) = &device_id {
                             let mut body = serde_json::Map::new();
-                            body.insert("data".to_string(),
-                                serde_json::Value::String(BASE64.encode(&encoded)));
+                            body.insert(
+                                "data".to_string(),
+                                serde_json::Value::String(BASE64.encode(&encoded)),
+                            );
 
                             let packet = Packet::new(
                                 "cconnect.audiostream.data",
@@ -746,9 +753,10 @@ impl AudioStreamPlugin {
     }
 
     /// Process audio data packet
-    async fn process_audio_data(&self, data: &[u8]) -> Result<()> {
+    async fn process_audio_data(&self, _data: &[u8]) -> Result<()> {
         #[cfg(feature = "audiostream")]
         {
+            let data = _data;
             let mut stream_lock = self.incoming_stream.write().await;
             if let Some(stream) = stream_lock.as_mut() {
                 stream.update_stats(data.len() as u64);
@@ -880,18 +888,8 @@ impl AudioStreamPlugin {
     /// Volume level from 0.0 to 1.0, or None if stream is not active
     pub async fn get_volume(&self, direction: StreamDirection) -> Option<f32> {
         match direction {
-            StreamDirection::Output => self
-                .outgoing_stream
-                .read()
-                .await
-                .as_ref()
-                .map(|s| s.volume),
-            StreamDirection::Input => self
-                .incoming_stream
-                .read()
-                .await
-                .as_ref()
-                .map(|s| s.volume),
+            StreamDirection::Output => self.outgoing_stream.read().await.as_ref().map(|s| s.volume),
+            StreamDirection::Input => self.incoming_stream.read().await.as_ref().map(|s| s.volume),
         }
     }
 }
@@ -947,7 +945,9 @@ impl Plugin for AudioStreamPlugin {
 
         #[cfg(not(feature = "audiostream"))]
         {
-            warn!("AudioStream plugin initialized without 'audiostream' feature - streaming disabled");
+            warn!(
+                "AudioStream plugin initialized without 'audiostream' feature - streaming disabled"
+            );
         }
 
         Ok(())
@@ -1422,7 +1422,10 @@ mod tests {
         );
         body.insert("volume".to_string(), serde_json::Value::from(0.7));
 
-        let packet = Packet::new("cconnect.audiostream.volume", serde_json::Value::Object(body));
+        let packet = Packet::new(
+            "cconnect.audiostream.volume",
+            serde_json::Value::Object(body),
+        );
 
         assert!(plugin.handle_packet(&packet, &mut device).await.is_ok());
 

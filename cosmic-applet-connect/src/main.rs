@@ -1692,7 +1692,8 @@ impl cosmic::Application for CConnectApplet {
                 );
 
                 // Store screenshot in state for preview
-                self.screenshots.insert(device_id.clone(), image_data.clone());
+                self.screenshots
+                    .insert(device_id.clone(), image_data.clone());
 
                 // Save screenshot to disk
                 let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
@@ -1732,7 +1733,8 @@ impl cosmic::Application for CConnectApplet {
                 } else {
                     tracing::error!("Could not determine pictures directory");
                     self.notification = Some(AppNotification {
-                        message: "Failed to save screenshot: Pictures directory not found".to_string(),
+                        message: "Failed to save screenshot: Pictures directory not found"
+                            .to_string(),
                         kind: NotificationType::Error,
                         action: None,
                     });
@@ -3630,7 +3632,8 @@ impl CConnectApplet {
                     .spacing(SPACE_S),
                     row![
                         cosmic::widget::text::body("F1 or ?").width(Length::FillPortion(2)),
-                        cosmic::widget::text::body("Show this help dialog").width(Length::FillPortion(3)),
+                        cosmic::widget::text::body("Show this help dialog")
+                            .width(Length::FillPortion(3)),
                     ]
                     .spacing(SPACE_S),
                     divider::horizontal::light(),
@@ -4358,11 +4361,9 @@ impl CConnectApplet {
         // System Info card (if available)
         if let Some(info) = self.system_info.get(device_id) {
             let system_info_card = column![
-                row![
-                    text("System Information")
-                        .size(ICON_S)
-                        .class(theme::Text::Color(theme_accent_color()))
-                ]
+                row![text("System Information")
+                    .size(ICON_S)
+                    .class(theme::Text::Color(theme_accent_color()))]
                 .spacing(SPACE_XS),
                 divider::horizontal::default(),
                 row![
@@ -6147,13 +6148,17 @@ impl CConnectApplet {
 
         // F1 key for help
         if let cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::F1) = key {
-            return cosmic::task::message(cosmic::Action::App(Message::ToggleKeyboardShortcutsHelp));
+            return cosmic::task::message(cosmic::Action::App(
+                Message::ToggleKeyboardShortcutsHelp,
+            ));
         }
 
         // Question mark for help (? key)
         if let cosmic::iced::keyboard::Key::Character(c) = &key {
             if c.as_str() == "?" && !modifiers.control() && !modifiers.alt() {
-                return cosmic::task::message(cosmic::Action::App(Message::ToggleKeyboardShortcutsHelp));
+                return cosmic::task::message(cosmic::Action::App(
+                    Message::ToggleKeyboardShortcutsHelp,
+                ));
             }
         }
 

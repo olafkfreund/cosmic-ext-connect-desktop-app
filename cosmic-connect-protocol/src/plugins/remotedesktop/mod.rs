@@ -286,7 +286,8 @@ impl RemoteDesktopPlugin {
                         }),
                     );
 
-                    if let (Some(device_id), Some(sender)) = (&self.device_id, &self.packet_sender) {
+                    if let (Some(device_id), Some(sender)) = (&self.device_id, &self.packet_sender)
+                    {
                         if let Err(e) = sender.send((device_id.clone(), response)).await {
                             warn!("Failed to send ready response packet: {}", e);
                         } else {
@@ -308,7 +309,8 @@ impl RemoteDesktopPlugin {
                         }),
                     );
 
-                    if let (Some(device_id), Some(sender)) = (&self.device_id, &self.packet_sender) {
+                    if let (Some(device_id), Some(sender)) = (&self.device_id, &self.packet_sender)
+                    {
                         if let Err(e) = sender.send((device_id.clone(), response)).await {
                             warn!("Failed to send denied response packet: {}", e);
                         }

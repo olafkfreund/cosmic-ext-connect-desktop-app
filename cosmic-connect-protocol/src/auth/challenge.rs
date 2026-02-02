@@ -144,7 +144,9 @@ impl ChallengeManager {
             let mut challenges = self.active_challenges.lock().map_err(|e| {
                 AuthError::CryptoError(format!("Failed to acquire challenges lock: {e}"))
             })?;
-            challenges.remove(nonce).ok_or(AuthError::ChallengeExpired)?
+            challenges
+                .remove(nonce)
+                .ok_or(AuthError::ChallengeExpired)?
         };
 
         // Check expiry
@@ -168,10 +170,7 @@ impl ChallengeManager {
     ///
     /// This is primarily useful for testing and monitoring.
     pub fn active_challenge_count(&self) -> usize {
-        self.active_challenges
-            .lock()
-            .map(|c| c.len())
-            .unwrap_or(0)
+        self.active_challenges.lock().map(|c| c.len()).unwrap_or(0)
     }
 
     /// Cleans up expired challenges and old used nonces.

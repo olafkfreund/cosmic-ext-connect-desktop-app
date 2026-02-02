@@ -692,14 +692,14 @@ async fn receive_file(
 
 ### 1. Error Handling
 
-✅ **DO:**
+ **DO:**
 - Use `ProtocolError` variants for all protocol-level errors
 - Call `error_handler.handle_error()` for automatic classification and notification
 - Check `is_recoverable()` before automatic retry
 - Provide context in error messages (device ID, operation, filename)
 - Log errors at appropriate levels (error/warn/debug)
 
-❌ **DON'T:**
+ **DON'T:**
 - Use `unwrap()` or `expect()` in production code
 - Silently ignore errors
 - Show generic error messages to users
@@ -708,14 +708,14 @@ async fn receive_file(
 
 ### 2. User Notifications
 
-✅ **DO:**
+ **DO:**
 - Use specific notification methods (`notify_network_error`, `notify_file_transfer_error`, etc.)
 - Provide actionable recovery steps
 - Include relevant context (device name, filename)
 - Use appropriate urgency levels
 - Add recovery action buttons when applicable
 
-❌ **DON'T:**
+ **DON'T:**
 - Show technical error messages to users
 - Spam users with repeated notifications
 - Use critical urgency for non-critical issues
@@ -723,14 +723,14 @@ async fn receive_file(
 
 ### 3. Auto-Recovery
 
-✅ **DO:**
+ **DO:**
 - Only auto-reconnect to paired devices
 - Use exponential backoff for reconnections
 - Reset reconnection strategy on success
 - Clear retry queues on reconnection
 - Track transfer state for resumption
 
-❌ **DON'T:**
+ **DON'T:**
 - Reconnect indefinitely without backoff
 - Retry without delay (causes connection storms)
 - Reconnect to unpaired devices (security risk)
@@ -738,14 +738,14 @@ async fn receive_file(
 
 ### 4. File Operations
 
-✅ **DO:**
+ **DO:**
 - Use `create_file_safe()` for file creation
 - Use `write_file_safe()` for writing
 - Call `cleanup_partial_file()` on transfer failure
 - Use `get_unique_download_path()` to avoid conflicts
 - Check disk space before large transfers
 
-❌ **DON'T:**
+ **DON'T:**
 - Use `File::create()` directly (may panic)
 - Leave partial files on failure
 - Overwrite existing files without user consent

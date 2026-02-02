@@ -93,7 +93,10 @@ impl ContactsSignals {
             .at(CONTACTS_OBJECT_PATH, signals.clone())
             .await?;
 
-        info!("Contacts DBus signals registered at {}", CONTACTS_OBJECT_PATH);
+        info!(
+            "Contacts DBus signals registered at {}",
+            CONTACTS_OBJECT_PATH
+        );
 
         Ok(signals)
     }

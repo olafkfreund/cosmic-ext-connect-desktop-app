@@ -49,12 +49,12 @@ The development environment will automatically load when you `cd` into the direc
 After `direnv allow`, you should see:
 
 ```
-🚀 COSMIC Connect Development Environment
+ COSMIC Connect Development Environment
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Rust version: rustc 1.x.x
 Cargo version: cargo 1.x.x
 
-📦 Available commands:
+ Available commands:
   just build          - Build all components
   just run-applet     - Run applet in development
   just test           - Run tests
@@ -63,12 +63,12 @@ Cargo version: cargo 1.x.x
   cargo check         - Fast compilation check
   cargo build         - Full build
 
-🔧 Environment configured for COSMIC Desktop development
+ Environment configured for COSMIC Desktop development
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🔍 Verifying development dependencies...
-  ✓ dbus-1 found: 1.x.x
-  ✓ openssl found: 3.x.x
+ Verifying development dependencies...
+   dbus-1 found: 1.x.x
+   openssl found: 3.x.x
 
 Ready to build! Try: cargo check
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

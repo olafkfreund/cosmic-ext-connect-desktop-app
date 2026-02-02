@@ -2,20 +2,20 @@
 
 Complete listing of all documentation files organized by category.
 
-## 📖 Main Navigation
+##  Main Navigation
 
 **Start Here**: [Home.md](Home.md) - Main documentation hub with full navigation
 
-## 📁 Complete File Index
+##  Complete File Index
 
-### 🏗️ Architecture & Design (2 files)
+###  Architecture & Design (2 files)
 
 | File | Description |
 |------|-------------|
 | [Architecture.md](architecture/Architecture.md) | Multi-platform architecture, shared core, integration |
 | [Protocol.md](architecture/Protocol.md) | KDE Connect protocol v7/8 specification |
 
-### 💻 Development Guides (5 files)
+###  Development Guides (5 files)
 
 | File | Description |
 |------|-------------|
@@ -25,7 +25,7 @@ Complete listing of all documentation files organized by category.
 | [Build-Fixes.md](development/Build-Fixes.md) | Common build issues and solutions |
 | [Applet-Development.md](development/Applet-Development.md) | COSMIC panel applet development guide |
 
-### 📊 Project Management (5 files)
+###  Project Management (5 files)
 
 | File | Description |
 |------|-------------|
@@ -45,7 +45,7 @@ Complete listing of all documentation files organized by category.
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common issues and solutions |
 | [PLUGIN_TESTING_GUIDE.md](PLUGIN_TESTING_GUIDE.md) | Plugin testing documentation |
 
-### 🔧 Technical Documentation (3 files)
+###  Technical Documentation (3 files)
 
 | File | Description |
 |------|-------------|
@@ -53,20 +53,20 @@ Complete listing of all documentation files organized by category.
 | [PAIRING_FIX_RETROSPECTIVE.md](PAIRING_FIX_RETROSPECTIVE.md) | Pairing implementation retrospective |
 | [issue-52-fix.md](issue-52-fix.md) | Connection stability fix documentation |
 
-### 📦 Repository Documentation (2 files)
+###  Repository Documentation (2 files)
 
 | File | Description |
 |------|-------------|
 | [README.md](README.md) | Documentation directory overview |
 | [WIKI_SETUP.md](WIKI_SETUP.md) | GitHub Wiki setup guide (optional) |
 
-### 📜 Archive (1 file)
+###  Archive (1 file)
 
 | File | Description |
 |------|-------------|
 | [old-context.md](archive/old-context.md) | Historical project context (outdated) |
 
-## 📋 Quick Access by Topic
+##  Quick Access by Topic
 
 ### For New Contributors
 1. [Home.md](Home.md) - Start here
@@ -90,7 +90,7 @@ Complete listing of all documentation files organized by category.
 2. [Acceptance-Criteria.md](project/Acceptance-Criteria.md) - Quality standards
 3. [Issues.md](project/Issues.md) - Issue tracking
 
-## 📊 Statistics
+##  Statistics
 
 - **Total Documentation Files**: 25+ markdown files
 - **Categories**: 7 main categories
@@ -100,7 +100,7 @@ Complete listing of all documentation files organized by category.
 - **User Documentation**: 5 files
 - **Technical Docs**: 3 files
 
-## 🔄 Maintenance
+##  Maintenance
 
 This index is manually maintained. When adding new documentation:
 
@@ -109,7 +109,7 @@ This index is manually maintained. When adding new documentation:
 3. Update this index file
 4. Update [README.md](README.md) if needed
 
-## 🌐 External Links
+##  External Links
 
 - [Main Project README](../README.md)
 - [cosmic-connect-core](https://github.com/olafkfreund/cosmic-connect-core)

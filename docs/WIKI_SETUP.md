@@ -6,11 +6,11 @@ This document explains how to mirror the documentation to GitHub Wiki if desired
 
 Documentation is currently maintained in the `docs/` directory of the main repository. This approach has several advantages:
 
-✅ **Version controlled** - Documentation changes are tracked with code
-✅ **PR workflow** - Documentation changes go through code review
-✅ **Local access** - Easy to reference during development
-✅ **Searchable** - GitHub's code search includes documentation
-✅ **Single source of truth** - No sync issues between wiki and repo
+ **Version controlled** - Documentation changes are tracked with code
+ **PR workflow** - Documentation changes go through code review
+ **Local access** - Easy to reference during development
+ **Searchable** - GitHub's code search includes documentation
+ **Single source of truth** - No sync issues between wiki and repo
 
 ## Option 1: Keep Documentation in Repository (Recommended)
 
@@ -134,12 +134,12 @@ After deployment, documentation will be available at:
 
 **Stay with the current setup** (`docs/` directory in main repo) because:
 
-1. ✅ Documentation is version-controlled with code
-2. ✅ Changes go through PR review
-3. ✅ No sync issues
-4. ✅ Easy local access during development
-5. ✅ GitHub renders markdown nicely
-6. ✅ Can enable GitHub Pages if needed later
+1.  Documentation is version-controlled with code
+2.  Changes go through PR review
+3.  No sync issues
+4.  Easy local access during development
+5.  GitHub renders markdown nicely
+6.  Can enable GitHub Pages if needed later
 
 The GitHub Wiki is most useful for:
 - User-facing documentation separate from code

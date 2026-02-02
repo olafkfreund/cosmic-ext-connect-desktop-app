@@ -324,9 +324,8 @@ mod tests {
 
     #[test]
     fn test_auth_response_denied_to_packet() {
-        let response =
-            AuthResponse::denied("req-002", "nonce-002", "Biometric scan failed")
-                .with_phone_id("phone-002");
+        let response = AuthResponse::denied("req-002", "nonce-002", "Biometric scan failed")
+            .with_phone_id("phone-002");
 
         let packet = response.to_packet();
 
@@ -407,8 +406,8 @@ mod tests {
 
     #[test]
     fn test_auth_response_roundtrip_denied() {
-        let original = AuthResponse::denied("roundtrip-002", "nonce", "Device locked")
-            .with_phone_id("phone");
+        let original =
+            AuthResponse::denied("roundtrip-002", "nonce", "Device locked").with_phone_id("phone");
 
         let packet = original.to_packet();
         let decoded = AuthResponse::from_packet(&packet).unwrap();

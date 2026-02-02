@@ -310,7 +310,10 @@ impl InputHandler {
                     }
                     Err(e) => {
                         // In environments without compositor support, this is expected
-                        warn!("Failed to initialize enigo: {}. Input injection will be simulated.", e);
+                        warn!(
+                            "Failed to initialize enigo: {}. Input injection will be simulated.",
+                            e
+                        );
                         Ok(false)
                     }
                 }
@@ -555,7 +558,10 @@ impl InputHandler {
         if let Some(enigo) = enigo_guard.as_mut() {
             // Move to position first (using absolute coordinates)
             if let Err(e) = enigo.move_mouse(coords.x, coords.y, Coordinate::Abs) {
-                error!("Failed to move mouse to ({}, {}): {}", coords.x, coords.y, e);
+                error!(
+                    "Failed to move mouse to ({}, {}): {}",
+                    coords.x, coords.y, e
+                );
                 self.events_failed += 1;
                 return Err(DisplayStreamError::Input(format!(
                     "Failed to move mouse: {}",
@@ -603,7 +609,10 @@ impl InputHandler {
 
         if let Some(enigo) = enigo_guard.as_mut() {
             if let Err(e) = enigo.move_mouse(coords.x, coords.y, Coordinate::Abs) {
-                error!("Failed to move mouse to ({}, {}): {}", coords.x, coords.y, e);
+                error!(
+                    "Failed to move mouse to ({}, {}): {}",
+                    coords.x, coords.y, e
+                );
                 self.events_failed += 1;
                 return Err(DisplayStreamError::Input(format!(
                     "Failed to move mouse: {}",
@@ -642,7 +651,10 @@ impl InputHandler {
         if let Some(enigo) = enigo_guard.as_mut() {
             // Move to position first (using absolute coordinates)
             if let Err(e) = enigo.move_mouse(coords.x, coords.y, Coordinate::Abs) {
-                error!("Failed to move mouse to ({}, {}): {}", coords.x, coords.y, e);
+                error!(
+                    "Failed to move mouse to ({}, {}): {}",
+                    coords.x, coords.y, e
+                );
                 self.events_failed += 1;
                 return Err(DisplayStreamError::Input(format!(
                     "Failed to move mouse: {}",

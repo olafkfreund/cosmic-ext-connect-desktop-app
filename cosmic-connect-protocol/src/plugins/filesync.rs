@@ -519,7 +519,10 @@ impl FileSyncPlugin {
                     }
                 }
                 Err(e) => {
-                    warn!("Failed to generate initial index for '{}': {}", folder_id, e);
+                    warn!(
+                        "Failed to generate initial index for '{}': {}",
+                        folder_id, e
+                    );
                 }
             }
         }

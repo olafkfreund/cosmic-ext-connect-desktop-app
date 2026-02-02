@@ -301,8 +301,7 @@ mod tests {
         let challenge = create_test_challenge();
 
         // Signature with wrong length (32 bytes instead of 64)
-        let short_signature =
-            base64::engine::general_purpose::STANDARD.encode([0u8; 32]);
+        let short_signature = base64::engine::general_purpose::STANDARD.encode([0u8; 32]);
 
         let response = ChallengeResponse {
             nonce: challenge.nonce.clone(),

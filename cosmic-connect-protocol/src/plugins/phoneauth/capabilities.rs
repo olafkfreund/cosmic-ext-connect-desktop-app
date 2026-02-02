@@ -368,12 +368,8 @@ mod tests {
 
     #[test]
     fn test_auth_capabilities_is_available() {
-        let available = AuthCapabilities::new(
-            vec![BiometricType::Fingerprint],
-            "key",
-            30000,
-            false,
-        );
+        let available =
+            AuthCapabilities::new(vec![BiometricType::Fingerprint], "key", 30000, false);
         assert!(available.is_available());
 
         let locked = AuthCapabilities::new(vec![BiometricType::Fingerprint], "key", 30000, true);
@@ -459,12 +455,8 @@ mod tests {
 
     #[test]
     fn test_auth_capabilities_serialization() {
-        let capabilities = AuthCapabilities::new(
-            vec![BiometricType::Face],
-            "serialize_key",
-            40000,
-            true,
-        );
+        let capabilities =
+            AuthCapabilities::new(vec![BiometricType::Face], "serialize_key", 40000, true);
 
         let json = serde_json::to_value(&capabilities).unwrap();
 

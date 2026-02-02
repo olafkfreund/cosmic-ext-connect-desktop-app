@@ -254,12 +254,12 @@ The Connection Manager is the heart of the system, handling all device connectio
        │ Identity packets exchanged
        ▼
 ┌──────────────┐     ┌──────────────┐
-│   Unpaired   │────▶│   Pairing    │
+│   Unpaired   │────│   Pairing    │
 └──────┬───────┘     └──────┬───────┘
        │                    │ User accepts
        │                    ▼
        │             ┌──────────────┐
-       └────────────▶│    Paired    │
+       └────────────│    Paired    │
                      └──────┬───────┘
                             │ Certificate verified
                             ▼
@@ -473,10 +473,10 @@ Plugin Instance
   │ Process packet
   ▼
 [Action]
-  ├─▶ Update state
-  ├─▶ Send notification
-  ├─▶ Trigger system action
-  └─▶ Send response packet
+  ├─ Update state
+  ├─ Send notification
+  ├─ Trigger system action
+  └─ Send response packet
 ```
 
 ### Packet Flow (Outgoing)
@@ -513,7 +513,7 @@ Sender                                 Receiver
   │                                       │
   │ 2. Create share.request packet        │
   │    with payloadTransferInfo           │
-  ├──────────────────────────────────────▶│
+  ├──────────────────────────────────────│
   │                                       │
   │                                       │ 3. Listen on transfer port
   │                                       │
@@ -521,7 +521,7 @@ Sender                                 Receiver
   │◀──────────────────────────────────────┤
   │                                       │
   │ 5. Stream file data (64KB chunks)     │
-  ├──────────────────────────────────────▶│
+  ├──────────────────────────────────────│
   │                                       │
   │                                       │ 6. Write to ~/Downloads
   │                                       │
@@ -895,27 +895,27 @@ TXT Records:
 Device A                              Device B
    │                                     │
    │ 1. UDP broadcast identity           │
-   ├────────────────────────────────────▶│
+   ├────────────────────────────────────│
    │                                     │
    │◀────────────────────────────────────┤
    │ 2. UDP response identity            │
    │                                     │
    │ 3. TCP connection to port 1716      │
-   ├────────────────────────────────────▶│
+   ├────────────────────────────────────│
    │                                     │
    │ 4. TLS handshake                    │
-   │◀───────────────────────────────────▶│
+   │◀───────────────────────────────────│
    │    (accept any cert)                │
    │                                     │
    │ 5. Exchange identity over TLS (v8)  │
-   │◀───────────────────────────────────▶│
+   │◀───────────────────────────────────│
    │                                     │
    │ 6. Verify certificate fingerprint   │
    │    (if paired)                      │
    │                                     │
    │ 7. Connection established           │
    │    [Bidirectional communication]    │
-   │◀───────────────────────────────────▶│
+   │◀───────────────────────────────────│
    │                                     │
 ```
 

@@ -40,7 +40,7 @@ Network
 
 ## Plugin Analysis
 
-### ✅ Small Packet Plugins (< 300 bytes)
+###  Small Packet Plugins (< 300 bytes)
 
 These plugins always work over Bluetooth without modification:
 
@@ -48,7 +48,7 @@ These plugins always work over Bluetooth without modification:
 - **Packet Type:** `kdeconnect.ping`
 - **Typical Size:** 150-200 bytes
 - **Content:** Optional message string
-- **Status:** ✅ **Compatible**
+- **Status:**  **Compatible**
 - **Notes:** Smallest plugin, always safe for Bluetooth
 
 #### 2. **Battery Plugin**
@@ -58,19 +58,19 @@ These plugins always work over Bluetooth without modification:
   - `currentCharge` (i32): 0-100
   - `isCharging` (bool)
   - `thresholdEvent` (i32)
-- **Status:** ✅ **Compatible**
+- **Status:**  **Compatible**
 - **Notes:** Fixed-size numerical data, always under MTU
 
 #### 3. **FindMyPhone Plugin**
 - **Packet Type:** `kdeconnect.findmyphone.request`
 - **Typical Size:** 120-150 bytes
 - **Content:** Simple request with no body
-- **Status:** ✅ **Compatible**
+- **Status:**  **Compatible**
 - **Notes:** Minimal packet, always safe
 
 ---
 
-### ⚠️ Medium Packet Plugins (300-500 bytes)
+###  Medium Packet Plugins (300-500 bytes)
 
 These plugins generally work but may need monitoring:
 
@@ -84,7 +84,7 @@ These plugins generally work but may need monitoring:
   - Application name
   - Icon name/path
   - Timestamp
-- **Status:** ⚠️ **Mostly Compatible**
+- **Status:**  **Mostly Compatible**
 - **Concerns:**
   - Very long notification titles
   - Extremely long notification text
@@ -103,7 +103,7 @@ These plugins generally work but may need monitoring:
   - Status fields (position, length, volume)
   - Control capabilities (booleans)
   - JSON structure overhead (~100 bytes)
-- **Status:** ⚠️ **Mostly Compatible**
+- **Status:**  **Mostly Compatible**
 - **Concerns:**
   - Very long song titles (e.g., classical music with full opus names)
   - Very long artist names (e.g., collaborative albums with many artists)
@@ -125,13 +125,13 @@ These plugins generally work but may need monitoring:
 - **Content:**
   - Command list (multiple commands with names)
   - Command output (if reporting results)
-- **Status:** ⚠️ **Mostly Compatible**
+- **Status:**  **Mostly Compatible**
 - **Concerns:** Long command lists or output
 - **Recommendation:** Limit command output in responses
 
 ---
 
-### ✅ Payload Protocol Plugins
+###  Payload Protocol Plugins
 
 These plugins use the payload transfer protocol for large data:
 
@@ -148,7 +148,7 @@ These plugins use the payload transfer protocol for large data:
     - **`payloadTransferInfo`** with TCP port
     - **`payloadSize`** for file size
 - **File Transfer:** Separate TCP connection via `PayloadClient`
-- **Status:** ✅ **Fully Compatible**
+- **Status:**  **Fully Compatible**
 - **Key Design:**
   - Metadata goes over regular connection (TCP/Bluetooth)
   - Actual file content goes over separate TCP payload connection
@@ -157,12 +157,12 @@ These plugins use the payload transfer protocol for large data:
 
 ---
 
-### 🔧 Plugins Requiring Additional Investigation
+###  Plugins Requiring Additional Investigation
 
 #### 8. **Clipboard Plugin**
 - **Packet Type:** `kdeconnect.clipboard`, `kdeconnect.clipboard.connect`
 - **Concern:** Clipboard content can be very large (images as base64, large text)
-- **Status:** 🔧 **Needs Review**
+- **Status:**  **Needs Review**
 - **Recommendation:**
   - Check if clipboard content is sent inline or via payload protocol
   - If inline, implement size limits or payload protocol for large content
@@ -172,13 +172,13 @@ These plugins use the payload transfer protocol for large data:
 - **Packet Types:** `kdeconnect.telephony`, `kdeconnect.sms.messages`
 - **Typical Size:** 200-400 bytes
 - **Concern:** SMS message threads could be large
-- **Status:** ⚠️ **Likely Compatible**
+- **Status:**  **Likely Compatible**
 - **Recommendation:** Verify SMS message packet sizes; consider pagination for threads
 
 #### 10. **Contacts Plugin**
 - **Packet Type:** `kdeconnect.contacts.response_uids_timestamps`, `kdeconnect.contacts.response_vcards`
 - **Concern:** vCards can be large; contact lists can have many entries
-- **Status:** 🔧 **Needs Review**
+- **Status:**  **Needs Review**
 - **Recommendation:**
   - Check if vCards are sent individually or in batches
   - Implement pagination if needed
@@ -187,13 +187,13 @@ These plugins use the payload transfer protocol for large data:
 #### 11. **RemoteInput Plugin**
 - **Packet Type:** `kdeconnect.mousepad.request`, `kdeconnect.mousepad.keyboardstate`
 - **Typical Size:** 100-200 bytes
-- **Status:** ✅ **Likely Compatible**
+- **Status:**  **Likely Compatible**
 - **Notes:** Input events are small; should always fit
 
 #### 12. **Presenter Plugin**
 - **Packet Type:** `kdeconnect.presenter`
 - **Typical Size:** 100-150 bytes
-- **Status:** ✅ **Compatible**
+- **Status:**  **Compatible**
 - **Notes:** Simple control commands
 
 ---
@@ -324,18 +324,18 @@ for batch in contacts.chunks(5) {
 
 | Plugin | Status | Bluetooth Safe | Notes |
 |--------|--------|----------------|-------|
-| Ping | ✅ Pass | Yes | Always < 200 bytes |
-| Battery | ✅ Pass | Yes | Fixed size, ~180 bytes |
-| FindMyPhone | ✅ Pass | Yes | Minimal packet |
-| Notification | ⚠️ Monitor | Mostly | May need truncation for extreme cases |
-| MPRIS | ⚠️ Monitor | Mostly | Consider truncation for long metadata |
-| Share | ✅ Pass | Yes | Perfect design with payload protocol |
-| RunCommand | ⚠️ Monitor | Mostly | Limit output size |
-| RemoteInput | ✅ Pass | Likely | Small input events |
-| Presenter | ✅ Pass | Yes | Simple commands |
-| Clipboard | 🔧 Review | Unknown | Needs investigation |
-| Telephony | ⚠️ Monitor | Likely | Check SMS sizes |
-| Contacts | 🔧 Review | Unknown | May need pagination |
+| Ping |  Pass | Yes | Always < 200 bytes |
+| Battery |  Pass | Yes | Fixed size, ~180 bytes |
+| FindMyPhone |  Pass | Yes | Minimal packet |
+| Notification |  Monitor | Mostly | May need truncation for extreme cases |
+| MPRIS |  Monitor | Mostly | Consider truncation for long metadata |
+| Share |  Pass | Yes | Perfect design with payload protocol |
+| RunCommand |  Monitor | Mostly | Limit output size |
+| RemoteInput |  Pass | Likely | Small input events |
+| Presenter |  Pass | Yes | Simple commands |
+| Clipboard |  Review | Unknown | Needs investigation |
+| Telephony |  Monitor | Likely | Check SMS sizes |
+| Contacts |  Review | Unknown | May need pagination |
 
 ### Overall Assessment
 
@@ -353,10 +353,10 @@ for batch in contacts.chunks(5) {
 
 ### Required Actions
 
-1. ✅ **No immediate code changes required** - existing plugins work
-2. ⚠️ **Add monitoring** for packet sizes near MTU limit
-3. 🔧 **Investigate** Clipboard and Contacts plugins for large data handling
-4. 📊 **Test** with real Bluetooth hardware
+1.  **No immediate code changes required** - existing plugins work
+2.  **Add monitoring** for packet sizes near MTU limit
+3.  **Investigate** Clipboard and Contacts plugins for large data handling
+4.  **Test** with real Bluetooth hardware
 
 ---
 

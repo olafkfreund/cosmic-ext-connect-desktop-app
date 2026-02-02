@@ -24,7 +24,10 @@ use smithay_client_toolkit::{
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
     shell::{
-        wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
+        wlr_layer::{
+            Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
+            LayerSurfaceConfigure,
+        },
         WaylandSurface,
     },
     shm::{slot::SlotPool, Shm, ShmHandler},
@@ -110,7 +113,10 @@ impl SharedState {
     }
 
     fn get_position(&self) -> (f64, f64) {
-        self.position.lock().unwrap_or_else(|_| panic!("Failed to lock position")).clone()
+        self.position
+            .lock()
+            .unwrap_or_else(|_| panic!("Failed to lock position"))
+            .clone()
     }
 
     fn set_config(&self, config: LaserPointerConfig) {
@@ -121,7 +127,10 @@ impl SharedState {
     }
 
     fn get_config(&self) -> LaserPointerConfig {
-        self.config.lock().unwrap_or_else(|_| panic!("Failed to lock config")).clone()
+        self.config
+            .lock()
+            .unwrap_or_else(|_| panic!("Failed to lock config"))
+            .clone()
     }
 }
 
@@ -194,7 +203,9 @@ impl LaserPointerApp {
 
         // Create pool if it doesn't exist
         if self.pool.is_none() {
-            self.pool = Some(SlotPool::new(buffer_size * 2, &self.shm_state).expect("Failed to create pool"));
+            self.pool = Some(
+                SlotPool::new(buffer_size * 2, &self.shm_state).expect("Failed to create pool"),
+            );
         }
 
         let pool = self.pool.as_mut().unwrap();
@@ -220,10 +231,14 @@ impl LaserPointerApp {
         // Attach and commit
         let wl_buffer = buffer.wl_buffer();
         layer_surface.wl_surface().attach(Some(wl_buffer), 0, 0);
-        layer_surface.wl_surface().damage_buffer(0, 0, size as i32, size as i32);
+        layer_surface
+            .wl_surface()
+            .damage_buffer(0, 0, size as i32, size as i32);
         layer_surface.wl_surface().commit();
 
-        self.shared_state.needs_redraw.store(false, Ordering::Relaxed);
+        self.shared_state
+            .needs_redraw
+            .store(false, Ordering::Relaxed);
     }
 
     fn render_pointer(canvas: &mut [u8], size: u32, config: &LaserPointerConfig) {
@@ -274,12 +289,7 @@ impl LaserPointerApp {
 
         // Set position relative to pointer coordinates
         layer_surface.set_anchor(Anchor::empty());
-        layer_surface.set_margin(
-            y as i32 - offset,
-            0,
-            0,
-            x as i32 - offset,
-        );
+        layer_surface.set_margin(y as i32 - offset, 0, 0, x as i32 - offset);
         layer_surface.commit();
     }
 }
@@ -477,7 +487,10 @@ impl LaserPointer {
 
         self.shared_state.set_position(new_x, new_y);
 
-        debug!("Laser pointer moved by ({}, {}) to ({}, {})", dx, dy, new_x, new_y);
+        debug!(
+            "Laser pointer moved by ({}, {}) to ({}, {})",
+            dx, dy, new_x, new_y
+        );
     }
 
     /// Set absolute position
@@ -509,7 +522,8 @@ impl LaserPointer {
 
     fn run_wayland_loop(shared_state: SharedState) -> Result<(), Box<dyn std::error::Error>> {
         let conn = Connection::connect_to_env()?;
-        let (globals, mut event_queue): (_, wayland_client::EventQueue<LaserPointerApp>) = registry_queue_init(&conn)?;
+        let (globals, mut event_queue): (_, wayland_client::EventQueue<LaserPointerApp>) =
+            registry_queue_init(&conn)?;
         let qh: QueueHandle<LaserPointerApp> = event_queue.handle();
 
         let compositor_state = CompositorState::bind(&globals, &qh)?;

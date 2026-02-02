@@ -272,7 +272,10 @@ impl MprisManager {
         };
 
         Ok(PlayerMetadata {
-            // TODO: Handle artist as array of strings (some players return arrays)
+            // Note: xesam:artist per spec is an array of strings (as), but many players
+            // return a single string. We handle the string case; array handling would
+            // require parsing zvariant Array type and joining with ", ".
+            // See: https://specifications.freedesktop.org/mpris-spec/latest/Player_Interface.html
             artist: get_string("xesam:artist"),
             title: get_string("xesam:title"),
             album: get_string("xesam:album"),

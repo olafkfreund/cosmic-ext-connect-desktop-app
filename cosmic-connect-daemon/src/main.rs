@@ -861,7 +861,10 @@ impl Daemon {
                     let dev_manager = device_manager.read().await;
                     if let Some(device) = dev_manager.get_device(&device_id) {
                         if let Err(e) = desktop_icons::sync_desktop_icon(device, None) {
-                            warn!("Failed to create desktop icon for device {}: {}", device_id, e);
+                            warn!(
+                                "Failed to create desktop icon for device {}: {}",
+                                device_id, e
+                            );
                         } else {
                             info!("Created desktop icon for device {}", device_id);
                         }
@@ -907,7 +910,10 @@ impl Daemon {
 
                 // Remove desktop icon for unpaired device
                 if let Err(e) = desktop_icons::remove_desktop_icon(&device_id) {
-                    warn!("Failed to remove desktop icon for device {}: {}", device_id, e);
+                    warn!(
+                        "Failed to remove desktop icon for device {}: {}",
+                        device_id, e
+                    );
                 } else {
                     info!("Removed desktop icon for device {}", device_id);
                 }
@@ -1349,9 +1355,14 @@ impl Daemon {
                                                     }
                                                 });
                                             } else if action_key == "reply" {
-                                                info!("Quick reply requested (TODO: implement UI)");
-                                                // TODO: This would normally trigger a UI dialog to get user input
-                                                // and then send a cconnect.notification.reply packet.
+                                                // Quick reply requires a UI dialog to collect user input.
+                                                // This should be implemented in cosmic-connect-manager
+                                                // via DBus method call that opens a reply dialog.
+                                                // FIXME(#future): Implement quick reply dialog in manager
+                                                // - Add DBus method: OpenReplyDialog(device_id, notification_id)
+                                                // - Manager shows input dialog, sends reply via daemon
+                                                // - Send cconnect.notification.reply packet with user text
+                                                info!("Quick reply requested - UI dialog not yet implemented");
                                             } else {
                                                 warn!(
                                                     "Unknown notification action: {}",
@@ -2427,7 +2438,9 @@ impl Daemon {
         // Set absolute position (milliseconds from protocol, convert to microseconds)
         if let Some(position_ms) = body.get("SetPosition").and_then(|v| v.as_i64()) {
             let position_us = position_ms * 1000;
-            // TODO: Get track ID from current player state
+            // Note: MPRIS SetPosition requires a track ID, but most players work with NoTrack.
+            // To properly support this, we would need to cache mpris:trackid from Metadata.
+            // For now, NoTrack works with common players (VLC, Spotify, etc.).
             let track_id = "/org/mpris/MediaPlayer2/TrackList/NoTrack";
             match mpris_manager
                 .set_position(player, track_id, position_us)

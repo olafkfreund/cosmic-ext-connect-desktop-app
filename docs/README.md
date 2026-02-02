@@ -2,11 +2,11 @@
 
 This directory contains all project documentation organized by category.
 
-## 📖 Start Here
+##  Start Here
 
 **[Documentation Home](Home.md)** - Complete documentation index with navigation
 
-## 📁 Directory Structure
+##  Directory Structure
 
 ```
 docs/
@@ -30,7 +30,7 @@ docs/
     └── old-context.md         # Old project context
 ```
 
-## 🚀 Quick Access
+##  Quick Access
 
 ### For Developers
 - [Development Guide](development/Development-Guide.md) - Complete development documentation
@@ -45,7 +45,7 @@ docs/
 - [Project Status](project/Status.md) - Current implementation status
 - [Acceptance Criteria](project/Acceptance-Criteria.md) - Quality standards
 
-## 🔗 External Resources
+##  External Resources
 
 - [Main README](../README.md) - Project overview
 - [cosmic-connect-core](https://github.com/olafkfreund/cosmic-connect-core) - Shared library

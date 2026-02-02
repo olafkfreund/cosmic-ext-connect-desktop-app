@@ -172,8 +172,9 @@ impl FrameEncoder {
 
         // Create encoder with API and config
         let api = openh264::OpenH264API::from_source();
-        let mut encoder = H264EncoderImpl::with_api_config(api, config)
-            .map_err(|e| crate::ProtocolError::Plugin(format!("H.264 encoder creation failed: {}", e)))?;
+        let mut encoder = H264EncoderImpl::with_api_config(api, config).map_err(|e| {
+            crate::ProtocolError::Plugin(format!("H.264 encoder creation failed: {}", e))
+        })?;
 
         // Create YUV source wrapper
         let yuv_source = Yuv420Buffer {
@@ -576,7 +577,10 @@ mod tests {
         assert_eq!(encoded.width, frame.width);
         assert_eq!(encoded.height, frame.height);
         // H.264 should produce some output
-        assert!(!encoded.data.is_empty(), "H.264 encoding produced empty data");
+        assert!(
+            !encoded.data.is_empty(),
+            "H.264 encoding produced empty data"
+        );
 
         println!(
             "H.264 compression: {} -> {} bytes ({:.1}x)",
@@ -592,7 +596,11 @@ mod tests {
         let frame = create_test_frame();
 
         // Test different quality presets
-        for quality in [QualityPreset::Low, QualityPreset::Medium, QualityPreset::High] {
+        for quality in [
+            QualityPreset::Low,
+            QualityPreset::Medium,
+            QualityPreset::High,
+        ] {
             let mut encoder = FrameEncoder::new(quality);
             encoder.set_encoding(EncodingType::H264);
 
@@ -617,7 +625,10 @@ mod tests {
         assert_eq!(encoded.encoding, EncodingType::Hextile);
         assert_eq!(encoded.width, frame.width);
         assert_eq!(encoded.height, frame.height);
-        assert!(!encoded.data.is_empty(), "Hextile encoding produced empty data");
+        assert!(
+            !encoded.data.is_empty(),
+            "Hextile encoding produced empty data"
+        );
 
         println!(
             "Hextile compression: {} -> {} bytes ({:.1}x)",

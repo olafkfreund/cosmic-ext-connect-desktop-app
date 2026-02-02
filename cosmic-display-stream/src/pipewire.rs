@@ -265,7 +265,10 @@ fn run_pipewire_loop(
         })
         .register()
         .map_err(|e| {
-            crate::error::DisplayStreamError::PipeWire(format!("Failed to register listener: {}", e))
+            crate::error::DisplayStreamError::PipeWire(format!(
+                "Failed to register listener: {}",
+                e
+            ))
         })?;
 
     // Connect to the portal's PipeWire node
