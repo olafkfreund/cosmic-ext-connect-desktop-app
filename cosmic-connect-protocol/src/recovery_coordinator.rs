@@ -61,11 +61,12 @@ impl RecoveryCoordinator {
                         recovery_manager.clear_device_retry_queue(&device_id).await;
                     }
 
-                    ConnectionEvent::Disconnected { device_id, reason } => {
+                    ConnectionEvent::Disconnected { device_id, reason, reconnect } => {
                         info!(
-                            "Device {} disconnected: {}",
+                            "Device {} disconnected: {} (reconnect: {})",
                             device_id,
-                            reason.as_deref().unwrap_or("unknown reason")
+                            reason.as_deref().unwrap_or("unknown reason"),
+                            reconnect
                         );
 
                         // Check if device is paired (only auto-reconnect to paired devices)

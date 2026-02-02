@@ -22,6 +22,8 @@ pub enum ConnectionEvent {
         device_id: String,
         /// Reason for disconnection (if known)
         reason: Option<String>,
+        /// Whether this is a socket replacement (reconnect) - plugins should NOT be cleaned up
+        reconnect: bool,
     },
 
     /// A packet has been received from a device

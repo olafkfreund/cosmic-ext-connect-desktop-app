@@ -47,6 +47,8 @@ enum ConnectionCommand {
     SendPacket(Packet),
     /// Close the connection
     Close,
+    /// Close due to socket replacement (do not trigger plugin cleanup)
+    CloseForReconnect,
 }
 
 /// Active connection to a device
@@ -577,22 +579,19 @@ impl ConnectionManager {
 
                 // Handle existing connection if device reconnects
                 // Issue #52: Instead of rejecting, replace the socket (like official CConnect)
+                // Issue #139: Do NOT emit Disconnected event during socket replacement
+                // to prevent plugin cleanup (which would kill camera streams)
                 if let Some(old_conn) = conns.remove(id) {
                     // Device trying to reconnect while already connected
                     // Replace the old connection with the new one
                     info!(
-                        "Device {} reconnecting from {} (old: {}) - replacing socket",
+                        "Device {} reconnecting from {} (old: {}) - replacing socket (preserving plugins)",
                         id, remote_addr, old_conn.remote_addr
                     );
 
-                    // Send close command to old connection task to clean up gracefully
-                    let _ = old_conn.command_tx.send(ConnectionCommand::Close);
-
-                    // Emit disconnected event for old connection
-                    let _ = event_tx.send(ConnectionEvent::Disconnected {
-                        device_id: id.to_string(),
-                        reason: Some("Socket replaced with new connection".to_string()),
-                    });
+                    // Send CloseForReconnect to old connection task
+                    // This signals that plugins should NOT be cleaned up
+                    let _ = old_conn.command_tx.send(ConnectionCommand::CloseForReconnect);
 
                     // Old connection will be replaced below with new one
                     // This prevents cascade closure on Android client
@@ -635,6 +634,9 @@ impl ConnectionManager {
             // Uses "keepalive" flag so Android handles these silently without notifications
             let mut keepalive_timer = Some(tokio::time::interval(KEEP_ALIVE_INTERVAL));
 
+            // Track if this is a socket replacement (reconnect) to preserve plugins
+            let mut is_reconnect = false;
+
             // Main connection loop
             loop {
                 tokio::select! {
@@ -651,6 +653,11 @@ impl ConnectionManager {
                             }
                             ConnectionCommand::Close => {
                                 info!("Closing connection to {}", device_id);
+                                break;
+                            }
+                            ConnectionCommand::CloseForReconnect => {
+                                info!("Closing connection to {} for socket replacement (preserving plugins)", device_id);
+                                is_reconnect = true;
                                 break;
                             }
                         }
@@ -727,7 +734,8 @@ impl ConnectionManager {
             drop(conns);
 
             // Update device manager only if this was the active connection
-            if should_mark_disconnected {
+            // and NOT a socket replacement (reconnect)
+            if should_mark_disconnected && !is_reconnect {
                 let mut dm = device_manager.write().await;
                 let _ = dm.mark_disconnected(&device_id);
                 drop(dm);
@@ -736,6 +744,15 @@ impl ConnectionManager {
                 let _ = event_tx.send(ConnectionEvent::Disconnected {
                     device_id: device_id.clone(),
                     reason: Some("Connection closed".to_string()),
+                    reconnect: false,
+                });
+            } else if is_reconnect {
+                // Socket replacement - emit reconnect event so daemon knows not to cleanup plugins
+                info!("Socket replaced for {} - plugins preserved", device_id);
+                let _ = event_tx.send(ConnectionEvent::Disconnected {
+                    device_id: device_id.clone(),
+                    reason: Some("Socket replaced with new connection".to_string()),
+                    reconnect: true,
                 });
             }
 

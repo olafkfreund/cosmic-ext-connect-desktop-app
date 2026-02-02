@@ -335,8 +335,8 @@ fn parse_vcard(vcard_data: &str) -> (String, Vec<String>, Vec<String>) {
 
     for line in vcard_data.lines() {
         let line = line.trim();
-        if line.starts_with("FN:") {
-            name = line[3..].to_string();
+        if let Some(fn_name) = line.strip_prefix("FN:") {
+            name = fn_name.to_string();
         } else if line.starts_with("TEL") {
             if let Some(number) = line.split(':').nth(1) {
                 phone_numbers.push(number.to_string());

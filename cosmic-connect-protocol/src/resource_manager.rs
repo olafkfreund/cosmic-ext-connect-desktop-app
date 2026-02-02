@@ -541,9 +541,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_connection_limits() {
-        let mut config = ResourceConfig::default();
-        config.max_connections_per_device = 2;
-        config.max_total_connections = 5;
+        let config = ResourceConfig {
+            max_connections_per_device: 2,
+            max_total_connections: 5,
+            ..Default::default()
+        };
 
         let manager = ResourceManager::new(config);
 
@@ -572,10 +574,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_transfer_limits() {
-        let mut config = ResourceConfig::default();
-        config.max_concurrent_transfers = 2;
-        config.max_transfer_size = 1000;
-        config.max_total_transfer_size = 2000;
+        let config = ResourceConfig {
+            max_concurrent_transfers: 2,
+            max_transfer_size: 1000,
+            max_total_transfer_size: 2000,
+            ..Default::default()
+        };
 
         let manager = ResourceManager::new(config);
 
@@ -605,8 +609,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_packet_queue_limits() {
-        let mut config = ResourceConfig::default();
-        config.max_packet_queue_size = 3;
+        let config = ResourceConfig {
+            max_packet_queue_size: 3,
+            ..Default::default()
+        };
 
         let manager = ResourceManager::new(config);
 
@@ -625,8 +631,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_memory_pressure() {
-        let mut config = ResourceConfig::default();
-        config.memory_pressure_threshold = 2000; // 2KB threshold
+        let config = ResourceConfig {
+            memory_pressure_threshold: 2000, // 2KB threshold
+            ..Default::default()
+        };
 
         let manager = ResourceManager::new(config);
 

@@ -1011,7 +1011,11 @@ impl Daemon {
                                 "Device {} disconnected from {:?} (reason: {:?})",
                                 device_id, transport_type, reason
                             );
-                            ConnectionEvent::Disconnected { device_id, reason }
+                            ConnectionEvent::Disconnected {
+                                device_id,
+                                reason,
+                                reconnect: false, // Transport-level disconnects are not automatic reconnects
+                            }
                         }
                         TransportManagerEvent::PacketReceived {
                             device_id,
@@ -1764,8 +1768,8 @@ impl Daemon {
                 //     }
                 // }
             }
-            ConnectionEvent::Disconnected { device_id, reason } => {
-                info!("Device {} disconnected (reason: {:?})", device_id, reason);
+            ConnectionEvent::Disconnected { device_id, reason, reconnect } => {
+                info!("Device {} disconnected (reason: {:?}, reconnect: {})", device_id, reason, reconnect);
 
                 // Get device name for notifications
                 let _device_name = {
@@ -1775,14 +1779,16 @@ impl Daemon {
                         .map(|d| d.name().to_string())
                 };
 
-                // Cleanup per-device plugins
-                {
+                // Cleanup per-device plugins ONLY if not a socket replacement
+                if !reconnect {
                     let mut plug_manager = plugin_manager.write().await;
                     if let Err(e) = plug_manager.cleanup_device_plugins(&device_id).await {
                         error!("Failed to cleanup plugins for device {}: {}", device_id, e);
                     } else {
                         info!("Cleaned up plugins for device {}", device_id);
                     }
+                } else {
+                    info!("Socket replacement for {} - preserving plugin state", device_id);
                 }
 
                 // Emit DBus signal for device state changed
@@ -1917,6 +1923,84 @@ impl Daemon {
                         .await
                     {
                         error!("Error handling packet from device {}: {}", device_id, e);
+                    }
+
+                    // Handle camera frame payload reception (Issue #139)
+                    // When Android sends a camera frame, it includes payloadTransferInfo with a port
+                    // We need to connect to that port, download the frame data, and pass it to the camera plugin
+                    #[cfg(feature = "video")]
+                    if packet.packet_type == "cconnect.camera.frame"
+                        && packet.payload_transfer_info.is_some()
+                        && packet.payload_size.is_some()
+                    {
+                        use cosmic_connect_protocol::plugins::camera::CameraPlugin;
+
+                        let payload_info = packet.payload_transfer_info.as_ref().unwrap();
+                        let payload_size = packet.payload_size.unwrap();
+
+                        // Extract port from payloadTransferInfo
+                        if let Some(port_value) = payload_info.get("port") {
+                            if let Some(port) = port_value.as_u64() {
+                                info!(
+                                    "Receiving camera frame payload: {} bytes from {}:{}",
+                                    payload_size, remote_addr.ip(), port
+                                );
+
+                                // Spawn task to receive payload without blocking the event loop
+                                let device_id_clone = device_id.clone();
+                                let packet_clone = packet.clone();
+                                let plugin_manager_clone = plugin_manager.clone();
+                                let remote_ip = remote_addr.ip();
+
+                                tokio::spawn(async move {
+                                    // Connect to payload port on Android device
+                                    let payload_addr = std::net::SocketAddr::new(remote_ip, port as u16);
+
+                                    match tokio::net::TcpStream::connect(payload_addr).await {
+                                        Ok(mut stream) => {
+                                            info!("Connected to payload port {} for camera frame", payload_addr);
+
+                                            // Android uses plain TCP for payload transfers
+                                            // Use read_exact to ensure all bytes are received
+                                            use tokio::io::AsyncReadExt;
+
+                                            let mut payload = vec![0u8; payload_size as usize];
+                                            match stream.read_exact(&mut payload).await {
+                                                Ok(_) => {
+                                                    info!("Received complete camera frame payload: {} bytes", payload_size);
+
+                                                    // Pass payload to camera plugin
+                                                    let plug_manager = plugin_manager_clone.write().await;
+                                                    if let Some(camera_plugin) = plug_manager.get_device_plugin(&device_id_clone, "camera") {
+                                                        if let Some(camera) = camera_plugin.as_any().downcast_ref::<CameraPlugin>() {
+                                                            if let Err(e) = camera.process_camera_frame_payload(&packet_clone, payload).await {
+                                                                error!("Failed to process camera frame payload: {}", e);
+                                                            } else {
+                                                                debug!("Camera frame payload processed successfully");
+                                                            }
+                                                        } else {
+                                                            error!("Camera plugin not initialized for device {}", device_id_clone);
+                                                        }
+                                                    } else {
+                                                        error!("Failed to get camera plugin for device {}", device_id_clone);
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    error!("Failed to receive camera frame payload ({} bytes): {}", payload_size, e);
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to connect to payload port {}: {}", payload_addr, e);
+                                        }
+                                    }
+                                });
+                            } else {
+                                warn!("Camera frame payloadTransferInfo port is not a number");
+                            }
+                        } else {
+                            warn!("Camera frame payloadTransferInfo missing port field");
+                        }
                     }
 
                     // Save MAC address if WOL config packet was received
@@ -2324,7 +2408,7 @@ impl Daemon {
                                         if let Err(e) = notifier
                                             .notify_battery_low(
                                                 &device_name,
-                                                charge.max(0).min(100) as u8,
+                                                charge.clamp(0, 100) as u8,
                                             )
                                             .await
                                         {

@@ -284,8 +284,8 @@ impl ContactsPlugin {
 
         for line in vcard_data.lines() {
             let line = line.trim();
-            if line.starts_with("FN:") {
-                name = Some(line[3..].to_string());
+            if let Some(fn_name) = line.strip_prefix("FN:") {
+                name = Some(fn_name.to_string());
             } else if line.starts_with("TEL") {
                 // Parse TEL lines - format: TEL;TYPE=CELL:+1234567890 or TEL:+1234567890
                 let phone_type = Self::parse_vcard_type_param(line);

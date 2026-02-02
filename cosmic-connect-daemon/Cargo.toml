@@ -39,7 +39,7 @@ name = "cosmic-connect-daemon"
 path = "src/main.rs"
 
 [features]
-default = []
+default = ["video"]
 remotedesktop = ["cosmic-connect-protocol/remotedesktop"]
 screenshare = ["cosmic-connect-protocol/screenshare"]
 video = ["cosmic-connect-protocol/video"]

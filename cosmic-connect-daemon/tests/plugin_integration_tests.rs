@@ -84,7 +84,7 @@ async fn test_battery_status_query() {
     assert!(status.is_some());
     let status = status.unwrap();
     assert_eq!(status.current_charge, 85);
-    assert_eq!(status.is_charging, true);
+    assert!(status.is_charging);
 }
 
 #[tokio::test]
@@ -200,7 +200,7 @@ async fn test_plugin_manager_battery_query() {
 
     let status = status.unwrap();
     assert_eq!(status.current_charge, 85, "Battery charge should match received packet");
-    assert_eq!(status.is_charging, true, "Charging status should match received packet");
+    assert!(status.is_charging, "Charging status should match received packet");
     assert_eq!(status.threshold_event, 0, "Threshold event should match received packet");
 }
 
@@ -505,7 +505,7 @@ async fn test_battery_request_response_cycle() -> Result<()> {
     assert!(status.is_some());
     let status = status.unwrap();
     assert_eq!(status.current_charge, 75);
-    assert_eq!(status.is_charging, false);
+    assert!(!status.is_charging);
 
     Ok(())
 }

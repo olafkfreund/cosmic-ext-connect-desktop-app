@@ -597,6 +597,6 @@ mod tests {
         let _events = service.subscribe().await;
 
         // Events channel should be ready
-        assert!(service.event_tx.is_closed() == false);
+        assert!(!service.event_tx.is_closed());
     }
 }

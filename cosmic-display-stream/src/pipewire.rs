@@ -114,11 +114,13 @@ impl PipeWireStream {
     }
 
     /// Check if the stream is connected
+    #[must_use] 
     pub fn is_connected(&self) -> bool {
         self.connected.load(Ordering::SeqCst)
     }
 
     /// Get the current stream properties
+    #[must_use] 
     pub fn properties(&self) -> Option<StreamProperties> {
         self.properties.lock().ok().and_then(|p| p.clone())
     }

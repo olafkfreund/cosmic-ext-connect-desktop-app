@@ -281,9 +281,11 @@ async fn test_transfer_state_persistence() {
 /// Test resource exhaustion - connection limits
 #[tokio::test]
 async fn test_connection_limit_exhaustion() {
-    let mut config = ResourceConfig::default();
-    config.max_connections_per_device = 2;
-    config.max_total_connections = 5;
+    let config = ResourceConfig {
+        max_connections_per_device: 2,
+        max_total_connections: 5,
+        ..Default::default()
+    };
 
     let resource_manager = ResourceManager::new(config);
 
@@ -317,9 +319,11 @@ async fn test_connection_limit_exhaustion() {
 /// Test resource exhaustion - transfer limits
 #[tokio::test]
 async fn test_transfer_limit_exhaustion() {
-    let mut config = ResourceConfig::default();
-    config.max_concurrent_transfers = 2;
-    config.max_transfer_size = 1000;
+    let config = ResourceConfig {
+        max_concurrent_transfers: 2,
+        max_transfer_size: 1000,
+        ..Default::default()
+    };
 
     let resource_manager = ResourceManager::new(config);
 
@@ -346,9 +350,11 @@ async fn test_transfer_limit_exhaustion() {
 /// Test resource exhaustion - transfer size limits
 #[tokio::test]
 async fn test_transfer_size_limit_exhaustion() {
-    let mut config = ResourceConfig::default();
-    config.max_transfer_size = 1000;
-    config.max_total_transfer_size = 2000;
+    let config = ResourceConfig {
+        max_transfer_size: 1000,
+        max_total_transfer_size: 2000,
+        ..Default::default()
+    };
 
     let resource_manager = ResourceManager::new(config);
 

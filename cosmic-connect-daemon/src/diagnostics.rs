@@ -417,7 +417,8 @@ mod tests {
         assert_eq!(metrics.paired_devices(), 0);
         assert_eq!(metrics.plugin_invocations(), 0);
         assert_eq!(metrics.plugin_errors(), 0);
-        assert!(metrics.uptime_seconds() >= 0);
+        // uptime_seconds() returns u64, always >= 0
+        let _ = metrics.uptime_seconds();
     }
 
     #[test]

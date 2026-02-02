@@ -444,7 +444,8 @@ impl VideoFrame {
     }
 
     /// Get bytes per pixel based on format
-    #[must_use] 
+    #[must_use]
+    #[allow(clippy::match_same_arms)] // Explicit formats and default both return 4
     pub fn bytes_per_pixel(&self) -> usize {
         match self.format.as_str() {
             "BGRx" | "RGBx" | "BGRA" | "RGBA" => 4,
@@ -466,16 +467,13 @@ mod tests {
         // We can't easily test the full flow without a real display
         // but we can verify the error types are correct
         match result {
-            Ok(_) => {
-                // Success case (if HDMI dummy exists)
-            }
-            Err(
+            // Success case (if HDMI dummy exists) or expected errors if no HDMI dummy
+            Ok(_)
+            | Err(
                 DisplayStreamError::OutputNotFound(_)
                 | DisplayStreamError::InvalidConfiguration(_),
-            ) => {
-                // Expected errors if no HDMI dummy
-            }
-            Err(e) => panic!("Unexpected error: {}", e),
+            ) => {}
+            Err(e) => panic!("Unexpected error: {e}"),
         }
     }
 

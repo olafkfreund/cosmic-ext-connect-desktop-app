@@ -892,7 +892,7 @@ mod tests {
     fn test_serialization() {
         let event = TouchEvent::new(0.5, 0.5, TouchAction::Down, 0)
             .with_pressure(0.8)
-            .with_timestamp(1234567890);
+            .with_timestamp(1_234_567_890);
 
         let json = serde_json::to_string(&event).unwrap();
         let deserialized: TouchEvent = serde_json::from_str(&json).unwrap();

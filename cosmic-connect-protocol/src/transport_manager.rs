@@ -238,7 +238,9 @@ impl TransportManager {
                         device_id,
                         transport_type: TransportType::Tcp,
                     },
-                    ConnectionEvent::Disconnected { device_id, reason } => {
+                    ConnectionEvent::Disconnected { device_id, reason, reconnect: _ } => {
+                        // Note: reconnect field is handled at the daemon level for plugin cleanup
+                        // Transport manager just forwards the disconnection event
                         TransportManagerEvent::Disconnected {
                             device_id,
                             transport_type: TransportType::Tcp,

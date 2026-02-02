@@ -1064,7 +1064,7 @@ mod tests {
         let info = FileTransferInfo::from_path(temp_file.path()).await.unwrap();
 
         assert_eq!(info.size, 12);
-        assert!(info.filename.len() > 0);
+        assert!(!info.filename.is_empty());
         assert!(info.last_modified.is_some());
     }
 
@@ -1132,7 +1132,7 @@ mod tests {
         assert_eq!(share_info.size, 1024);
         assert_eq!(share_info.creation_time, Some(1640000000000));
         assert_eq!(share_info.last_modified, Some(1640000000000));
-        assert_eq!(share_info.open, false);
+        assert!(!share_info.open);
     }
 
     #[tokio::test]
