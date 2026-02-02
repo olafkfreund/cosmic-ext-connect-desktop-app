@@ -335,6 +335,60 @@ in
       };
     };
 
+    transport = {
+      enableTcp = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Enable TCP/IP transport for device communication.
+          Used for WiFi and Ethernet connections.
+        '';
+      };
+
+      enableBluetooth = mkOption {
+        type = types.bool;
+        default = false;
+        description = ''
+          Enable Bluetooth transport for device communication.
+          Allows connecting to devices via Bluetooth when WiFi is unavailable.
+        '';
+      };
+
+      preference = mkOption {
+        type = types.enum [ "prefer_tcp" "prefer_bluetooth" "tcp_first" "bluetooth_first" "only_tcp" "only_bluetooth" ];
+        default = "prefer_tcp";
+        description = ''
+          Transport preference for new connections.
+          - prefer_tcp: Prefer TCP if available (default)
+          - prefer_bluetooth: Prefer Bluetooth if available
+          - tcp_first: Try TCP first, fallback to Bluetooth
+          - bluetooth_first: Try Bluetooth first, fallback to TCP
+          - only_tcp: Only use TCP
+          - only_bluetooth: Only use Bluetooth
+        '';
+      };
+
+      autoFallback = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Automatically fallback to alternative transport if primary fails.
+        '';
+      };
+
+      tcpTimeout = mkOption {
+        type = types.int;
+        default = 10;
+        description = "TCP operation timeout in seconds.";
+      };
+
+      bluetoothTimeout = mkOption {
+        type = types.int;
+        default = 15;
+        description = "Bluetooth operation timeout in seconds (higher due to BLE latency).";
+      };
+    };
+
     security = {
       certificateDirectory = mkOption {
         type = types.str;
@@ -457,7 +511,7 @@ in
     environment.etc."xdg/cosmic-connect/daemon.toml" = mkIf cfg.daemon.enable {
       source =
         let
-          pluginConfig = {
+          daemonConfig = {
             plugins = {
               enable_ping = cfg.plugins.ping;
               enable_battery = cfg.plugins.battery;
@@ -487,9 +541,17 @@ in
               enable_mousekeyboardshare = cfg.plugins.mousekeyboardshare;
               enable_networkshare = cfg.plugins.networkshare;
             };
+            transport = {
+              enable_tcp = cfg.transport.enableTcp;
+              enable_bluetooth = cfg.transport.enableBluetooth;
+              preference = cfg.transport.preference;
+              auto_fallback = cfg.transport.autoFallback;
+              tcp_timeout_secs = cfg.transport.tcpTimeout;
+              bluetooth_timeout_secs = cfg.transport.bluetoothTimeout;
+            };
           };
-          # Merge user settings with plugin config
-          finalConfig = lib.recursiveUpdate pluginConfig cfg.daemon.settings;
+          # Merge user settings with daemon config
+          finalConfig = lib.recursiveUpdate daemonConfig cfg.daemon.settings;
         in
         tomlFormat.generate "daemon.toml" finalConfig;
     };

@@ -41,3 +41,4 @@ path = "src/main.rs"
 default = []
 remotedesktop = ["cosmic-connect-protocol/remotedesktop"]
 screenshare = ["cosmic-connect-protocol/screenshare"]
+video = ["cosmic-connect-protocol/video"]

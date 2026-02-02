@@ -34,6 +34,8 @@
   pipewire,
   webkitgtk_4_1,
   gobject-introspection,
+  gst_all_1,
+  libopus,
   stdenv,
 }:
 
@@ -100,18 +102,25 @@ rustPlatform.buildRustPackage rec {
     cairo
     gdk-pixbuf
     atk
-    pipewire # RemoteDesktop plugin dependency
+    pipewire # RemoteDesktop and AudioStream plugin dependency
     webkitgtk_4_1
     gobject-introspection
+    # GStreamer for screenshare plugin
+    gst_all_1.gstreamer
+    gst_all_1.gst-plugins-base
+    gst_all_1.gst-plugins-good
+    gst_all_1.gst-plugins-bad
+    # Opus codec for audio streaming
+    libopus
   ];
 
-  # Build all workspace members with RemoteDesktop feature
-  # Enable remotedesktop for both daemon and protocol crates
+  # Build all workspace members with all features enabled
+  # Enable all plugin features for both daemon and protocol crates
   cargoBuildFlags = [
     "--workspace"
     "--bins"
     "--features"
-    "cosmic-connect-daemon/remotedesktop,cosmic-connect-protocol/remotedesktop"
+    "cosmic-connect-daemon/remotedesktop,cosmic-connect-daemon/screenshare,cosmic-connect-daemon/video,cosmic-connect-protocol/remotedesktop,cosmic-connect-protocol/screenshare,cosmic-connect-protocol/video,cosmic-connect-protocol/audiostream,cosmic-connect-protocol/audiostream-opus"
   ];
 
   # Skip tests for now - test compilation has issues with json! macro imports
