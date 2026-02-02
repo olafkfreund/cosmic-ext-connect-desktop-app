@@ -4870,8 +4870,14 @@ impl CConnectApplet {
                 ));
             }
 
-            // Screenshot button
-            if device.has_incoming_capability("cconnect.screenshot.request") {
+            // Screenshot button - only for desktop/laptop devices
+            // Android devices don't have a screenshot plugin to handle requests
+            if device.has_incoming_capability("cconnect.screenshot.request")
+                && matches!(
+                    device.info.device_type,
+                    DeviceType::Desktop | DeviceType::Laptop
+                )
+            {
                 actions = actions.push(action_button_with_tooltip(
                     "camera-photo-symbolic",
                     "Take screenshot",

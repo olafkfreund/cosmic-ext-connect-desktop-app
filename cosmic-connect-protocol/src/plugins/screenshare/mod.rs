@@ -72,10 +72,53 @@ use crate::{Device, Packet, ProtocolError, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, OnceLock};
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
+
+/// Global storage for pending screenshare sessions that survive plugin restarts
+/// This is needed because when a remote device reconnects (e.g., to prepare for streaming),
+/// the plugin gets stopped and restarted, losing the active_session state.
+/// By storing pending sessions globally, we can restore them after reconnection.
+static PENDING_SESSIONS: OnceLock<std::sync::Mutex<HashMap<String, ShareConfig>>> = OnceLock::new();
+
+fn pending_sessions() -> &'static std::sync::Mutex<HashMap<String, ShareConfig>> {
+    PENDING_SESSIONS.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+/// Store a pending session for a device (called when we initiate sharing)
+fn store_pending_session(device_id: &str, config: ShareConfig) {
+    if let Ok(mut sessions) = pending_sessions().lock() {
+        info!(
+            "Storing pending screenshare session for {} (survives reconnection)",
+            device_id
+        );
+        sessions.insert(device_id.to_string(), config);
+    }
+}
+
+/// Retrieve and remove a pending session for a device (called when ready packet received)
+fn take_pending_session(device_id: &str) -> Option<ShareConfig> {
+    if let Ok(mut sessions) = pending_sessions().lock() {
+        let config = sessions.remove(device_id);
+        if config.is_some() {
+            info!("Retrieved pending screenshare session for {}", device_id);
+        }
+        config
+    } else {
+        None
+    }
+}
+
+/// Clear pending session for a device (called on explicit stop)
+fn clear_pending_session(device_id: &str) {
+    if let Ok(mut sessions) = pending_sessions().lock() {
+        if sessions.remove(device_id).is_some() {
+            info!("Cleared pending screenshare session for {}", device_id);
+        }
+    }
+}
 
 #[cfg(feature = "screenshare")]
 use capture::{CaptureConfig, ScreenCapture};
@@ -547,6 +590,9 @@ impl ScreenSharePlugin {
     }
 
     /// Stop screen sharing session
+    ///
+    /// This is called both for explicit user stops and plugin restarts.
+    /// Use `stop_sharing_explicit()` to also clear pending sessions.
     pub async fn stop_sharing(&mut self) -> Result<()> {
         // Stop streaming task first
         self.stop_streaming().await;
@@ -563,6 +609,17 @@ impl ScreenSharePlugin {
         }
 
         Ok(())
+    }
+
+    /// Stop screen sharing and clear pending sessions
+    ///
+    /// Use this when user explicitly stops sharing (not for plugin restart).
+    pub async fn stop_sharing_explicit(&mut self) -> Result<()> {
+        // Clear pending session for this device
+        if let Some(device_id) = &self.device_id {
+            clear_pending_session(device_id);
+        }
+        self.stop_sharing().await
     }
 
     /// Pause screen sharing session
@@ -704,6 +761,10 @@ impl ScreenSharePlugin {
         // Send start packet to remote device
         if let Some(sender) = &self.packet_sender {
             if let Some(device_id) = &self.device_id {
+                // Store pending session BEFORE sending packet
+                // This survives plugin restart if device reconnects
+                store_pending_session(device_id, config.clone());
+
                 let body = serde_json::to_value(&config).map_err(|e| {
                     ProtocolError::Plugin(format!("Failed to serialize config: {}", e))
                 })?;
@@ -1271,6 +1332,29 @@ impl Plugin for ScreenSharePlugin {
                 .unwrap_or(0) as u16;
 
             info!("Receiver {} is ready on port {}", device.name(), tcp_port);
+
+            // Check if we have an active session, if not try to restore from pending
+            // This handles the case where the device reconnected and our plugin was restarted
+            if self.active_session.is_none() {
+                if let Some(pending_config) = take_pending_session(device_id) {
+                    info!(
+                        "Restoring pending screenshare session for {} after reconnection",
+                        device_id
+                    );
+                    // Restore the session without re-sending the start packet
+                    let session = ShareSession::new(pending_config);
+                    self.active_session = Some(session);
+                } else {
+                    warn!(
+                        "Received ready packet from {} but no active or pending session",
+                        device.name()
+                    );
+                    return Ok(());
+                }
+            } else {
+                // Clear the pending session since we have an active one
+                clear_pending_session(device_id);
+            }
 
             if let Err(e) = self.add_viewer(device_id.to_string()) {
                 warn!("Failed to add viewer {}: {}", device_id, e);
