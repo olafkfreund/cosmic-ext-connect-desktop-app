@@ -24,6 +24,25 @@ fn get_device_icon(device_type: DeviceType) -> &'static str {
     }
 }
 
+/// Sanitize a string for use in .desktop file fields
+///
+/// Removes control characters (newlines, carriage returns, etc.) that could
+/// break the .desktop file format or potentially inject malicious keys.
+///
+/// # Arguments
+///
+/// * `input` - The string to sanitize
+///
+/// # Returns
+///
+/// Sanitized string safe for use in .desktop files
+fn sanitize_desktop_field(input: &str) -> String {
+    input
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect()
+}
+
 /// Generate .desktop file content for a device
 ///
 /// Creates a complete desktop entry with the device name, type-appropriate icon,
@@ -38,9 +57,11 @@ fn get_device_icon(device_type: DeviceType) -> &'static str {
 ///
 /// String containing the complete .desktop file content
 pub fn generate_desktop_entry(device: &Device, config: Option<&DeviceConfig>) -> String {
-    let device_name = config
+    // Sanitize device name to prevent .desktop file injection attacks
+    let raw_name = config
         .and_then(|c| c.nickname.as_ref())
         .unwrap_or(&device.info.device_name);
+    let device_name = sanitize_desktop_field(raw_name);
 
     let icon = get_device_icon(device.info.device_type);
     let device_id = &device.info.device_id;
@@ -65,7 +86,7 @@ Exec=cosmic-connect-manager --select-device {device_id} %U
 Terminal=false
 Categories=Network;FileTransfer;
 Keywords=phone;device;sync;transfer;connect;
-MimeType=application/octet-stream;inode/directory;text/plain;image/*;video/*;audio/*;
+MimeType=application/octet-stream;text/plain;image/*;video/*;audio/*;
 Actions=SendFile;Ping;Find;Browse;
 
 [Desktop Action SendFile]
@@ -78,7 +99,7 @@ Exec=cosmic-connect-manager --select-device {device_id} --device-action ping
 
 [Desktop Action Find]
 Name=Find Device
-Exec=cosmic-connect-manager --select-device {device_id} --device-action findmyphone
+Exec=cosmic-connect-manager --select-device {device_id} --device-action find
 
 [Desktop Action Browse]
 Name=Browse Files
@@ -115,7 +136,8 @@ pub fn get_desktop_icon_path(device_id: &str) -> PathBuf {
 
 /// Get the path for desktop icon on the actual desktop (Issue #143)
 ///
-/// Returns `~/Desktop/cosmic-connect-{device_id}.desktop` or uses XDG_DESKTOP_DIR
+/// Uses `dirs::desktop_dir()` to correctly respect the user's configured Desktop
+/// location from `~/.config/user-dirs.dirs`, with fallback to `~/Desktop`.
 ///
 /// # Arguments
 ///
@@ -125,14 +147,11 @@ pub fn get_desktop_icon_path(device_id: &str) -> PathBuf {
 ///
 /// PathBuf to the desktop file location on the actual desktop
 pub fn get_user_desktop_icon_path(device_id: &str) -> PathBuf {
-    // Try XDG_DESKTOP_DIR first, then fallback to ~/Desktop
-    let desktop_dir = std::env::var("XDG_DESKTOP_DIR")
-        .ok()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            PathBuf::from(home).join("Desktop")
-        });
+    // Use dirs crate to properly read XDG user-dirs.dirs configuration
+    let desktop_dir = dirs::desktop_dir().unwrap_or_else(|| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        PathBuf::from(home).join("Desktop")
+    });
 
     desktop_dir.join(format!("cosmic-connect-{}.desktop", device_id))
 }
@@ -320,7 +339,7 @@ mod tests {
         assert!(content.contains("Type=Application"));
         assert!(content.contains("Name=Test Phone"));
         assert!(content.contains("Icon=phone-symbolic"));
-        assert!(content.contains("Comment=Connected phone device"));
+        assert!(content.contains("Comment=Connected phone device - Drop files here to send"));
         assert!(content.contains(&device.info.device_id));
 
         // Verify actions
@@ -449,19 +468,19 @@ mod tests {
         // Test connected device
         let connected = create_test_device();
         let content = generate_desktop_entry(&connected, None);
-        assert!(content.contains("Comment=Connected phone device"));
+        assert!(content.contains("Comment=Connected phone device - Drop files here to send"));
 
         // Test paired but disconnected
         let mut paired = connected.clone();
         paired.connection_state = cosmic_connect_protocol::ConnectionState::Disconnected;
         let content = generate_desktop_entry(&paired, None);
-        assert!(content.contains("Comment=Paired phone device"));
+        assert!(content.contains("Comment=Paired phone device - Drop files here to send"));
 
         // Test unpaired
         let mut unpaired = paired.clone();
         unpaired.pairing_status = PairingStatus::Unpaired;
         unpaired.is_trusted = false;
         let content = generate_desktop_entry(&unpaired, None);
-        assert!(content.contains("Comment=Available phone device"));
+        assert!(content.contains("Comment=Available phone device - Drop files here to send"));
     }
 }

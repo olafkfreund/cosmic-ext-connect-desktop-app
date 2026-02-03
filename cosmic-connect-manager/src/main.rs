@@ -67,7 +67,7 @@ pub struct Args {
     #[arg(long)]
     pub tab: Option<String>,
 
-    /// Execute device action immediately (ping, findmyphone, ring)
+    /// Execute device action immediately (ping, find, send-file, clipboard, etc.)
     #[arg(long)]
     pub device_action: Option<String>,
 
@@ -299,6 +299,60 @@ fn connection_status(device: &DeviceInfo) -> &'static str {
     } else {
         "Offline"
     }
+}
+
+/// Convert a file:// URI to a filesystem path
+///
+/// Desktop entries use %U which passes file:// URIs. This function
+/// extracts the path component and handles URL decoding.
+fn url_to_path(uri: &str) -> Option<String> {
+    if !uri.starts_with("file://") {
+        return None;
+    }
+
+    // Extract path after file://
+    let path = uri.strip_prefix("file://")?;
+
+    // URL-decode the path (handle %20 -> space, etc.)
+    let decoded = urlencoding_decode(path);
+
+    // Handle file://localhost/path and file:///path
+    let path = if decoded.starts_with("localhost/") {
+        decoded.strip_prefix("localhost")?.to_string()
+    } else if decoded.starts_with('/') {
+        decoded
+    } else {
+        // Relative path, prepend /
+        format!("/{}", decoded)
+    };
+
+    Some(path)
+}
+
+/// Simple URL decoding for file paths (handles common cases like %20 -> space)
+fn urlencoding_decode(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            // Try to decode %XX
+            let hex: String = chars.by_ref().take(2).collect();
+            if hex.len() == 2 {
+                if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                    result.push(byte as char);
+                    continue;
+                }
+            }
+            // Invalid escape, keep as-is
+            result.push('%');
+            result.push_str(&hex);
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
 }
 
 fn main() -> cosmic::iced::Result {
@@ -2807,12 +2861,24 @@ impl Application for CosmicConnectManager {
             Message::ProcessPendingCliArgs => {
                 let mut tasks = Vec::new();
 
+                // Handle --tab: navigate to specific tab (works independently)
+                if let Some(tab) = self.pending_tab.take() {
+                    tracing::info!("Processing CLI arg: tab={}", tab);
+                    let page = match tab.to_lowercase().as_str() {
+                        "share" | "files" => Page::Transfers,
+                        "settings" => Page::Settings,
+                        "history" => Page::History,
+                        _ => Page::Devices,
+                    };
+                    self.active_page = page;
+                }
+
                 // Handle --select-device: select the device
                 if let Some(device_id) = self.pending_select_device.take() {
                     tracing::info!("Processing CLI arg: select_device={}", device_id);
                     self.selected_device = Some(device_id.clone());
 
-                    // Handle --device-action: execute action immediately
+                    // Handle --device-action: execute action immediately (requires device)
                     if let Some(action_str) = self.pending_device_action.take() {
                         tracing::info!(
                             "Processing CLI arg: device_action={} for device={}",
@@ -2824,23 +2890,20 @@ impl Application for CosmicConnectManager {
                         }
                     }
 
-                    // Handle --tab: navigate to specific tab
-                    if let Some(tab) = self.pending_tab.take() {
-                        tracing::info!("Processing CLI arg: tab={}", tab);
-                        let page = match tab.to_lowercase().as_str() {
-                            "share" | "files" => Page::Transfers,
-                            "settings" => Page::Settings,
-                            "history" => Page::History,
-                            _ => Page::Devices,
-                        };
-                        self.active_page = page;
-                    }
-
-                    // Handle files: send files to device
+                    // Handle files: send files to device (requires device)
                     let files = std::mem::take(&mut self.pending_files);
                     if !files.is_empty() {
                         tracing::info!("Processing CLI arg: {} files to send", files.len());
                         tasks.push(self.update(Message::SendFilesToDevice(device_id, files)));
+                    }
+                } else {
+                    // Clear device-dependent args if no device specified
+                    if self.pending_device_action.take().is_some() {
+                        tracing::warn!("--device-action requires --select-device, ignoring");
+                    }
+                    if !self.pending_files.is_empty() {
+                        self.pending_files.clear();
+                        tracing::warn!("File arguments require --select-device, ignoring");
                     }
                 }
 
@@ -2854,7 +2917,26 @@ impl Application for CosmicConnectManager {
                 if let Some(client) = &self.dbus_client {
                     let client = client.clone();
                     cosmic::task::future(async move {
-                        for file_path in files {
+                        for file_arg in files {
+                            // Convert file:// URIs to paths (%U in .desktop passes URIs)
+                            let file_path = if file_arg.starts_with("file://") {
+                                // URL-decode and extract path from file:// URI
+                                match url_to_path(&file_arg) {
+                                    Some(path) => path,
+                                    None => {
+                                        tracing::warn!("Invalid file URI: {}", file_arg);
+                                        continue;
+                                    }
+                                }
+                            } else if file_arg.starts_with("http://")
+                                || file_arg.starts_with("https://")
+                            {
+                                tracing::warn!("Cannot send remote URL: {}", file_arg);
+                                continue;
+                            } else {
+                                file_arg.clone()
+                            };
+
                             tracing::info!("Sending file {} to device {}", file_path, device_id);
                             match client.share_file(&device_id, &file_path).await {
                                 Ok(_) => {
