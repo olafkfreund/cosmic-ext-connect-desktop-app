@@ -1937,7 +1937,7 @@ impl Daemon {
                         && packet.payload_size.is_some()
                     {
                         use cosmic_connect_protocol::plugins::camera::CameraPlugin;
-                        use tokio_rustls::TlsAcceptor;
+                        use tokio_rustls::TlsConnector;
 
                         let payload_info = packet.payload_transfer_info.as_ref().unwrap();
                         let payload_size = packet.payload_size.unwrap();
@@ -1961,17 +1961,20 @@ impl Daemon {
                                     // Connect to payload port on Android device
                                     let payload_addr = std::net::SocketAddr::new(remote_ip, port as u16);
 
-                                    // Android uses TLS for payload transfers with inverted roles:
-                                    // - TCP initiator (us) acts as TLS SERVER
-                                    // - TCP acceptor (Android) acts as TLS CLIENT
+                                    // Android uses TRADITIONAL TLS roles for payload transfers (not inverted):
+                                    // - TCP initiator (us) acts as TLS CLIENT
+                                    // - TCP acceptor (Android) acts as TLS SERVER
+                                    // This differs from the main connection which uses inverted roles.
                                     match tokio::net::TcpStream::connect(payload_addr).await {
                                         Ok(tcp_stream) => {
                                             debug!("TCP connected to payload port {} for camera frame", payload_addr);
 
-                                            // Perform TLS handshake as SERVER (inverted role per KDE Connect protocol)
-                                            let acceptor = TlsAcceptor::from(tls_config_clone.server_config());
+                                            // Perform TLS handshake as CLIENT (traditional role for payload transfers)
+                                            let connector = TlsConnector::from(tls_config_clone.client_config());
+                                            let server_name = tokio_rustls::rustls::pki_types::ServerName::try_from("kdeconnect")
+                                                .expect("invalid server name");
 
-                                            match acceptor.accept(tcp_stream).await {
+                                            match connector.connect(server_name, tcp_stream).await {
                                                 Ok(mut tls_stream) => {
                                                     debug!("TLS handshake complete for camera frame payload");
 
