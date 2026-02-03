@@ -1748,7 +1748,7 @@ dependencies = [
 
 [[package]]
 name = "cosmic-applet-connect"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1849,7 +1849,7 @@ dependencies = [
 
 [[package]]
 name = "cosmic-connect-daemon"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1878,7 +1878,7 @@ dependencies = [
 
 [[package]]
 name = "cosmic-connect-manager"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1900,7 +1900,7 @@ dependencies = [
 
 [[package]]
 name = "cosmic-connect-protocol"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "ashpd 0.12.1",
  "async-trait",
@@ -1953,7 +1953,7 @@ dependencies = [
 
 [[package]]
 name = "cosmic-display-stream"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "anyhow",
  "ashpd 0.12.1",
@@ -1992,7 +1992,7 @@ dependencies = [
 
 [[package]]
 name = "cosmic-messages"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2009,7 +2009,7 @@ dependencies = [
 
 [[package]]
 name = "cosmic-messages-popup"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "anyhow",
  "async-io 2.6.0",
