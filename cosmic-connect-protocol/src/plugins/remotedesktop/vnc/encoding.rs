@@ -584,8 +584,8 @@ mod tests {
 
         let stats = encoder.stats();
         assert_eq!(stats.frames_encoded, 5);
-        assert!(stats.total_encode_time.as_millis() > 0);
-        assert!(stats.avg_encode_time().as_millis() > 0);
+        assert!(stats.total_encode_time.as_micros() > 0);
+        assert!(stats.avg_encode_time().as_micros() > 0);
     }
 
     #[test]
