@@ -22,7 +22,7 @@
 //! # use cosmic_connect_protocol::plugins::remotedesktop::capture::WaylandCapture;
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let capture = WaylandCapture::new().await?;
-//! let server = VncServer::new(5900, "password123".to_string());
+//! let mut server = VncServer::new(5900, "password123".to_string());
 //! server.start(capture).await?;
 //! # Ok(())
 //! # }

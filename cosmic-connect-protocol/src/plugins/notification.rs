@@ -165,7 +165,7 @@
 //! ## Example
 //!
 //! ```rust,ignore
-//! use cosmic_connect_core::plugins::notification::{
+//! use cosmic_connect_protocol::plugins::notification::{
 //!     NotificationPlugin, Notification
 //! };
 //!
@@ -203,7 +203,7 @@ use super::{Plugin, PluginFactory};
 /// ## Example
 ///
 /// ```rust
-/// use cosmic_connect_core::plugins::notification::NotificationUrgency;
+/// use cosmic_connect_protocol::plugins::notification::NotificationUrgency;
 ///
 /// let urgency = NotificationUrgency::Critical;
 /// assert_eq!(urgency.to_byte(), 2);
@@ -227,7 +227,7 @@ impl NotificationUrgency {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::NotificationUrgency;
+    /// use cosmic_connect_protocol::plugins::notification::NotificationUrgency;
     ///
     /// assert_eq!(NotificationUrgency::Low.to_byte(), 0);
     /// assert_eq!(NotificationUrgency::Normal.to_byte(), 1);
@@ -242,7 +242,7 @@ impl NotificationUrgency {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::NotificationUrgency;
+    /// use cosmic_connect_protocol::plugins::notification::NotificationUrgency;
     ///
     /// assert_eq!(NotificationUrgency::from_byte(0), NotificationUrgency::Low);
     /// assert_eq!(NotificationUrgency::from_byte(1), NotificationUrgency::Normal);
@@ -266,7 +266,7 @@ impl NotificationUrgency {
 /// ## Example
 ///
 /// ```rust
-/// use cosmic_connect_core::plugins::notification::NotificationAction;
+/// use cosmic_connect_protocol::plugins::notification::NotificationAction;
 ///
 /// let action = NotificationAction {
 ///     id: "reply".to_string(),
@@ -291,7 +291,7 @@ impl NotificationAction {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::NotificationAction;
+    /// use cosmic_connect_protocol::plugins::notification::NotificationAction;
     ///
     /// let action = NotificationAction::new("reply", "Reply");
     /// assert_eq!(action.id, "reply");
@@ -312,7 +312,7 @@ impl NotificationAction {
 /// ## Example
 ///
 /// ```rust
-/// use cosmic_connect_core::plugins::notification::NotificationLink;
+/// use cosmic_connect_protocol::plugins::notification::NotificationLink;
 ///
 /// let link = NotificationLink {
 ///     url: "https://example.com/article".to_string(),
@@ -345,7 +345,7 @@ impl NotificationLink {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::NotificationLink;
+    /// use cosmic_connect_protocol::plugins::notification::NotificationLink;
     ///
     /// let link = NotificationLink::new(
     ///     "https://example.com",
@@ -379,22 +379,9 @@ impl NotificationLink {
 /// ## Example
 ///
 /// ```rust
-/// use cosmic_connect_core::plugins::notification::Notification;
+/// use cosmic_connect_protocol::plugins::notification::Notification;
 ///
-/// let notif = Notification {
-///     id: "notif-123".to_string(),
-///     app_name: "Messages".to_string(),
-///     title: "New Message".to_string(),
-///     text: "Hello!".to_string(),
-///     ticker: Some("Messages: New Message - Hello!".to_string()),
-///     is_clearable: true,
-///     time: Some("1704067200000".to_string()),
-///     silent: Some("false".to_string()),
-///     only_once: None,
-///     request_reply_id: None,
-///     actions: None,
-///     payload_hash: None,
-/// };
+/// let notif = Notification::new("notif-123", "Messages", "New Message", "Hello!", true);
 ///
 /// assert_eq!(notif.id, "notif-123");
 /// assert_eq!(notif.app_name, "Messages");
@@ -517,7 +504,7 @@ impl Notification {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::Notification;
+    /// use cosmic_connect_protocol::plugins::notification::Notification;
     ///
     /// let notif = Notification::new(
     ///     "notif-123",
@@ -574,7 +561,7 @@ impl Notification {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::Notification;
+    /// use cosmic_connect_protocol::plugins::notification::Notification;
     ///
     /// let mut notif = Notification::new("1", "App", "Title", "Text", true);
     /// notif.silent = Some("true".to_string());
@@ -589,7 +576,7 @@ impl Notification {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::Notification;
+    /// use cosmic_connect_protocol::plugins::notification::Notification;
     ///
     /// let mut notif = Notification::new("1", "App", "Title", "Text", true);
     /// notif.request_reply_id = Some("reply-uuid".to_string());
@@ -604,7 +591,7 @@ impl Notification {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::Notification;
+    /// use cosmic_connect_protocol::plugins::notification::Notification;
     ///
     /// let mut notif = Notification::new("1", "App", "Title", "Text", true);
     /// notif.actions = Some(vec!["Reply".to_string(), "Mark Read".to_string()]);
@@ -619,7 +606,7 @@ impl Notification {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::Notification;
+    /// use cosmic_connect_protocol::plugins::notification::Notification;
     ///
     /// let mut notif = Notification::new("1", "App", "Title", "Text", true);
     /// notif.rich_body = Some("<b>Bold</b> text".to_string());
@@ -634,7 +621,7 @@ impl Notification {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::Notification;
+    /// use cosmic_connect_protocol::plugins::notification::Notification;
     ///
     /// let mut notif = Notification::new("1", "App", "Title", "Text", true);
     /// notif.image_data = Some("base64encodeddata".to_string());
@@ -650,7 +637,7 @@ impl Notification {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::{Notification, NotificationLink};
+    /// use cosmic_connect_protocol::plugins::notification::{Notification, NotificationLink};
     ///
     /// let mut notif = Notification::new("1", "App", "Title", "Text", true);
     /// notif.links = Some(vec![NotificationLink::new("https://example.com", None::<String>, 0, 10)]);
@@ -667,10 +654,11 @@ impl Notification {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::Notification;
+    /// use cosmic_connect_protocol::plugins::notification::Notification;
+    /// use base64::{engine::general_purpose, Engine as _};
     ///
     /// let mut notif = Notification::new("1", "App", "Title", "Text", true);
-    /// notif.image_data = Some(base64::encode(b"fake image data"));
+    /// notif.image_data = Some(general_purpose::STANDARD.encode(b"fake image data"));
     /// assert!(notif.get_image_bytes().is_some());
     /// ```
     pub fn get_image_bytes(&self) -> Option<Vec<u8>> {
@@ -713,7 +701,7 @@ impl Notification {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::{Notification, NotificationUrgency};
+    /// use cosmic_connect_protocol::plugins::notification::{Notification, NotificationUrgency};
     ///
     /// let mut notif = Notification::new("1", "App", "Title", "Text", true);
     /// assert_eq!(notif.get_urgency(), NotificationUrgency::Normal);
@@ -732,7 +720,7 @@ impl Notification {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::Notification;
+    /// use cosmic_connect_protocol::plugins::notification::Notification;
     ///
     /// let mut notif = Notification::new("1", "App", "Title", "Text", true);
     /// assert!(!notif.has_app_icon());
@@ -751,10 +739,11 @@ impl Notification {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::Notification;
+    /// use cosmic_connect_protocol::plugins::notification::Notification;
+    /// use base64::{engine::general_purpose, Engine as _};
     ///
     /// let mut notif = Notification::new("1", "App", "Title", "Text", true);
-    /// notif.app_icon = Some(base64::encode(b"icon data"));
+    /// notif.app_icon = Some(general_purpose::STANDARD.encode(b"icon data"));
     /// assert!(notif.get_app_icon_bytes().is_some());
     /// ```
     pub fn get_app_icon_bytes(&self) -> Option<Vec<u8>> {
@@ -770,7 +759,7 @@ impl Notification {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::{Notification, NotificationAction};
+    /// use cosmic_connect_protocol::plugins::notification::{Notification, NotificationAction};
     ///
     /// let mut notif = Notification::new("1", "App", "Title", "Text", true);
     /// assert!(!notif.has_action_buttons());
@@ -799,8 +788,8 @@ impl Notification {
 /// ## Example
 ///
 /// ```rust
-/// use cosmic_connect_core::plugins::notification::NotificationPlugin;
-/// use cosmic_connect_core::Plugin;
+/// use cosmic_connect_protocol::plugins::notification::NotificationPlugin;
+/// use cosmic_connect_protocol::Plugin;
 ///
 /// let plugin = NotificationPlugin::new();
 /// assert_eq!(plugin.name(), "notification");
@@ -823,7 +812,7 @@ impl NotificationPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::NotificationPlugin;
+    /// use cosmic_connect_protocol::plugins::notification::NotificationPlugin;
     ///
     /// let plugin = NotificationPlugin::new();
     /// assert_eq!(plugin.notification_count(), 0);
@@ -840,7 +829,7 @@ impl NotificationPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::NotificationPlugin;
+    /// use cosmic_connect_protocol::plugins::notification::NotificationPlugin;
     ///
     /// let plugin = NotificationPlugin::new();
     /// assert_eq!(plugin.notification_count(), 0);
@@ -854,7 +843,7 @@ impl NotificationPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::NotificationPlugin;
+    /// use cosmic_connect_protocol::plugins::notification::NotificationPlugin;
     ///
     /// let plugin = NotificationPlugin::new();
     /// assert!(plugin.get_notification("notif-123").is_none());
@@ -868,7 +857,7 @@ impl NotificationPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::NotificationPlugin;
+    /// use cosmic_connect_protocol::plugins::notification::NotificationPlugin;
     ///
     /// let plugin = NotificationPlugin::new();
     /// let notifications = plugin.get_all_notifications();
@@ -887,7 +876,7 @@ impl NotificationPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::{NotificationPlugin, Notification};
+    /// use cosmic_connect_protocol::plugins::notification::{NotificationPlugin, Notification};
     ///
     /// let plugin = NotificationPlugin::new();
     /// let notif = Notification::new("123", "App", "Title", "Text", true);
@@ -905,7 +894,7 @@ impl NotificationPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::NotificationPlugin;
+    /// use cosmic_connect_protocol::plugins::notification::NotificationPlugin;
     ///
     /// let plugin = NotificationPlugin::new();
     /// let packet = plugin.create_cancel_packet("notif-123");
@@ -925,7 +914,7 @@ impl NotificationPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::NotificationPlugin;
+    /// use cosmic_connect_protocol::plugins::notification::NotificationPlugin;
     ///
     /// let plugin = NotificationPlugin::new();
     /// let packet = plugin.create_request_packet();
@@ -942,7 +931,7 @@ impl NotificationPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::NotificationPlugin;
+    /// use cosmic_connect_protocol::plugins::notification::NotificationPlugin;
     ///
     /// let plugin = NotificationPlugin::new();
     /// let packet = plugin.create_dismiss_packet("notif-123");
@@ -968,7 +957,7 @@ impl NotificationPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::NotificationPlugin;
+    /// use cosmic_connect_protocol::plugins::notification::NotificationPlugin;
     ///
     /// let plugin = NotificationPlugin::new();
     /// let packet = plugin.create_action_invocation_packet("desktop-App-123", "reply");
@@ -1002,7 +991,7 @@ impl NotificationPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::NotificationPlugin;
+    /// use cosmic_connect_protocol::plugins::notification::NotificationPlugin;
     ///
     /// let plugin = NotificationPlugin::new();
     /// let packet = plugin.create_notification_dismissal_packet("desktop-App-123");
@@ -1040,7 +1029,7 @@ impl NotificationPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::notification::{NotificationPlugin, NotificationUrgency};
+    /// use cosmic_connect_protocol::plugins::notification::{NotificationPlugin, NotificationUrgency};
     ///
     /// let plugin = NotificationPlugin::new();
     /// let packet = NotificationPlugin::create_desktop_notification_packet(

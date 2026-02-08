@@ -42,8 +42,8 @@
 //! ## Example
 //!
 //! ```rust,ignore
-//! use cosmic_connect_core::plugins::ping::PingPlugin;
-//! use cosmic_connect_core::{Plugin, PluginManager};
+//! use cosmic_connect_protocol::plugins::ping::PingPlugin;
+//! use cosmic_connect_protocol::{Plugin, PluginManager};
 //!
 //! // Create and register plugin
 //! let mut manager = PluginManager::new();
@@ -87,8 +87,8 @@ use super::{Plugin, PluginFactory};
 /// ## Example
 ///
 /// ```rust
-/// use cosmic_connect_core::plugins::ping::PingPlugin;
-/// use cosmic_connect_core::Plugin;
+/// use cosmic_connect_protocol::plugins::ping::PingPlugin;
+/// use cosmic_connect_protocol::Plugin;
 ///
 /// let plugin = PingPlugin::new();
 /// assert_eq!(plugin.name(), "ping");
@@ -112,7 +112,7 @@ impl PingPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::ping::PingPlugin;
+    /// use cosmic_connect_protocol::plugins::ping::PingPlugin;
     ///
     /// let plugin = PingPlugin::new();
     /// assert_eq!(plugin.pings_received(), 0);
@@ -131,7 +131,7 @@ impl PingPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::ping::PingPlugin;
+    /// use cosmic_connect_protocol::plugins::ping::PingPlugin;
     ///
     /// let plugin = PingPlugin::new();
     /// assert_eq!(plugin.pings_received(), 0);
@@ -145,7 +145,7 @@ impl PingPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::ping::PingPlugin;
+    /// use cosmic_connect_protocol::plugins::ping::PingPlugin;
     ///
     /// let plugin = PingPlugin::new();
     /// assert_eq!(plugin.pings_sent(), 0);
@@ -169,7 +169,7 @@ impl PingPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::ping::PingPlugin;
+    /// use cosmic_connect_protocol::plugins::ping::PingPlugin;
     ///
     /// let plugin = PingPlugin::new();
     ///
@@ -292,8 +292,8 @@ impl Plugin for PingPlugin {
 /// # Example
 ///
 /// ```rust
-/// use cosmic_connect_core::plugins::ping::PingPluginFactory;
-/// use cosmic_connect_core::plugins::PluginFactory;
+/// use cosmic_connect_protocol::plugins::ping::PingPluginFactory;
+/// use cosmic_connect_protocol::plugins::PluginFactory;
 /// use std::sync::Arc;
 ///
 /// let factory: Arc<dyn PluginFactory> = Arc::new(PingPluginFactory);

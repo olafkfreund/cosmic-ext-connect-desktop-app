@@ -236,19 +236,13 @@
 //! ## Example
 //!
 //! ```rust,ignore
-//! use cosmic_connect_core::plugins::mpris::*;
-//! use cosmic_connect_core::{Plugin, PluginManager};
+//! use cosmic_connect_protocol::plugins::mpris::*;
+//! use cosmic_connect_protocol::Plugin;
 //!
-//! // Create and register plugin
-//! let mut manager = PluginManager::new();
-//! manager.register(Box::new(MprisPlugin::new()))?;
-//!
-//! // Initialize with device
-//! manager.init_all(&device).await?;
-//! manager.start_all().await?;
+//! // Create plugin
+//! let plugin = MprisPlugin::new();
 //!
 //! // Send player list
-//! let plugin = MprisPlugin::new();
 //! let packet = plugin.create_player_list_packet(vec!["vlc".to_string(), "spotify".to_string()]);
 //! // Send packet...
 //!
@@ -516,8 +510,8 @@ pub struct PlayerState {
 /// ## Example
 ///
 /// ```rust
-/// use cosmic_connect_core::plugins::mpris::MprisPlugin;
-/// use cosmic_connect_core::Plugin;
+/// use cosmic_connect_protocol::plugins::mpris::MprisPlugin;
+/// use cosmic_connect_protocol::Plugin;
 ///
 /// let plugin = MprisPlugin::new();
 /// assert_eq!(plugin.name(), "mpris");
@@ -549,7 +543,7 @@ impl MprisPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::mpris::MprisPlugin;
+    /// use cosmic_connect_protocol::plugins::mpris::MprisPlugin;
     ///
     /// let plugin = MprisPlugin::new();
     /// ```
@@ -579,7 +573,7 @@ impl MprisPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::mpris::MprisPlugin;
+    /// use cosmic_connect_protocol::plugins::mpris::MprisPlugin;
     ///
     /// let plugin = MprisPlugin::new();
     /// let packet = plugin.create_player_list_packet(vec![
@@ -615,7 +609,7 @@ impl MprisPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::mpris::*;
+    /// use cosmic_connect_protocol::plugins::mpris::*;
     ///
     /// let plugin = MprisPlugin::new();
     /// let status = PlayerStatus {
@@ -684,7 +678,7 @@ impl MprisPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::mpris::MprisPlugin;
+    /// use cosmic_connect_protocol::plugins::mpris::MprisPlugin;
     ///
     /// let plugin = MprisPlugin::new();
     /// let packet = plugin.create_request_player_list_packet();
@@ -712,7 +706,7 @@ impl MprisPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::mpris::MprisPlugin;
+    /// use cosmic_connect_protocol::plugins::mpris::MprisPlugin;
     ///
     /// let plugin = MprisPlugin::new();
     /// let packet = plugin.create_request_now_playing_packet("spotify".to_string());
@@ -744,7 +738,7 @@ impl MprisPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::mpris::*;
+    /// use cosmic_connect_protocol::plugins::mpris::*;
     ///
     /// let plugin = MprisPlugin::new();
     /// let packet = plugin.create_control_packet("vlc".to_string(), PlaybackAction::PlayPause);
@@ -776,7 +770,7 @@ impl MprisPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::mpris::MprisPlugin;
+    /// use cosmic_connect_protocol::plugins::mpris::MprisPlugin;
     ///
     /// let plugin = MprisPlugin::new();
     /// // Seek forward 5 seconds
@@ -809,7 +803,7 @@ impl MprisPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::mpris::MprisPlugin;
+    /// use cosmic_connect_protocol::plugins::mpris::MprisPlugin;
     ///
     /// let plugin = MprisPlugin::new();
     /// // Set position to 1 minute
@@ -842,7 +836,7 @@ impl MprisPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::mpris::MprisPlugin;
+    /// use cosmic_connect_protocol::plugins::mpris::MprisPlugin;
     ///
     /// let plugin = MprisPlugin::new();
     /// let packet = plugin.create_set_volume_packet("vlc".to_string(), 50);
@@ -874,7 +868,7 @@ impl MprisPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::mpris::*;
+    /// use cosmic_connect_protocol::plugins::mpris::*;
     ///
     /// let plugin = MprisPlugin::new();
     /// let packet = plugin.create_set_loop_status_packet("spotify".to_string(), LoopStatus::Playlist);
@@ -906,7 +900,7 @@ impl MprisPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::mpris::MprisPlugin;
+    /// use cosmic_connect_protocol::plugins::mpris::MprisPlugin;
     ///
     /// let plugin = MprisPlugin::new();
     /// let packet = plugin.create_set_shuffle_packet("vlc".to_string(), true);
@@ -937,7 +931,7 @@ impl MprisPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::mpris::MprisPlugin;
+    /// use cosmic_connect_protocol::plugins::mpris::MprisPlugin;
     ///
     /// let plugin = MprisPlugin::new();
     /// let packet = plugin.create_request_playlist_packet("spotify".to_string());
@@ -969,7 +963,7 @@ impl MprisPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::mpris::{MprisPlugin, Playlist, TrackInfo};
+    /// use cosmic_connect_protocol::plugins::mpris::{MprisPlugin, Playlist, TrackInfo};
     ///
     /// let plugin = MprisPlugin::new();
     /// let playlist = Playlist {
@@ -1014,7 +1008,7 @@ impl MprisPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::mpris::MprisPlugin;
+    /// use cosmic_connect_protocol::plugins::mpris::MprisPlugin;
     ///
     /// let plugin = MprisPlugin::new();
     /// let packet = plugin.create_go_to_track_packet(
@@ -1039,7 +1033,7 @@ impl MprisPlugin {
     ///
     /// ```rust,no_run
     /// # async fn example() {
-    /// use cosmic_connect_core::plugins::mpris::MprisPlugin;
+    /// use cosmic_connect_protocol::plugins::mpris::MprisPlugin;
     ///
     /// let plugin = MprisPlugin::new();
     /// let players = plugin.get_player_list().await;
@@ -1058,7 +1052,7 @@ impl MprisPlugin {
     ///
     /// ```rust,no_run
     /// # async fn example() {
-    /// use cosmic_connect_core::plugins::mpris::MprisPlugin;
+    /// use cosmic_connect_protocol::plugins::mpris::MprisPlugin;
     ///
     /// let plugin = MprisPlugin::new();
     /// if let Some(state) = plugin.get_player_state("spotify").await {
@@ -1083,7 +1077,7 @@ impl MprisPlugin {
     ///
     /// ```rust,no_run
     /// # async fn example() {
-    /// use cosmic_connect_core::plugins::mpris::MprisPlugin;
+    /// use cosmic_connect_protocol::plugins::mpris::MprisPlugin;
     ///
     /// let plugin = MprisPlugin::new();
     /// plugin.remove_player("vlc").await;

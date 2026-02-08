@@ -63,8 +63,8 @@
 //! ## Example
 //!
 //! ```rust,ignore
-//! use cosmic_connect_core::plugins::lock::*;
-//! use cosmic_connect_core::{Plugin, PluginManager};
+//! use cosmic_connect_protocol::plugins::lock::*;
+//! use cosmic_connect_protocol::{Plugin, PluginManager};
 //!
 //! // Create and register plugin
 //! let mut manager = PluginManager::new();
@@ -172,7 +172,7 @@ impl LockPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::lock::LockPlugin;
+    /// use cosmic_connect_protocol::plugins::lock::LockPlugin;
     ///
     /// let plugin = LockPlugin::new();
     /// let packet = plugin.create_lock_request(true);
@@ -202,7 +202,7 @@ impl LockPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::lock::LockPlugin;
+    /// use cosmic_connect_protocol::plugins::lock::LockPlugin;
     ///
     /// let plugin = LockPlugin::new();
     /// let packet = plugin.create_lock_state(true);
@@ -226,7 +226,7 @@ impl LockPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::lock::LockPlugin;
+    /// use cosmic_connect_protocol::plugins::lock::LockPlugin;
     ///
     /// let plugin = LockPlugin::new();
     /// let packet = plugin.create_request_lock_state();

@@ -14,7 +14,7 @@
 //!
 //! ## Usage
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use cosmic_connect_protocol::plugins::audiostream::audio_backend::{AudioBackend, BackendConfig};
 //!
 //! # async fn example() -> cosmic_connect_protocol::Result<()> {

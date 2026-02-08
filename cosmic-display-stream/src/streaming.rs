@@ -38,7 +38,7 @@
 //!     .with_signaling_port(8080)
 //!     .with_transport(TransportMode::WiFi);
 //!
-//! let mut server = StreamingServer::new(config).await?;
+//! let mut server = StreamingServer::new(config)?;
 //!
 //! // Start the server
 //! server.start().await?;

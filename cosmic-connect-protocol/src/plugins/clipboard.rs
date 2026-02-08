@@ -79,19 +79,13 @@
 //! ## Example
 //!
 //! ```rust,ignore
-//! use cosmic_connect_core::plugins::clipboard::*;
-//! use cosmic_connect_core::{Plugin, PluginManager};
+//! use cosmic_connect_protocol::plugins::clipboard::*;
+//! use cosmic_connect_protocol::Plugin;
 //!
-//! // Create and register plugin
-//! let mut manager = PluginManager::new();
-//! manager.register(Box::new(ClipboardPlugin::new()))?;
-//!
-//! // Initialize with device
-//! manager.init_all(&device).await?;
-//! manager.start_all().await?;
+//! // Create plugin
+//! let plugin = ClipboardPlugin::new();
 //!
 //! // Update clipboard
-//! let plugin = ClipboardPlugin::new();
 //! let packet = plugin.create_clipboard_packet("Hello from device!".to_string()).await;
 //! // Send packet to peer...
 //!
@@ -125,7 +119,7 @@ use super::{Plugin, PluginFactory};
 /// ## Example
 ///
 /// ```rust
-/// use cosmic_connect_core::plugins::clipboard::ClipboardState;
+/// use cosmic_connect_protocol::plugins::clipboard::ClipboardState;
 ///
 /// let state = ClipboardState {
 ///     content: "Hello, World!".to_string(),
@@ -147,7 +141,7 @@ impl ClipboardState {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::clipboard::ClipboardState;
+    /// use cosmic_connect_protocol::plugins::clipboard::ClipboardState;
     ///
     /// let state = ClipboardState::new("Hello".to_string());
     /// assert_eq!(state.content, "Hello");
@@ -165,7 +159,7 @@ impl ClipboardState {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::clipboard::ClipboardState;
+    /// use cosmic_connect_protocol::plugins::clipboard::ClipboardState;
     ///
     /// let state = ClipboardState::with_timestamp("Hello".to_string(), 1640000000000);
     /// assert_eq!(state.content, "Hello");
@@ -180,7 +174,7 @@ impl ClipboardState {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::clipboard::ClipboardState;
+    /// use cosmic_connect_protocol::plugins::clipboard::ClipboardState;
     ///
     /// let state = ClipboardState::empty();
     /// assert!(state.content.is_empty());
@@ -198,7 +192,7 @@ impl ClipboardState {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::clipboard::ClipboardState;
+    /// use cosmic_connect_protocol::plugins::clipboard::ClipboardState;
     ///
     /// let empty = ClipboardState::empty();
     /// assert!(empty.is_empty());
@@ -217,7 +211,7 @@ impl ClipboardState {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::clipboard::ClipboardState;
+    /// use cosmic_connect_protocol::plugins::clipboard::ClipboardState;
     ///
     /// let older = ClipboardState::with_timestamp("old".to_string(), 1000);
     /// let newer = ClipboardState::with_timestamp("new".to_string(), 2000);
@@ -253,8 +247,8 @@ impl Default for ClipboardState {
 /// ## Example
 ///
 /// ```rust
-/// use cosmic_connect_core::plugins::clipboard::ClipboardPlugin;
-/// use cosmic_connect_core::Plugin;
+/// use cosmic_connect_protocol::plugins::clipboard::ClipboardPlugin;
+/// use cosmic_connect_protocol::Plugin;
 ///
 /// let plugin = ClipboardPlugin::new();
 /// assert_eq!(plugin.name(), "clipboard");
@@ -284,7 +278,7 @@ impl ClipboardPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::clipboard::ClipboardPlugin;
+    /// use cosmic_connect_protocol::plugins::clipboard::ClipboardPlugin;
     ///
     /// let plugin = ClipboardPlugin::new();
     /// ```
@@ -315,7 +309,7 @@ impl ClipboardPlugin {
     ///
     /// ```rust,no_run
     /// # async fn example() {
-    /// use cosmic_connect_core::plugins::clipboard::ClipboardPlugin;
+    /// use cosmic_connect_protocol::plugins::clipboard::ClipboardPlugin;
     ///
     /// let plugin = ClipboardPlugin::new();
     /// let packet = plugin.create_clipboard_packet("Hello!".to_string()).await;
@@ -343,7 +337,7 @@ impl ClipboardPlugin {
     ///
     /// ```rust,no_run
     /// # async fn example() {
-    /// use cosmic_connect_core::plugins::clipboard::ClipboardPlugin;
+    /// use cosmic_connect_protocol::plugins::clipboard::ClipboardPlugin;
     ///
     /// let plugin = ClipboardPlugin::new();
     /// let packet = plugin.create_connect_packet().await;
@@ -367,7 +361,7 @@ impl ClipboardPlugin {
     ///
     /// ```rust,no_run
     /// # async fn example() {
-    /// use cosmic_connect_core::plugins::clipboard::ClipboardPlugin;
+    /// use cosmic_connect_protocol::plugins::clipboard::ClipboardPlugin;
     ///
     /// let plugin = ClipboardPlugin::new();
     /// let content = plugin.get_content().await;
@@ -384,7 +378,7 @@ impl ClipboardPlugin {
     ///
     /// ```rust,no_run
     /// # async fn example() {
-    /// use cosmic_connect_core::plugins::clipboard::ClipboardPlugin;
+    /// use cosmic_connect_protocol::plugins::clipboard::ClipboardPlugin;
     ///
     /// let plugin = ClipboardPlugin::new();
     /// let timestamp = plugin.get_timestamp().await;
@@ -401,7 +395,7 @@ impl ClipboardPlugin {
     ///
     /// ```rust,no_run
     /// # async fn example() {
-    /// use cosmic_connect_core::plugins::clipboard::ClipboardPlugin;
+    /// use cosmic_connect_protocol::plugins::clipboard::ClipboardPlugin;
     ///
     /// let plugin = ClipboardPlugin::new();
     /// let state = plugin.get_state().await;
@@ -420,7 +414,7 @@ impl ClipboardPlugin {
     ///
     /// ```rust,no_run
     /// # async fn example() {
-    /// use cosmic_connect_core::plugins::clipboard::ClipboardPlugin;
+    /// use cosmic_connect_protocol::plugins::clipboard::ClipboardPlugin;
     ///
     /// let plugin = ClipboardPlugin::new();
     /// plugin.set_content("New content".to_string()).await;
@@ -438,7 +432,7 @@ impl ClipboardPlugin {
     ///
     /// ```rust,no_run
     /// # async fn example() {
-    /// use cosmic_connect_core::plugins::clipboard::ClipboardPlugin;
+    /// use cosmic_connect_protocol::plugins::clipboard::ClipboardPlugin;
     ///
     /// let plugin = ClipboardPlugin::new();
     /// plugin.set_content_with_timestamp("Content".to_string(), 1640000000000).await;

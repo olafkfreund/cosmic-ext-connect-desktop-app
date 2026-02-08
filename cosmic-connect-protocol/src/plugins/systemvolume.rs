@@ -134,8 +134,8 @@ pub struct SinkListResponse {
 /// ## Example
 ///
 /// ```rust
-/// use cosmic_connect_core::plugins::systemvolume::SystemVolumePlugin;
-/// use cosmic_connect_core::Plugin;
+/// use cosmic_connect_protocol::plugins::systemvolume::SystemVolumePlugin;
+/// use cosmic_connect_protocol::Plugin;
 ///
 /// let plugin = SystemVolumePlugin::new();
 /// assert_eq!(plugin.name(), "systemvolume");
@@ -156,7 +156,7 @@ impl SystemVolumePlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::systemvolume::SystemVolumePlugin;
+    /// use cosmic_connect_protocol::plugins::systemvolume::SystemVolumePlugin;
     ///
     /// let plugin = SystemVolumePlugin::new();
     /// assert_eq!(plugin.sink_count(), 0);
@@ -177,7 +177,7 @@ impl SystemVolumePlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::systemvolume::SystemVolumePlugin;
+    /// use cosmic_connect_protocol::plugins::systemvolume::SystemVolumePlugin;
     ///
     /// let plugin = SystemVolumePlugin::new();
     /// let sinks = plugin.get_sinks();
@@ -199,7 +199,7 @@ impl SystemVolumePlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::systemvolume::SystemVolumePlugin;
+    /// use cosmic_connect_protocol::plugins::systemvolume::SystemVolumePlugin;
     ///
     /// let plugin = SystemVolumePlugin::new();
     /// assert!(plugin.get_sink("50").is_none());
@@ -218,7 +218,7 @@ impl SystemVolumePlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::systemvolume::SystemVolumePlugin;
+    /// use cosmic_connect_protocol::plugins::systemvolume::SystemVolumePlugin;
     ///
     /// let plugin = SystemVolumePlugin::new();
     /// assert!(plugin.get_default_sink().is_none());
@@ -243,7 +243,7 @@ impl SystemVolumePlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::systemvolume::SystemVolumePlugin;
+    /// use cosmic_connect_protocol::plugins::systemvolume::SystemVolumePlugin;
     ///
     /// let plugin = SystemVolumePlugin::new();
     /// assert!(plugin.get_volume("50").is_none());
@@ -265,7 +265,7 @@ impl SystemVolumePlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::systemvolume::SystemVolumePlugin;
+    /// use cosmic_connect_protocol::plugins::systemvolume::SystemVolumePlugin;
     ///
     /// let plugin = SystemVolumePlugin::new();
     /// assert!(plugin.is_muted("50").is_none());
@@ -279,7 +279,7 @@ impl SystemVolumePlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::systemvolume::SystemVolumePlugin;
+    /// use cosmic_connect_protocol::plugins::systemvolume::SystemVolumePlugin;
     ///
     /// let plugin = SystemVolumePlugin::new();
     /// assert_eq!(plugin.sink_count(), 0);
@@ -293,7 +293,7 @@ impl SystemVolumePlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::systemvolume::SystemVolumePlugin;
+    /// use cosmic_connect_protocol::plugins::systemvolume::SystemVolumePlugin;
     ///
     /// let plugin = SystemVolumePlugin::new();
     /// assert!(!plugin.has_sinks());
@@ -420,7 +420,7 @@ impl SystemVolumePlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::systemvolume::SystemVolumePlugin;
+    /// use cosmic_connect_protocol::plugins::systemvolume::SystemVolumePlugin;
     ///
     /// let plugin = SystemVolumePlugin::new();
     /// let packet = plugin.create_volume_request(Some("50".to_string()), 75);
@@ -445,7 +445,7 @@ impl SystemVolumePlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::systemvolume::SystemVolumePlugin;
+    /// use cosmic_connect_protocol::plugins::systemvolume::SystemVolumePlugin;
     ///
     /// let plugin = SystemVolumePlugin::new();
     /// let packet = plugin.create_mute_request(Some("50".to_string()), true);
@@ -465,7 +465,7 @@ impl SystemVolumePlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::systemvolume::SystemVolumePlugin;
+    /// use cosmic_connect_protocol::plugins::systemvolume::SystemVolumePlugin;
     ///
     /// let plugin = SystemVolumePlugin::new();
     /// let packet = plugin.create_sink_list_request();

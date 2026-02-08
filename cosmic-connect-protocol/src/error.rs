@@ -7,13 +7,13 @@
 //!
 //! ### Basic Usage
 //!
-//! ```rust,no_run
-//! use cosmic_connect_core::{Packet, Result};
+//! ```rust
+//! use cosmic_connect_protocol::Result;
 //!
-//! fn process_packet(data: &[u8]) -> Result<Packet> {
+//! fn process_data(data: &[u8]) -> Result<String> {
 //!     // Errors are automatically converted using From trait
-//!     let packet = Packet::from_bytes(data)?;
-//!     Ok(packet)
+//!     let value: serde_json::Value = serde_json::from_slice(data)?;
+//!     Ok(value.to_string())
 //! }
 //! ```
 //!
@@ -21,12 +21,14 @@
 //!
 //! Use `?` operator for automatic error propagation:
 //!
-//! ```rust,no_run
-//! use cosmic_connect_core::{Device, DeviceManager, Result};
+//! ```rust
+//! use cosmic_connect_protocol::Result;
+//! use std::fs::File;
+//! use std::io::Write;
 //!
-//! fn save_device(manager: &mut DeviceManager, device: Device) -> Result<()> {
-//!     manager.add_device(device);
-//!     manager.save_registry()?;  // IO errors auto-converted
+//! fn save_data(data: &str) -> Result<()> {
+//!     let mut file = File::create("/tmp/data.json")?;  // IO errors auto-converted
+//!     file.write_all(data.as_bytes())?;
 //!     Ok(())
 //! }
 //! ```
@@ -35,25 +37,31 @@
 //!
 //! Match on specific error variants for custom handling:
 //!
-//! ```rust,no_run
-//! use cosmic_connect_core::{ProtocolError, Result};
+//! ```rust
+//! use cosmic_connect_protocol::{ProtocolError, Result};
 //!
-//! # async fn example(device_id: &str) -> Result<()> {
-//! match get_device(device_id).await {
-//!     Ok(device) => println!("Found device: {}", device.name()),
-//!     Err(ProtocolError::DeviceNotFound(id)) => {
-//!         eprintln!("Device {} not found", id);
+//! fn handle_device_operation(device_id: &str) -> Result<String> {
+//!     match check_device(device_id) {
+//!         Ok(name) => Ok(format!("Found device: {}", name)),
+//!         Err(ProtocolError::DeviceNotFound(id)) => {
+//!             eprintln!("Device {} not found", id);
+//!             Err(ProtocolError::DeviceNotFound(id))
+//!         }
+//!         Err(ProtocolError::NotPaired) => {
+//!             eprintln!("Device not paired, initiating pairing...");
+//!             Err(ProtocolError::NotPaired)
+//!         }
+//!         Err(e) => Err(e), // Propagate other errors
 //!     }
-//!     Err(ProtocolError::NotPaired) => {
-//!         eprintln!("Device not paired, initiating pairing...");
-//!     }
-//!     Err(e) => return Err(e), // Propagate other errors
 //! }
-//! # Ok(())
-//! # }
-//! # async fn get_device(id: &str) -> Result<cosmic_connect_core::Device> {
-//! #     Err(ProtocolError::DeviceNotFound(id.to_string()))
-//! # }
+//!
+//! fn check_device(id: &str) -> Result<String> {
+//!     if id.is_empty() {
+//!         Err(ProtocolError::DeviceNotFound(id.to_string()))
+//!     } else {
+//!         Ok("Device Name".to_string())
+//!     }
+//! }
 //! ```
 //!
 //! ### Creating Custom Errors
@@ -61,7 +69,7 @@
 //! Use error constructors for domain-specific errors:
 //!
 //! ```rust
-//! use cosmic_connect_core::ProtocolError;
+//! use cosmic_connect_protocol::ProtocolError;
 //!
 //! // Device-specific errors
 //! let error = ProtocolError::DeviceNotFound("unknown-device-id".to_string());
@@ -134,8 +142,8 @@ use thiserror::Error;
 ///
 /// # Examples
 ///
-/// ```rust,no_run
-/// use cosmic_connect_core::Result;
+/// ```rust
+/// use cosmic_connect_protocol::Result;
 ///
 /// fn example() -> Result<()> {
 ///     // Your code here
@@ -161,7 +169,7 @@ pub type Result<T> = std::result::Result<T, ProtocolError>;
 /// # Examples
 ///
 /// ```rust
-/// use cosmic_connect_core::ProtocolError;
+/// use cosmic_connect_protocol::ProtocolError;
 ///
 /// // Create device-specific errors
 /// let error = ProtocolError::DeviceNotFound("device-123".to_string());
@@ -186,13 +194,13 @@ pub enum ProtocolError {
     ///
     /// # Examples
     ///
-    /// ```rust,no_run
-    /// use cosmic_connect_core::Result;
+    /// ```rust
+    /// use cosmic_connect_protocol::Result;
     /// use std::fs::File;
     ///
     /// fn read_config() -> Result<()> {
     ///     // IO error automatically converts to ProtocolError::Io
-    ///     let _file = File::open("/path/to/config.json")?;
+    ///     let _file = File::open("/tmp/config.json")?;
     ///     Ok(())
     /// }
     /// ```
@@ -205,13 +213,13 @@ pub enum ProtocolError {
     ///
     /// # Examples
     ///
-    /// ```rust,no_run
-    /// use cosmic_connect_core::{Packet, Result};
+    /// ```rust
+    /// use cosmic_connect_protocol::Result;
     ///
-    /// fn parse_packet(json: &str) -> Result<Packet> {
+    /// fn parse_json(json: &str) -> Result<serde_json::Value> {
     ///     // JSON error automatically converts to ProtocolError::Json
-    ///     let packet: Packet = serde_json::from_str(json)?;
-    ///     Ok(packet)
+    ///     let value: serde_json::Value = serde_json::from_str(json)?;
+    ///     Ok(value)
     /// }
     /// ```
     #[error("JSON error: {0}")]
@@ -223,8 +231,8 @@ pub enum ProtocolError {
     ///
     /// # Examples
     ///
-    /// ```rust,no_run
-    /// use cosmic_connect_core::Result;
+    /// ```rust
+    /// use cosmic_connect_protocol::Result;
     ///
     /// fn establish_secure_connection() -> Result<()> {
     ///     // TLS error automatically converts to ProtocolError::Tls
@@ -240,13 +248,13 @@ pub enum ProtocolError {
     ///
     /// # Examples
     ///
-    /// ```rust,no_run
-    /// use cosmic_connect_core::{CertificateInfo, Result};
+    /// ```rust
+    /// use cosmic_connect_protocol::Result;
     ///
-    /// fn generate_certificate() -> Result<CertificateInfo> {
+    /// fn generate_certificate() -> Result<()> {
     ///     // Certificate error automatically converts to ProtocolError::Certificate
-    ///     let cert = CertificateInfo::generate("my-device-id")?;
-    ///     Ok(cert)
+    ///     // Example placeholder - actual certificate generation would use openssl
+    ///     Ok(())
     /// }
     /// ```
     #[error("Certificate error: {0}")]
@@ -279,7 +287,7 @@ pub enum ProtocolError {
     /// # Examples
     ///
     /// ```rust
-    /// use cosmic_connect_core::ProtocolError;
+    /// use cosmic_connect_protocol::ProtocolError;
     ///
     /// let error = ProtocolError::DeviceNotFound("unknown-device".to_string());
     /// assert_eq!(error.to_string(), "Device not found: unknown-device");
@@ -295,7 +303,7 @@ pub enum ProtocolError {
     /// # Examples
     ///
     /// ```rust
-    /// use cosmic_connect_core::ProtocolError;
+    /// use cosmic_connect_protocol::ProtocolError;
     ///
     /// let error = ProtocolError::NotPaired;
     /// assert_eq!(error.to_string(), "Not paired");
@@ -311,7 +319,7 @@ pub enum ProtocolError {
     /// # Examples
     ///
     /// ```rust
-    /// use cosmic_connect_core::ProtocolError;
+    /// use cosmic_connect_protocol::ProtocolError;
     ///
     /// let error = ProtocolError::InvalidPacket("missing type field".to_string());
     /// assert_eq!(error.to_string(), "Invalid packet: missing type field");
@@ -327,7 +335,7 @@ pub enum ProtocolError {
     /// # Examples
     ///
     /// ```rust
-    /// use cosmic_connect_core::ProtocolError;
+    /// use cosmic_connect_protocol::ProtocolError;
     ///
     /// let error = ProtocolError::Plugin("failed to initialize plugin".to_string());
     /// assert_eq!(error.to_string(), "Plugin error: failed to initialize plugin");
@@ -423,7 +431,7 @@ impl ProtocolError {
     /// # Examples
     ///
     /// ```rust
-    /// use cosmic_connect_core::ProtocolError;
+    /// use cosmic_connect_protocol::ProtocolError;
     /// use std::io::{Error, ErrorKind};
     ///
     /// let io_error = Error::new(ErrorKind::TimedOut, "connection timeout");
@@ -462,7 +470,7 @@ impl ProtocolError {
     /// # Examples
     ///
     /// ```rust
-    /// use cosmic_connect_core::ProtocolError;
+    /// use cosmic_connect_protocol::ProtocolError;
     ///
     /// let error = ProtocolError::Timeout("connection timeout".to_string());
     /// assert!(error.is_recoverable()); // Timeout can be retried
@@ -489,7 +497,7 @@ impl ProtocolError {
     /// # Examples
     ///
     /// ```rust
-    /// use cosmic_connect_core::ProtocolError;
+    /// use cosmic_connect_protocol::ProtocolError;
     ///
     /// let error = ProtocolError::NotPaired;
     /// assert!(error.requires_user_action()); // User needs to pair device
@@ -518,7 +526,7 @@ impl ProtocolError {
     /// # Examples
     ///
     /// ```rust
-    /// use cosmic_connect_core::ProtocolError;
+    /// use cosmic_connect_protocol::ProtocolError;
     ///
     /// let error = ProtocolError::NotPaired;
     /// assert_eq!(
@@ -631,7 +639,7 @@ impl ProtocolError {
     /// # Examples
     ///
     /// ```rust
-    /// use cosmic_connect_core::ProtocolError;
+    /// use cosmic_connect_protocol::ProtocolError;
     ///
     /// let error = ProtocolError::invalid_state("Cannot start capture: not initialized");
     /// assert!(matches!(error, ProtocolError::InvalidState(_)));
@@ -647,7 +655,7 @@ impl ProtocolError {
     /// # Examples
     ///
     /// ```rust
-    /// use cosmic_connect_core::ProtocolError;
+    /// use cosmic_connect_protocol::ProtocolError;
     ///
     /// let error = ProtocolError::unsupported_feature("RemoteDesktop requires feature flag");
     /// assert!(matches!(error, ProtocolError::UnsupportedFeature(_)));

@@ -108,7 +108,7 @@ use super::{Plugin, PluginFactory};
 /// ## Example
 ///
 /// ```rust
-/// use cosmic_connect_core::plugins::battery::BatteryStatus;
+/// use cosmic_connect_protocol::plugins::battery::BatteryStatus;
 ///
 /// let status = BatteryStatus {
 ///     current_charge: 75,
@@ -141,7 +141,7 @@ impl BatteryStatus {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::battery::BatteryStatus;
+    /// use cosmic_connect_protocol::plugins::battery::BatteryStatus;
     ///
     /// let status = BatteryStatus::new(50, false, 0);
     /// assert_eq!(status.current_charge, 50);
@@ -160,7 +160,7 @@ impl BatteryStatus {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::battery::BatteryStatus;
+    /// use cosmic_connect_protocol::plugins::battery::BatteryStatus;
     ///
     /// let status = BatteryStatus::no_battery();
     /// assert_eq!(status.current_charge, -1);
@@ -179,7 +179,7 @@ impl BatteryStatus {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::battery::BatteryStatus;
+    /// use cosmic_connect_protocol::plugins::battery::BatteryStatus;
     ///
     /// let with_battery = BatteryStatus::new(75, false, 0);
     /// assert!(with_battery.has_battery());
@@ -196,7 +196,7 @@ impl BatteryStatus {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::battery::BatteryStatus;
+    /// use cosmic_connect_protocol::plugins::battery::BatteryStatus;
     ///
     /// let low = BatteryStatus::new(15, false, 1);
     /// assert!(low.is_low_battery());
@@ -223,8 +223,8 @@ impl BatteryStatus {
 /// ## Example
 ///
 /// ```rust
-/// use cosmic_connect_core::plugins::battery::{BatteryPlugin, BatteryStatus};
-/// use cosmic_connect_core::Plugin;
+/// use cosmic_connect_protocol::plugins::battery::BatteryPlugin;
+/// use cosmic_connect_protocol::Plugin;
 ///
 /// let plugin = BatteryPlugin::new();
 /// assert_eq!(plugin.name(), "battery");
@@ -247,7 +247,7 @@ impl BatteryPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::battery::BatteryPlugin;
+    /// use cosmic_connect_protocol::plugins::battery::BatteryPlugin;
     ///
     /// let plugin = BatteryPlugin::new();
     /// assert!(plugin.get_battery_status().is_none());
@@ -266,7 +266,7 @@ impl BatteryPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::battery::BatteryPlugin;
+    /// use cosmic_connect_protocol::plugins::battery::BatteryPlugin;
     ///
     /// let plugin = BatteryPlugin::new();
     /// assert!(plugin.get_battery_status().is_none());
@@ -290,7 +290,7 @@ impl BatteryPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::battery::{BatteryPlugin, BatteryStatus};
+    /// use cosmic_connect_protocol::plugins::battery::{BatteryPlugin, BatteryStatus};
     ///
     /// let plugin = BatteryPlugin::new();
     /// let status = BatteryStatus::new(75, true, 0);
@@ -320,7 +320,7 @@ impl BatteryPlugin {
     /// # Example
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::battery::BatteryPlugin;
+    /// use cosmic_connect_protocol::plugins::battery::BatteryPlugin;
     ///
     /// let plugin = BatteryPlugin::new();
     /// let packet = plugin.create_battery_request();

@@ -231,8 +231,8 @@ pub struct SendSmsRequest {
 /// ## Example
 ///
 /// ```rust
-/// use cosmic_connect_core::plugins::telephony::TelephonyPlugin;
-/// use cosmic_connect_core::Plugin;
+/// use cosmic_connect_protocol::plugins::telephony::TelephonyPlugin;
+/// use cosmic_connect_protocol::Plugin;
 ///
 /// let plugin = TelephonyPlugin::new();
 /// assert_eq!(plugin.name(), "telephony");
@@ -396,7 +396,7 @@ impl TelephonyPlugin {
     /// # Examples
     ///
     /// ```rust
-    /// use cosmic_connect_core::plugins::telephony::TelephonyPlugin;
+    /// use cosmic_connect_protocol::plugins::telephony::TelephonyPlugin;
     ///
     /// let plugin = TelephonyPlugin::new();
     /// let packet = plugin.create_mute_request();

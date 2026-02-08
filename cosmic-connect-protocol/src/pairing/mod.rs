@@ -15,10 +15,14 @@
 //! ## Usage
 //!
 //! ```no_run
-//! use cosmic_connect_core::pairing::{PairingService, PairingEvent};
+//! use cosmic_connect_protocol::pairing::{PairingService, PairingEvent, PairingConfig};
 //!
 //! #[tokio::main]
 //! async fn main() {
+//!     // Create pairing service with default config
+//!     let config = PairingConfig::default();
+//!     let service = PairingService::new("device_id", config).unwrap();
+//!
 //!     // Service will be created in daemon
 //!     // Events will notify UI of pairing requests
 //! }
