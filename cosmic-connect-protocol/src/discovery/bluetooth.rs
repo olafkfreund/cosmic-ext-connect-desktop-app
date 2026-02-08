@@ -339,9 +339,10 @@ impl BluetoothDiscoveryService {
             // Still emit the device - user might want to pair/connect manually
         }
 
-        // Create device info
-        // Use Bluetooth address as device_id since we don't have identity yet
-        let device_info = DeviceInfo::new(&device_name, device_type, 1816);
+        // Create device info with stable ID derived from Bluetooth MAC address
+        // This prevents duplicate devices across scan cycles
+        let stable_id = format!("bt_{}", bt_address.replace(':', "_"));
+        let device_info = DeviceInfo::with_id(stable_id, &device_name, device_type, 1816);
 
         let current_time = current_timestamp();
         let mut last_seen_map = last_seen.write().await;

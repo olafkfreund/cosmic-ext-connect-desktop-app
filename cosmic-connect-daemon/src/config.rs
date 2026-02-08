@@ -253,11 +253,11 @@ pub struct PluginConfig {
     pub enable_screenshot: bool,
 
     /// Enable RemoteDesktop plugin (VNC-based remote desktop)
-    #[serde(default = "default_false")]
+    #[serde(default = "default_true")]
     pub enable_remotedesktop: bool,
 
     /// Enable Power plugin (remote power management)
-    #[serde(default = "default_false")]
+    #[serde(default = "default_true")]
     pub enable_power: bool,
 
     /// Enable ClipboardHistory plugin (persistent clipboard history)
@@ -265,7 +265,7 @@ pub struct PluginConfig {
     pub enable_clipboardhistory: bool,
 
     /// Enable Macro plugin (automation scripts)
-    #[serde(default = "default_false")]
+    #[serde(default = "default_true")]
     pub enable_macro: bool,
 
     /// Enable Chat plugin (instant messaging)
@@ -273,19 +273,19 @@ pub struct PluginConfig {
     pub enable_chat: bool,
 
     /// Enable AudioStream plugin (audio streaming between desktops)
-    #[serde(default = "default_false")]
+    #[serde(default = "default_true")]
     pub enable_audiostream: bool,
 
     /// Enable FileSync plugin (automatic file synchronization)
-    #[serde(default = "default_false")]
+    #[serde(default = "default_true")]
     pub enable_filesync: bool,
 
     /// Enable ScreenShare plugin (one-way screen sharing for presentations)
-    #[serde(default = "default_false")]
+    #[serde(default = "default_true")]
     pub enable_screenshare: bool,
 
     /// Enable MouseKeyboardShare plugin (Synergy-like input sharing)
-    #[serde(default = "default_false")]
+    #[serde(default = "default_true")]
     pub enable_mousekeyboardshare: bool,
 
     /// Enable NetworkShare plugin (SFTP mounting)
@@ -293,7 +293,7 @@ pub struct PluginConfig {
     pub enable_networkshare: bool,
 
     /// Enable Camera plugin (remote camera/webcam access)
-    #[serde(default = "default_false")]
+    #[serde(default = "default_true")]
     pub enable_camera: bool,
 }
 
@@ -425,37 +425,33 @@ impl TransportConfig {
 impl Default for PluginConfig {
     fn default() -> Self {
         Self {
-            // Core plugins - always enabled
             enable_ping: true,
             enable_battery: true,
             enable_notification: true,
             enable_share: true,
             enable_clipboard: true,
             enable_mpris: true,
-
-            // Advanced plugins - disabled by default to reduce discovery packet size
-            // These can be enabled in config if needed
-            enable_runcommand: false, // Security: command execution should be opt-in
-            enable_remoteinput: true, // Keep enabled - useful for presentations
-            enable_findmyphone: true, // Keep enabled - emergency feature
-            enable_lock: true,        // Desktop lock/unlock control
-            enable_telephony: true,   // Enabled - SMS and call notifications
-            enable_presenter: false,  // Specialized use case - reduce packet size
-            enable_contacts: false,   // Reduce packet size - can be enabled if needed
-            enable_systemmonitor: true, // Desktop-to-desktop system monitoring
-            enable_wol: true,         // Desktop-to-desktop Wake-on-LAN
-            enable_screenshot: true,  // Desktop-to-desktop screenshot capture
-            enable_remotedesktop: false, // Security: disabled by default, requires explicit opt-in
-            enable_power: false,      // Security: power control disabled by default
-            enable_clipboardhistory: true, // Clipboard history with sync
-            enable_macro: false,      // Security: automation disabled by default
-            enable_chat: true,        // Instant messaging enabled by default
-            enable_audiostream: false, // Audio streaming disabled by default (requires audio backend)
-            enable_filesync: false, // File sync disabled by default (requires file system integration)
-            enable_screenshare: true, // Screen share enabled by default for desktop-to-desktop
-            enable_mousekeyboardshare: false, // Mouse/keyboard share disabled by default (requires input capture)
-            enable_networkshare: true,        // SFTP mounting enabled by default
-            enable_camera: false,             // Camera disabled by default (opt-in feature)
+            enable_runcommand: true,
+            enable_remoteinput: true,
+            enable_findmyphone: true,
+            enable_lock: true,
+            enable_telephony: true,
+            enable_presenter: true,
+            enable_contacts: true,
+            enable_systemmonitor: true,
+            enable_wol: true,
+            enable_screenshot: true,
+            enable_remotedesktop: true,
+            enable_power: true,
+            enable_clipboardhistory: true,
+            enable_macro: true,
+            enable_chat: true,
+            enable_audiostream: true,
+            enable_filesync: true,
+            enable_screenshare: true,
+            enable_mousekeyboardshare: true,
+            enable_networkshare: true,
+            enable_camera: true,
         }
     }
 }

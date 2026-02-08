@@ -377,11 +377,41 @@ impl DeviceManager {
             device.update_last_seen();
             debug!("Updated device from discovery: {}", device_id);
         } else {
-            // Add new device
-            let mut device = Device::from_discovery(info);
-            device.host = host;
-            device.port = port;
-            self.add_device(device);
+            // Safety net: check for duplicate by name+host before adding
+            // This catches devices that appear with different IDs but are the same physical device
+            let existing_id = host.as_ref().and_then(|h| {
+                self.devices
+                    .iter()
+                    .find(|(id, d)| {
+                        *id != &device_id
+                            && d.info.device_name == info.device_name
+                            && d.host.as_deref() == Some(h.as_str())
+                    })
+                    .map(|(id, _)| id.clone())
+            });
+
+            if let Some(old_id) = existing_id {
+                // Merge: remove stale entry, add under new ID
+                info!(
+                    "Dedup: merging device '{}' (old_id={}, new_id={})",
+                    info.device_name, old_id, device_id
+                );
+                let mut old_device = self
+                    .devices
+                    .remove(&old_id)
+                    .expect("dedup: old_id was found by iterating self.devices");
+                old_device.info = info;
+                old_device.host = host;
+                old_device.port = port;
+                old_device.update_last_seen();
+                self.devices.insert(device_id, old_device);
+            } else {
+                // Genuinely new device
+                let mut device = Device::from_discovery(info);
+                device.host = host;
+                device.port = port;
+                self.add_device(device);
+            }
         }
     }
 

@@ -5,7 +5,7 @@ use cosmic::{
     app::{Core, Task},
     iced::{Alignment, Length, Size},
     theme,
-    widget::{button, column, container, horizontal_space, icon, row, scrollable, text, toggler, vertical_space},
+    widget::{button, column, container, divider, horizontal_space, icon, row, scrollable, text, toggler, vertical_space},
     Application, Element,
 };
 
@@ -445,6 +445,9 @@ pub enum Message {
     SaveDeviceSettings,
     DeviceNicknameChanged(String),
     DevicePluginToggled(String, bool),
+    // Unpair device messages
+    UnpairDevice(String),
+    ConfirmUnpairDevice(String),
     // Remote input dialog messages
     OpenRemoteInputDialog(String),
     CloseRemoteInputDialog,
@@ -508,6 +511,7 @@ pub struct CosmicConnectManager {
     device_settings_config: Option<DeviceConfig>,
     device_settings_nickname: String,
     device_settings_plugins: HashMap<String, bool>,
+    confirm_unpair_device_id: Option<String>,
     // Remote input dialog state
     show_remote_input_dialog: bool,
     remote_input_device_id: Option<String>,
@@ -1520,6 +1524,47 @@ impl CosmicConnectManager {
             );
         }
 
+        // Unpair device section
+        if let Some(device_id) = &self.settings_device_id {
+            content = content.push(
+                divider::horizontal::default()
+            );
+
+            if self.confirm_unpair_device_id.as_deref() == Some(device_id.as_str()) {
+                // Confirmation state
+                let device_id_clone = device_id.clone();
+                content = content.push(
+                    column::with_capacity(2)
+                        .spacing(theme::active().cosmic().space_xxs())
+                        .push(text("Are you sure you want to unpair this device?").size(14))
+                        .push(
+                            row::with_capacity(2)
+                                .spacing(theme::active().cosmic().space_s())
+                                .push(
+                                    button::text("Cancel")
+                                        .on_press(Message::CloseDeviceSettings)
+                                        .class(theme::Button::Text)
+                                        .padding(theme::active().cosmic().space_s()),
+                                )
+                                .push(
+                                    button::text("Confirm Unpair")
+                                        .on_press(Message::ConfirmUnpairDevice(device_id_clone))
+                                        .class(theme::Button::Destructive)
+                                        .padding(theme::active().cosmic().space_s()),
+                                ),
+                        ),
+                );
+            } else {
+                let device_id_clone = device_id.clone();
+                content = content.push(
+                    button::text("Unpair Device")
+                        .on_press(Message::UnpairDevice(device_id_clone))
+                        .class(theme::Button::Destructive)
+                        .padding(theme::active().cosmic().space_s()),
+                );
+            }
+        }
+
         // Buttons
         content = content.push(
             row::with_capacity(2)
@@ -1867,6 +1912,7 @@ impl Application for CosmicConnectManager {
                 device_settings_config: None,
                 device_settings_nickname: String::new(),
                 device_settings_plugins: HashMap::new(),
+                confirm_unpair_device_id: None,
                 // Remote input dialog
                 show_remote_input_dialog: false,
                 remote_input_device_id: None,
@@ -2684,7 +2730,35 @@ impl Application for CosmicConnectManager {
                 self.device_settings_config = None;
                 self.device_settings_nickname.clear();
                 self.device_settings_plugins.clear();
+                self.confirm_unpair_device_id = None;
                 Task::none()
+            }
+            Message::UnpairDevice(device_id) => {
+                self.confirm_unpair_device_id = Some(device_id);
+                Task::none()
+            }
+            Message::ConfirmUnpairDevice(device_id) => {
+                if let Some(client) = &self.dbus_client {
+                    let client = client.clone();
+                    self.devices.remove(&device_id);
+                    self.device_configs.remove(&device_id);
+                    self.battery_status.remove(&device_id);
+                    if self.selected_device.as_deref() == Some(device_id.as_str()) {
+                        self.selected_device = None;
+                    }
+                    self.show_device_settings = false;
+                    self.settings_device_id = None;
+                    self.confirm_unpair_device_id = None;
+                    cosmic::task::future(async move {
+                        if let Err(e) = client.unpair_device(&device_id).await {
+                            tracing::error!("Failed to unpair device: {}", e);
+                            return Message::ActionError(format!("Failed to unpair device: {}", e));
+                        }
+                        Message::RefreshDevices
+                    })
+                } else {
+                    Task::none()
+                }
             }
             Message::DeviceSettingsLoaded(config) => {
                 self.device_settings_nickname = config.nickname.clone().unwrap_or_default();
