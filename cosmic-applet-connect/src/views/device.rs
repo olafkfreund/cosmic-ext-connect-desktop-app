@@ -13,7 +13,7 @@ use cosmic_connect_protocol::{ConnectionState, Device, DeviceType, PairingStatus
 use crate::{
     horizontal_space, messages::OperationType, space_xxs, space_xxs_f32,
     space_xs, space_xxxs, state::*, theme_destructive_color, theme_muted_color,
-    theme_success_color, theme_warning_color, CConnectApplet, Message, ICON_L, ICON_S, ICON_XS,
+    theme_success_color, theme_warning_color, CConnectApplet, Message, ICON_L, ICON_S, ICON_XL, ICON_XS,
 };
 
 /// Device category for grouping in popup
@@ -250,8 +250,8 @@ impl CConnectApplet {
         // Main device row layout
         let mut content = column![
             row![
-                container(icon::from_name(device_icon).size(ICON_L))
-                    .width(Length::Fixed(48.0))
+                container(icon::from_name(device_icon).size(ICON_XL))
+                    .width(Length::Fixed(64.0))
                     .align_x(Horizontal::Center)
                     .padding(Padding::new(space_xxs_f32())),
                 info_col,
@@ -584,6 +584,46 @@ impl CConnectApplet {
                     Message::LaunchScreenMirror(device_id.to_string()),
                 ));
             }
+
+            // Remote Desktop button
+            if device.has_incoming_capability("cconnect.remotedesktop.request") {
+                actions = actions.push(action_button_with_tooltip(
+                    "preferences-desktop-remote-desktop-symbolic",
+                    "Remote Desktop",
+                    Message::ShowRemoteDesktopSettings(device_id.to_string()),
+                ));
+            }
+
+            // Camera streaming toggle button
+            if device.has_incoming_capability("cconnect.camera") {
+                let is_streaming = self
+                    .camera_stats
+                    .get(device_id)
+                    .is_some_and(|s| s.is_streaming);
+                actions = actions.push(
+                    cosmic::widget::button::icon(if is_streaming {
+                        cosmic::widget::icon::from_name("camera-web-symbolic").size(ICON_S)
+                    } else {
+                        cosmic::widget::icon::from_name("camera-disabled-symbolic").size(ICON_S)
+                    })
+                    .on_press(Message::ToggleCameraStreaming(device_id.to_string()))
+                    .padding(space_xxxs())
+                    .tooltip(if is_streaming {
+                        "Stop camera streaming"
+                    } else {
+                        "Start camera streaming"
+                    }),
+                );
+            }
+
+            // Run Commands button
+            if device.has_incoming_capability("cconnect.runcommand") {
+                actions = actions.push(action_button_with_tooltip(
+                    "utilities-terminal-symbolic",
+                    "Run Commands",
+                    Message::ShowRunCommandSettings(device_id.to_string()),
+                ));
+            }
         }
 
         // Device details and manager button (for paired devices)
@@ -733,6 +773,33 @@ impl CConnectApplet {
                     "video-display-symbolic",
                     "Mirror screen",
                     Message::LaunchScreenMirror(device_id.to_string()),
+                    cosmic::theme::Button::MenuItem,
+                ));
+            }
+
+            if device.has_incoming_capability("cconnect.remotedesktop.request") {
+                menu_items.push(menu_item(
+                    "preferences-desktop-remote-desktop-symbolic",
+                    "Remote Desktop",
+                    Message::ShowRemoteDesktopSettings(device_id.to_string()),
+                    cosmic::theme::Button::MenuItem,
+                ));
+            }
+
+            if device.has_incoming_capability("cconnect.camera") {
+                menu_items.push(menu_item(
+                    "camera-web-symbolic",
+                    "Toggle camera",
+                    Message::ToggleCameraStreaming(device_id.to_string()),
+                    cosmic::theme::Button::MenuItem,
+                ));
+            }
+
+            if device.has_incoming_capability("cconnect.runcommand") {
+                menu_items.push(menu_item(
+                    "utilities-terminal-symbolic",
+                    "Run Commands",
+                    Message::ShowRunCommandSettings(device_id.to_string()),
                     cosmic::theme::Button::MenuItem,
                 ));
             }
