@@ -96,7 +96,7 @@ mouse-keyboard-input = "0.9"
 bluer = { version = "0.17", features = ["bluetoothd", "rfcomm"] }
 
 # Rich Notification Support
-regex = "1.10"
+regex = "1.12"
 open = "5.0"
 
 [profile.dev]
