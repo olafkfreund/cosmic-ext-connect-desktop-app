@@ -395,6 +395,27 @@ impl futures::Stream for FrameStream {
     }
 }
 
+/// Type of video frame buffer
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum BufferType {
+    /// Shared memory (CPU accessible) - current default
+    #[default]
+    Shm,
+    /// DMA-BUF (GPU memory, zero-copy)
+    DmaBuf {
+        /// DMA-BUF file descriptor (as raw fd number for cross-thread use)
+        fd: i32,
+        /// Buffer stride in bytes
+        stride: u32,
+        /// Buffer offset in bytes
+        offset: u32,
+        /// DRM format modifier
+        modifier: u64,
+        /// DRM fourcc format code
+        drm_format: u32,
+    },
+}
+
 /// A single video frame from the capture stream
 #[derive(Debug, Clone)]
 pub struct VideoFrame {
@@ -415,11 +436,14 @@ pub struct VideoFrame {
 
     /// Frame sequence number
     pub sequence: u64,
+
+    /// Buffer type (SHM or DMA-BUF)
+    pub buffer_type: BufferType,
 }
 
 impl VideoFrame {
-    /// Create a new video frame
-    #[must_use] 
+    /// Create a new video frame with shared memory buffer
+    #[must_use]
     pub fn new(
         data: Vec<u8>,
         width: u32,
@@ -435,11 +459,59 @@ impl VideoFrame {
             format,
             timestamp,
             sequence,
+            buffer_type: BufferType::Shm,
+        }
+    }
+
+    /// Create a new video frame with DMA-BUF buffer (zero-copy GPU memory)
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - Frame data (may be empty for DMA-BUF)
+    /// * `width` - Frame width in pixels
+    /// * `height` - Frame height in pixels
+    /// * `format` - Frame format (e.g., "`BGRx`")
+    /// * `timestamp` - Frame timestamp in microseconds
+    /// * `sequence` - Frame sequence number
+    /// * `fd` - DMA-BUF file descriptor
+    /// * `stride` - Buffer stride in bytes
+    /// * `offset` - Buffer offset in bytes
+    /// * `modifier` - DRM format modifier
+    /// * `drm_format` - DRM fourcc format code
+    #[must_use]
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_dmabuf(
+        data: Vec<u8>,
+        width: u32,
+        height: u32,
+        format: String,
+        timestamp: i64,
+        sequence: u64,
+        fd: i32,
+        stride: u32,
+        offset: u32,
+        modifier: u64,
+        drm_format: u32,
+    ) -> Self {
+        Self {
+            data,
+            width,
+            height,
+            format,
+            timestamp,
+            sequence,
+            buffer_type: BufferType::DmaBuf {
+                fd,
+                stride,
+                offset,
+                modifier,
+                drm_format,
+            },
         }
     }
 
     /// Get the frame data size in bytes
-    #[must_use] 
+    #[must_use]
     pub fn size(&self) -> usize {
         self.data.len()
     }
@@ -452,6 +524,21 @@ impl VideoFrame {
             "BGRx" | "RGBx" | "BGRA" | "RGBA" => 4,
             "BGR" | "RGB" => 3,
             _ => 4, // Default to 4 bytes
+        }
+    }
+
+    /// Check if this frame uses DMA-BUF
+    #[must_use]
+    pub fn is_dmabuf(&self) -> bool {
+        matches!(self.buffer_type, BufferType::DmaBuf { .. })
+    }
+
+    /// Get the DMA-BUF file descriptor if this is a DMA-BUF frame
+    #[must_use]
+    pub fn dmabuf_fd(&self) -> Option<i32> {
+        match self.buffer_type {
+            BufferType::DmaBuf { fd, .. } => Some(fd),
+            BufferType::Shm => None,
         }
     }
 }
@@ -505,5 +592,47 @@ mod tests {
         assert_eq!(frame.height, 1080);
         assert_eq!(frame.bytes_per_pixel(), 4);
         assert_eq!(frame.size(), 1920 * 1080 * 4);
+        assert!(!frame.is_dmabuf());
+        assert_eq!(frame.dmabuf_fd(), None);
+        assert_eq!(frame.buffer_type, BufferType::Shm);
+    }
+
+    #[test]
+    fn test_video_frame_dmabuf() {
+        let frame = VideoFrame::new_dmabuf(
+            vec![],
+            1920,
+            1080,
+            "BGRx".to_string(),
+            12345,
+            1,
+            42,    // fd
+            7680,  // stride (1920 * 4)
+            0,     // offset
+            0,     // modifier
+            0x34325258, // drm_format (XR24)
+        );
+
+        assert_eq!(frame.width, 1920);
+        assert_eq!(frame.height, 1080);
+        assert_eq!(frame.bytes_per_pixel(), 4);
+        assert_eq!(frame.size(), 0); // Empty data for DMA-BUF
+        assert!(frame.is_dmabuf());
+        assert_eq!(frame.dmabuf_fd(), Some(42));
+
+        if let BufferType::DmaBuf { fd, stride, offset, modifier, drm_format } = frame.buffer_type {
+            assert_eq!(fd, 42);
+            assert_eq!(stride, 7680);
+            assert_eq!(offset, 0);
+            assert_eq!(modifier, 0);
+            assert_eq!(drm_format, 0x34325258);
+        } else {
+            panic!("Expected DmaBuf buffer type");
+        }
+    }
+
+    #[test]
+    fn test_buffer_type_default() {
+        assert_eq!(BufferType::default(), BufferType::Shm);
     }
 }

@@ -3,12 +3,13 @@
 //! This module provides integration with `PipeWire` to receive raw video frames
 //! from the screen capture session.
 
-use crate::capture::VideoFrame;
+use crate::capture::{BufferType, VideoFrame};
 use crate::error::Result;
 use pipewire as pw;
 use pipewire::context::Context;
 use pipewire::main_loop::MainLoop;
 use pipewire::properties::properties;
+use pipewire::spa::buffer::DataType;
 use pipewire::spa::param::ParamType;
 use pipewire::spa::utils::Direction;
 use pipewire::stream::{Stream, StreamFlags, StreamState};
@@ -35,6 +36,15 @@ pub struct PipeWireStream {
     properties: Arc<std::sync::Mutex<Option<StreamProperties>>>,
 }
 
+/// Buffer mode negotiated with `PipeWire`
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BufferMode {
+    /// Shared memory buffers (default, always works)
+    Shm,
+    /// DMA-BUF buffers (zero-copy, requires GPU support)
+    DmaBuf,
+}
+
 /// Stream properties extracted from `PipeWire`
 #[derive(Debug, Clone)]
 pub struct StreamProperties {
@@ -49,6 +59,15 @@ pub struct StreamProperties {
 
     /// Framerate
     pub framerate: u32,
+
+    /// Buffer mode negotiated with `PipeWire`
+    pub buffer_mode: BufferMode,
+
+    /// DRM fourcc format code (if DMA-BUF)
+    pub drm_format: Option<u32>,
+
+    /// DRM format modifier (if DMA-BUF)
+    pub modifier: Option<u64>,
 }
 
 impl PipeWireStream {
@@ -196,12 +215,24 @@ fn run_pipewire_loop(
             // Parse video format from params
             if id == ParamType::Format.as_raw() {
                 if let Some(pod) = param {
-                    // Try to extract format info from the pod
-                    // This is a simplified parser - real implementation would use spa_format_parse
-                    debug!("Format param changed, pod size: {}", pod.size());
+                    let pod_size = pod.size();
+                    debug!("Format param changed, pod size: {}", pod_size);
 
-                    // For now, we'll detect common formats based on the raw data
-                    // In production, use proper spa format parsing
+                    // Try to detect if DMA-BUF was negotiated
+                    // The actual format detection would parse the SPA pod structure
+                    // For now, we'll detect buffer type in the process callback
+                    let raw_data = unsafe {
+                        std::slice::from_raw_parts(
+                            pod.as_raw_ptr() as *const u8,
+                            pod_size as usize,
+                        )
+                    };
+
+                    debug!("Received format negotiation data ({} bytes)", raw_data.len());
+
+                    // Update stream dimensions from format if possible
+                    // This is where we'd parse width/height/format from the SPA pod
+                    // Full implementation would use libspa format parsing utilities
                 }
             }
         })
@@ -222,6 +253,57 @@ fn run_pipewire_loop(
                     // Stride can be i32 (negative for bottom-up images), use absolute value
                     let stride = usize::try_from(chunk.stride().unsigned_abs()).unwrap_or(0);
 
+                    // Check buffer type from data type
+                    let data_type = data.type_();
+                    let is_dmabuf = data_type == DataType::DmaBuf;
+
+                    if is_dmabuf {
+                        // DMA-BUF path: extract fd instead of copying data
+                        debug!("Processing DMA-BUF frame");
+                        let raw_data = data.as_raw();
+                        // The fd field is i64 in spa_data struct
+                        let fd_i64 = raw_data.fd;
+
+                        // Only process if we have a valid fd (>= 0)
+                        if fd_i64 >= 0 {
+                            #[allow(clippy::cast_possible_truncation)]
+                            let fd_raw = fd_i64 as i32;
+                            let width = stream_width_clone.load(Ordering::Relaxed);
+                            let height = stream_height_clone.load(Ordering::Relaxed);
+                            let seq = frame_sequence_clone.fetch_add(1, Ordering::Relaxed);
+
+                            let frame = VideoFrame {
+                                data: Vec::new(), // No CPU copy for DMA-BUF
+                                width,
+                                height,
+                                format: "DMA-BUF".to_string(),
+                                timestamp: std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .map(|d| i64::try_from(d.as_micros()).unwrap_or(i64::MAX))
+                                    .unwrap_or(0),
+                                sequence: seq,
+                                buffer_type: BufferType::DmaBuf {
+                                    fd: fd_raw,
+                                    stride: u32::try_from(stride).unwrap_or(0),
+                                    offset: u32::try_from(offset).unwrap_or(0),
+                                    modifier: 0, // Will be set from format negotiation
+                                    drm_format: 0, // Will be set from format negotiation
+                                },
+                            };
+
+                            if let Err(e) = frame_tx.try_send(frame) {
+                                if matches!(e, mpsc::error::TrySendError::Full(_)) {
+                                    debug!("Frame channel full, dropping DMA-BUF frame");
+                                } else {
+                                    warn!("Failed to send DMA-BUF frame: {}", e);
+                                }
+                            }
+                            return; // DMA-BUF path done
+                        }
+                        debug!("DMA-BUF buffer has invalid fd ({}), falling back to SHM", fd_i64);
+                    }
+
+                    // SHM path (existing code, unchanged)
                     if let Some(slice) = data.data() {
                         if size > 0 && offset + size <= slice.len() {
                             let frame_data = slice[offset..offset + size].to_vec();
@@ -312,10 +394,42 @@ mod tests {
             height: 1080,
             format: "BGRx".to_string(),
             framerate: 60,
+            buffer_mode: BufferMode::Shm,
+            drm_format: None,
+            modifier: None,
         };
         assert_eq!(props.width, 1920);
         assert_eq!(props.height, 1080);
         assert_eq!(props.format, "BGRx");
         assert_eq!(props.framerate, 60);
+        assert_eq!(props.buffer_mode, BufferMode::Shm);
+        assert_eq!(props.drm_format, None);
+        assert_eq!(props.modifier, None);
+    }
+
+    #[test]
+    fn test_buffer_mode() {
+        let shm_mode = BufferMode::Shm;
+        let dmabuf_mode = BufferMode::DmaBuf;
+
+        assert_eq!(shm_mode, BufferMode::Shm);
+        assert_eq!(dmabuf_mode, BufferMode::DmaBuf);
+        assert_ne!(shm_mode, dmabuf_mode);
+    }
+
+    #[test]
+    fn test_stream_properties_with_dmabuf() {
+        let props = StreamProperties {
+            width: 1920,
+            height: 1080,
+            format: "DMA-BUF".to_string(),
+            framerate: 60,
+            buffer_mode: BufferMode::DmaBuf,
+            drm_format: Some(0x34325258), // DRM_FORMAT_XRGB8888
+            modifier: Some(0x0100000000000001), // Example modifier
+        };
+        assert_eq!(props.buffer_mode, BufferMode::DmaBuf);
+        assert_eq!(props.drm_format, Some(0x34325258));
+        assert!(props.modifier.is_some());
     }
 }

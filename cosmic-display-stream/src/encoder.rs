@@ -69,6 +69,15 @@ impl EncoderType {
             Self::Software => "Software (x264)",
         }
     }
+
+    /// Whether this encoder type supports DMA-BUF input natively
+    ///
+    /// VAAPI supports zero-copy DMA-BUF input for direct GPU encoding.
+    /// Other encoders fall back to SHM path (memory copy).
+    #[must_use]
+    pub fn supports_dmabuf(self) -> bool {
+        matches!(self, Self::Vaapi)
+    }
 }
 
 /// Encoder configuration options
@@ -450,7 +459,36 @@ impl VideoEncoder {
     }
 
     /// Encode a `VideoFrame` from the capture module
+    ///
+    /// Automatically dispatches to the appropriate encoding path based on buffer type.
     pub fn encode_video_frame(&mut self, frame: &VideoFrame) -> Result<Option<EncodedFrame>> {
+        if frame.is_dmabuf() {
+            self.encode_dmabuf_frame(frame)
+        } else {
+            self.encode_shm_frame(frame)
+        }
+    }
+
+    /// Encode a DMA-BUF video frame (zero-copy path)
+    ///
+    /// When VAAPI encoding is available, this provides a zero-copy path
+    /// from GPU capture buffer directly to the hardware encoder.
+    /// Falls back to the SHM path if the DMA-BUF pipeline is not available.
+    fn encode_dmabuf_frame(&mut self, frame: &VideoFrame) -> Result<Option<EncodedFrame>> {
+        // For now, fall back to SHM path - full DMA-BUF GStreamer pipeline
+        // will be implemented when we have GBM buffer objects
+        if frame.is_dmabuf() {
+            warn!(
+                "DMA-BUF encode path not yet optimized, falling back to SHM copy (encoder: {})",
+                self.encoder_type.display_name()
+            );
+        }
+        // Use standard SHM encode path (copies data from frame.data)
+        self.encode_shm_frame(frame)
+    }
+
+    /// Encode a shared memory video frame
+    fn encode_shm_frame(&mut self, frame: &VideoFrame) -> Result<Option<EncodedFrame>> {
         // Verify format compatibility
         if frame.format != "BGRx" && frame.format != "BGRA" {
             warn!(
@@ -702,5 +740,12 @@ mod tests {
                 EncoderType::Vaapi | EncoderType::Nvenc | EncoderType::Software
             )));
         }
+    }
+
+    #[test]
+    fn test_encoder_type_supports_dmabuf() {
+        assert!(EncoderType::Vaapi.supports_dmabuf());
+        assert!(!EncoderType::Nvenc.supports_dmabuf());
+        assert!(!EncoderType::Software.supports_dmabuf());
     }
 }

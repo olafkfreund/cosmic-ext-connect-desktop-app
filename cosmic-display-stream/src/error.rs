@@ -56,6 +56,10 @@ pub enum DisplayStreamError {
     #[error("Input error: {0}")]
     Input(String),
 
+    /// GBM device error
+    #[error("GBM error: {0}")]
+    Gbm(String),
+
     /// Generic I/O error
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),

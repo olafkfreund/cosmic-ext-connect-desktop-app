@@ -92,6 +92,7 @@
 pub mod capture;
 pub mod encoder;
 pub mod error;
+pub mod gbm_devices;
 pub mod input;
 pub mod output;
 pub mod pipewire;
@@ -100,6 +101,9 @@ pub mod streaming;
 pub use capture::{FrameStream, ScreenCapture, SessionState, VideoFrame};
 pub use encoder::{EncodedFrame, EncoderConfig, EncoderType, VideoEncoder};
 pub use error::{DisplayStreamError, Result};
+pub use gbm_devices::{
+    gbm_to_spa_format, spa_format_to_gbm, DmaBufInfo, GbmDevice, GbmDeviceManager,
+};
 pub use input::{
     DesktopCoordinates, DisplayGeometry, InputHandler, InputStatistics, TouchAction, TouchEvent,
 };

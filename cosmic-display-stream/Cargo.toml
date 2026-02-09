@@ -46,5 +46,9 @@ serde_json = { workspace = true }
 # Input injection for Wayland (libei/reis)
 enigo = { version = "0.6", features = ["libei_tokio"] }
 
+# DMA-BUF / GBM support for zero-copy capture
+gbm = "0.18"
+drm-fourcc = "2.2"
+
 [dev-dependencies]
 tokio-test = "0.4"

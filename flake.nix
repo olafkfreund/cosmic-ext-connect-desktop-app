@@ -60,6 +60,9 @@
           # RemoteDesktop plugin dependencies
           pipewire
 
+          # DMA-BUF / GBM support for zero-copy capture
+          mesa.dev
+
           # ScreenShare plugin dependencies (GStreamer)
           gst_all_1.gstreamer
           gst_all_1.gst-plugins-base
