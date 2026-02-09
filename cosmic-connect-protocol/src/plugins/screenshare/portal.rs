@@ -14,6 +14,15 @@ use tracing::{debug, error, info};
 
 use crate::Result;
 
+/// Which cursor mode the portal granted for the session
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrantedCursorMode {
+    /// Cursor baked into the video stream
+    Embedded,
+    /// Cursor sent as separate PipeWire metadata
+    Metadata,
+}
+
 /// Screen share portal session info
 #[derive(Debug)]
 pub struct PortalSession {
@@ -24,6 +33,9 @@ pub struct PortalSession {
     pub pipewire_node_id: u32,
     /// Restore token for persisting source selection across sessions
     pub restore_token: Option<String>,
+    /// Which cursor mode was granted by the portal
+    #[cfg(feature = "screenshare")]
+    pub cursor_mode: GrantedCursorMode,
 }
 
 #[cfg(feature = "screenshare")]
@@ -64,11 +76,27 @@ pub async fn request_screencast(restore_token: Option<&str>) -> Result<PortalSes
         debug!("Using restore token from previous session");
     }
 
-    // Select sources - allow monitor or window, with cursor embedded
+    // Negotiate cursor mode: prefer Metadata (lower latency) with fallback to Embedded
+    let (selected_cursor_mode, granted_mode) = match screencast.available_cursor_modes().await {
+        Ok(modes) if modes.contains(CursorMode::Metadata) => {
+            info!("Portal supports CursorMode::Metadata, using for lower-latency cursor");
+            (CursorMode::Metadata, GrantedCursorMode::Metadata)
+        }
+        Ok(modes) => {
+            debug!("Available cursor modes: {:?}, falling back to Embedded", modes);
+            (CursorMode::Embedded, GrantedCursorMode::Embedded)
+        }
+        Err(e) => {
+            debug!("Could not query cursor modes ({}), defaulting to Embedded", e);
+            (CursorMode::Embedded, GrantedCursorMode::Embedded)
+        }
+    };
+
+    // Select sources - allow monitor or window
     screencast
         .select_sources(
             &session,
-            CursorMode::Embedded, // Include cursor in the stream
+            selected_cursor_mode,
             SourceType::Monitor | SourceType::Window,
             false,                                 // multiple: allow selecting one source
             restore_token,                         // restore previous source selection
@@ -126,12 +154,16 @@ pub async fn request_screencast(restore_token: Option<&str>) -> Result<PortalSes
             crate::ProtocolError::Plugin(format!("PipeWire remote failed: {}", e))
         })?;
 
-    info!("Screen share permission granted: node_id={}", node_id);
+    info!(
+        "Screen share permission granted: node_id={}, cursor_mode={:?}",
+        node_id, granted_mode
+    );
 
     Ok(PortalSession {
         pipewire_fd: fd,
         pipewire_node_id: node_id,
         restore_token: new_restore_token,
+        cursor_mode: granted_mode,
     })
 }
 

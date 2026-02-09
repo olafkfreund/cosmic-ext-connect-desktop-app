@@ -76,7 +76,7 @@ ashpd = { workspace = true, optional = true }
 default = []
 remotedesktop = ["pipewire", "openh264", "lz4", "image", "ashpd"]
 low_latency = []
-screenshare = ["gstreamer", "gstreamer-app", "gstreamer-video", "image", "ashpd"]
+screenshare = ["gstreamer", "gstreamer-app", "gstreamer-video", "image", "ashpd", "pipewire"]
 video = ["cosmic-connect-core/video"]
 audiostream = ["pipewire"]
 audiostream-opus = ["audiostream", "opus"]

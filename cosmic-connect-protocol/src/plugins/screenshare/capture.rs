@@ -35,6 +35,8 @@ pub struct CaptureConfig {
     pub pipewire_fd: Option<i32>,
     /// Include audio capture
     pub include_audio: bool,
+    /// Whether cursor metadata mode is active (cursor sent separately, not baked into video)
+    pub cursor_metadata_mode: bool,
 }
 
 impl Default for CaptureConfig {
@@ -47,6 +49,7 @@ impl Default for CaptureConfig {
             pipewire_node_id: None,
             pipewire_fd: None,
             include_audio: false,
+            cursor_metadata_mode: false,
         }
     }
 }
