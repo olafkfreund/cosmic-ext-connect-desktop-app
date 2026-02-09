@@ -2573,6 +2573,18 @@ impl CConnectInterface {
         }
     }
 
+    /// Forget the saved screenshare capture source
+    ///
+    /// Clears the persisted portal restore token so the next screenshare
+    /// session will show the source selection dialog again. This is
+    /// device-independent since restore tokens are global.
+    async fn forget_screen_share_source(&self) -> Result<(), zbus::fdo::Error> {
+        info!("DBus: ForgetScreenShareSource called");
+        cosmic_connect_protocol::plugins::screenshare::clear_restore_token();
+        info!("Cleared saved screenshare source");
+        Ok(())
+    }
+
     /// Request remote device to share their screen with us
     ///
     /// Sends a request to the remote device asking them to share their screen.

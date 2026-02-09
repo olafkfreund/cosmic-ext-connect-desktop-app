@@ -183,7 +183,8 @@ pub enum Message {
     PauseScreenShare(String),  // device_id - user action to pause sharing
     ResumeScreenShare(String), // device_id - user action to resume sharing
     SetScreenShareQuality(String), // quality preset: "low", "medium", "high"
-    SetScreenShareFps(u8),     // fps: 15, 30, or 60
+    SetScreenShareFps(u8),        // fps: 15, 30, or 60
+    ForgetScreenShareSource,      // Clear saved capture source selection
     ToggleScreenShareAudio(String, bool), // device_id, include_audio - toggle audio in screen share
     // Audio Stream events
     ToggleAudioStream(String),  // device_id - toggle audio streaming on/off

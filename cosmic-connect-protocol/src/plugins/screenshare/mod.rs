@@ -168,12 +168,16 @@ fn save_restore_token(token: &str) {
 }
 
 /// Remove the saved restore token (e.g., when user explicitly revokes)
-#[allow(dead_code)]
-fn clear_restore_token() {
+pub fn clear_restore_token() {
     let path = session_restore_path();
     if std::fs::remove_file(&path).is_ok() {
         debug!("Cleared screenshare restore token at {}", path.display());
     }
+}
+
+/// Check whether a saved restore token exists on disk
+pub fn has_restore_token() -> bool {
+    session_restore_path().exists()
 }
 
 #[cfg(feature = "screenshare")]
@@ -679,6 +683,15 @@ impl ScreenSharePlugin {
             clear_pending_session(device_id);
         }
         self.stop_sharing().await
+    }
+
+    /// Clear the saved capture source selection
+    ///
+    /// Removes the persisted restore token so the next screenshare session
+    /// will show the portal source selection dialog again.
+    pub fn forget_saved_source(&self) {
+        clear_restore_token();
+        info!("Cleared saved screenshare source selection");
     }
 
     /// Pause screen sharing session
@@ -1742,5 +1755,53 @@ mod tests {
             .downcast_ref::<ScreenSharePlugin>()
             .unwrap();
         assert!(ss_default.restore_session);
+    }
+
+    /// Mutex to serialize tests that read/write the shared restore token file
+    static RESTORE_TOKEN_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn test_clear_restore_token_removes_file() {
+        let _lock = RESTORE_TOKEN_LOCK.lock().unwrap();
+        let path = session_restore_path();
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        save_restore_token("test-clear-token");
+        assert!(path.exists(), "Token file should exist after save");
+
+        clear_restore_token();
+        assert!(!path.exists(), "Token file should be removed after clear");
+    }
+
+    #[test]
+    fn test_has_restore_token_false_when_no_file() {
+        let _lock = RESTORE_TOKEN_LOCK.lock().unwrap();
+        let _ = std::fs::remove_file(session_restore_path());
+        assert!(!has_restore_token());
+    }
+
+    #[test]
+    fn test_has_restore_token_true_when_saved() {
+        let _lock = RESTORE_TOKEN_LOCK.lock().unwrap();
+        save_restore_token("test-has-token");
+        assert!(has_restore_token());
+
+        // Cleanup
+        clear_restore_token();
+    }
+
+    #[test]
+    fn test_forget_saved_source_clears_token() {
+        let _lock = RESTORE_TOKEN_LOCK.lock().unwrap();
+        save_restore_token("test-forget-token");
+        assert!(has_restore_token());
+
+        let plugin = ScreenSharePlugin::new();
+        plugin.forget_saved_source();
+        assert!(
+            !has_restore_token(),
+            "Token should be cleared after forget_saved_source"
+        );
     }
 }

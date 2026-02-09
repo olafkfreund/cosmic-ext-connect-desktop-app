@@ -2181,6 +2181,33 @@ impl cosmic::Application for CConnectApplet {
                     client.stop_screen_share(&id).await
                 })
             }
+            Message::ForgetScreenShareSource => {
+                tracing::info!("User requested to forget saved screenshare source");
+                Task::perform(
+                    async move {
+                        let (client, _) = DbusClient::connect()
+                            .await
+                            .map_err(|e| anyhow::anyhow!("DBus connection failed: {}", e))?;
+                        client.forget_screen_share_source().await
+                    },
+                    |result| {
+                        if let Err(e) = result {
+                            tracing::error!("Failed to forget screenshare source: {}", e);
+                            cosmic::Action::App(Message::ShowNotification(
+                                "Failed to clear saved source".to_string(),
+                                NotificationType::Error,
+                                None,
+                            ))
+                        } else {
+                            cosmic::Action::App(Message::ShowNotification(
+                                "Saved capture source cleared".to_string(),
+                                NotificationType::Info,
+                                None,
+                            ))
+                        }
+                    },
+                )
+            }
             Message::SetScreenShareQuality(quality) => {
                 if let Some(share) = &mut self.active_screen_share {
                     if share.is_sender {

@@ -178,7 +178,12 @@ impl CConnectApplet {
                 .spacing(space_xxs())
                 .align_y(cosmic::iced::Alignment::Center);
 
-                let settings_panel = column![quality_buttons, fps_buttons,].spacing(space_xxs());
+                let forget_source_btn = button::standard("Forget saved source")
+                    .on_press(Message::ForgetScreenShareSource)
+                    .padding(space_xxxs());
+
+                let settings_panel =
+                    column![quality_buttons, fps_buttons, forget_source_btn,].spacing(space_xxs());
 
                 overlay_content.push(
                     container(settings_panel)
