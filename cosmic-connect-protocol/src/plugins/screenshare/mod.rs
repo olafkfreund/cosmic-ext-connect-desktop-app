@@ -73,6 +73,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
@@ -117,6 +118,61 @@ fn clear_pending_session(device_id: &str) {
         if sessions.remove(device_id).is_some() {
             info!("Cleared pending screenshare session for {}", device_id);
         }
+    }
+}
+
+/// Persisted session restore data for the XDG Desktop Portal
+///
+/// Stored as JSON so the portal can skip the source selection dialog
+/// when the user starts a new screenshare session with the same source.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SessionRestore {
+    /// Opaque token returned by the ScreenCast portal
+    restore_token: String,
+    /// ISO 8601 timestamp of last use (for debugging)
+    #[serde(default)]
+    last_used: String,
+}
+
+/// Path to the session restore file
+fn session_restore_path() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from(".local/share"))
+        .join("cosmic/cosmic-connect/screenshare_session.json")
+}
+
+/// Load a previously saved restore token from disk
+fn load_restore_token() -> Option<String> {
+    let path = session_restore_path();
+    let contents = std::fs::read_to_string(&path).ok()?;
+    let session: SessionRestore = serde_json::from_str(&contents).ok()?;
+    debug!("Loaded screenshare restore token from {}", path.display());
+    Some(session.restore_token)
+}
+
+/// Save a restore token to disk for future sessions
+fn save_restore_token(token: &str) {
+    let session = SessionRestore {
+        restore_token: token.to_string(),
+        last_used: chrono::Utc::now().to_rfc3339(),
+    };
+    let path = session_restore_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string_pretty(&session) {
+        if std::fs::write(&path, json).is_ok() {
+            debug!("Saved screenshare restore token to {}", path.display());
+        }
+    }
+}
+
+/// Remove the saved restore token (e.g., when user explicitly revokes)
+#[allow(dead_code)]
+fn clear_restore_token() {
+    let path = session_restore_path();
+    if std::fs::remove_file(&path).is_ok() {
+        debug!("Cleared screenshare restore token at {}", path.display());
     }
 }
 
@@ -537,11 +593,19 @@ pub struct ScreenSharePlugin {
 
     /// Shared flag to signal streaming pause
     pause_streaming: Arc<Mutex<bool>>,
+
+    /// Whether to persist portal source selection across sessions
+    restore_session: bool,
 }
 
 impl ScreenSharePlugin {
     /// Create new screen share plugin instance
     pub fn new() -> Self {
+        Self::with_restore_session(true)
+    }
+
+    /// Create new screen share plugin with explicit restore_session setting
+    pub fn with_restore_session(restore_session: bool) -> Self {
         Self {
             device_id: None,
             enabled: false,
@@ -554,6 +618,7 @@ impl ScreenSharePlugin {
             frame_sender: None,
             stop_streaming: Arc::new(Mutex::new(false)),
             pause_streaming: Arc::new(Mutex::new(false)),
+            restore_session,
         }
     }
 
@@ -875,13 +940,27 @@ impl ScreenSharePlugin {
             let (tx, _) = tokio::sync::broadcast::channel::<BroadcastFrame>(16);
             self.frame_sender = Some(tx.clone());
 
+            // Load restore token if session restore is enabled
+            let restore_token = if self.restore_session {
+                load_restore_token()
+            } else {
+                None
+            };
+
             // Request screen share permission via XDG Desktop Portal
-            let portal_session = portal::request_screencast().await.ok();
+            let portal_session = portal::request_screencast(
+                restore_token.as_deref(),
+            ).await.ok();
+
+            // Save new restore token for next session
             if let Some(ref session) = portal_session {
                 info!(
                     "Portal session acquired: node_id={}",
                     session.pipewire_node_id
                 );
+                if let Some(ref token) = session.restore_token {
+                    save_restore_token(token);
+                }
             } else {
                 warn!("Portal request failed, falling back to test source");
             }
@@ -1428,11 +1507,34 @@ impl Plugin for ScreenSharePlugin {
 }
 
 /// Screen Share plugin factory
-pub struct ScreenSharePluginFactory;
+pub struct ScreenSharePluginFactory {
+    /// Whether to persist portal source selection across sessions
+    restore_session: bool,
+}
+
+impl ScreenSharePluginFactory {
+    /// Create factory with default settings (restore enabled)
+    pub fn new() -> Self {
+        Self {
+            restore_session: true,
+        }
+    }
+
+    /// Create factory with explicit restore_session setting
+    pub fn with_restore_session(restore_session: bool) -> Self {
+        Self { restore_session }
+    }
+}
+
+impl Default for ScreenSharePluginFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl PluginFactory for ScreenSharePluginFactory {
     fn create(&self) -> Box<dyn Plugin> {
-        Box::new(ScreenSharePlugin::new())
+        Box::new(ScreenSharePlugin::with_restore_session(self.restore_session))
     }
 
     fn name(&self) -> &str {
@@ -1523,7 +1625,7 @@ mod tests {
     #[tokio::test]
     async fn test_handle_start_packet_signaling() {
         let mut device = create_test_device();
-        let factory = ScreenSharePluginFactory;
+        let factory = ScreenSharePluginFactory::new();
         let mut plugin = factory.create();
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(100);
@@ -1559,5 +1661,86 @@ mod tests {
         assert_eq!(dev_id, device.id());
         assert_eq!(sent_packet.packet_type, "cconnect.screenshare.ready");
         assert_eq!(sent_packet.body["tcpPort"], 12345);
+    }
+
+    #[test]
+    fn test_session_restore_roundtrip() {
+        // Use a temp directory so tests don't pollute real data
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("screenshare_session.json");
+
+        let session = SessionRestore {
+            restore_token: "test-token-abc123".to_string(),
+            last_used: "2026-01-15T10:00:00Z".to_string(),
+        };
+
+        // Write directly to temp path
+        let json = serde_json::to_string_pretty(&session).unwrap();
+        std::fs::write(&path, &json).unwrap();
+
+        // Read back
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let loaded: SessionRestore = serde_json::from_str(&contents).unwrap();
+        assert_eq!(loaded.restore_token, "test-token-abc123");
+        assert_eq!(loaded.last_used, "2026-01-15T10:00:00Z");
+
+        // Remove
+        std::fs::remove_file(&path).unwrap();
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn test_session_restore_deserialization_missing_last_used() {
+        // last_used has #[serde(default)], so missing field should work
+        let json = r#"{"restore_token":"token123"}"#;
+        let session: SessionRestore = serde_json::from_str(json).unwrap();
+        assert_eq!(session.restore_token, "token123");
+        assert_eq!(session.last_used, "");
+    }
+
+    #[cfg(not(feature = "screenshare"))]
+    #[test]
+    fn test_portal_session_has_restore_token_field() {
+        // Without screenshare feature, PortalSession has no pipewire_fd field
+        let session = portal::PortalSession {
+            pipewire_node_id: 42,
+            restore_token: Some("my-token".to_string()),
+        };
+        assert_eq!(session.restore_token.as_deref(), Some("my-token"));
+        assert_eq!(session.pipewire_node_id, 42);
+
+        let session_none = portal::PortalSession {
+            pipewire_node_id: 0,
+            restore_token: None,
+        };
+        assert!(session_none.restore_token.is_none());
+    }
+
+    #[test]
+    fn test_plugin_restore_session_default() {
+        let plugin = ScreenSharePlugin::new();
+        assert!(plugin.restore_session);
+    }
+
+    #[test]
+    fn test_plugin_with_restore_session_disabled() {
+        let plugin = ScreenSharePlugin::with_restore_session(false);
+        assert!(!plugin.restore_session);
+    }
+
+    #[test]
+    fn test_factory_with_restore_session() {
+        let factory = ScreenSharePluginFactory::with_restore_session(false);
+        let plugin = factory.create();
+        let ss = plugin.as_any().downcast_ref::<ScreenSharePlugin>().unwrap();
+        assert!(!ss.restore_session);
+
+        let factory_default = ScreenSharePluginFactory::new();
+        let plugin_default = factory_default.create();
+        let ss_default = plugin_default
+            .as_any()
+            .downcast_ref::<ScreenSharePlugin>()
+            .unwrap();
+        assert!(ss_default.restore_session);
     }
 }

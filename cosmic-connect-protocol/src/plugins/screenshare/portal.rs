@@ -22,6 +22,8 @@ pub struct PortalSession {
     pub pipewire_fd: OwnedFd,
     /// PipeWire node ID for the stream
     pub pipewire_node_id: u32,
+    /// Restore token for persisting source selection across sessions
+    pub restore_token: Option<String>,
 }
 
 #[cfg(feature = "screenshare")]
@@ -37,8 +39,12 @@ impl PortalSession {
 ///
 /// This shows the system screen selection dialog and returns the PipeWire
 /// stream information needed for GStreamer capture.
+///
+/// If a `restore_token` from a previous session is provided, the portal will
+/// attempt to reuse the same capture source without showing the selection dialog.
+/// Falls back to showing the dialog if the previous source is unavailable.
 #[cfg(feature = "screenshare")]
-pub async fn request_screencast() -> Result<PortalSession> {
+pub async fn request_screencast(restore_token: Option<&str>) -> Result<PortalSession> {
     info!("Requesting screen share permission via Desktop Portal");
 
     let screencast = Screencast::new().await.map_err(|e| {
@@ -54,15 +60,19 @@ pub async fn request_screencast() -> Result<PortalSession> {
 
     debug!("Created screencast session");
 
+    if restore_token.is_some() {
+        debug!("Using restore token from previous session");
+    }
+
     // Select sources - allow monitor or window, with cursor embedded
     screencast
         .select_sources(
             &session,
             CursorMode::Embedded, // Include cursor in the stream
             SourceType::Monitor | SourceType::Window,
-            false,              // multiple: allow selecting one source
-            None,               // restore_token: no previous session to restore
-            PersistMode::DoNot, // don't persist this session
+            false,                                 // multiple: allow selecting one source
+            restore_token,                         // restore previous source selection
+            PersistMode::ExplicitlyRevoked,        // persist until user revokes
         )
         .await
         .map_err(|e| {
@@ -101,6 +111,12 @@ pub async fn request_screencast() -> Result<PortalSession> {
 
     debug!("Got PipeWire node ID: {}", node_id);
 
+    // Capture restore token for next session
+    let new_restore_token = response.restore_token().map(String::from);
+    if new_restore_token.is_some() {
+        debug!("Received restore token for future sessions");
+    }
+
     // Open the PipeWire remote
     let fd = screencast
         .open_pipe_wire_remote(&session)
@@ -115,12 +131,13 @@ pub async fn request_screencast() -> Result<PortalSession> {
     Ok(PortalSession {
         pipewire_fd: fd,
         pipewire_node_id: node_id,
+        restore_token: new_restore_token,
     })
 }
 
 /// Stub when screenshare feature is disabled
 #[cfg(not(feature = "screenshare"))]
-pub async fn request_screencast() -> Result<PortalSession> {
+pub async fn request_screencast(_restore_token: Option<&str>) -> Result<PortalSession> {
     Err(crate::ProtocolError::Plugin(
         "screenshare feature not enabled".to_string(),
     ))
