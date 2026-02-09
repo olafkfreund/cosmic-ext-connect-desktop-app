@@ -20,6 +20,8 @@ pub enum FrameType {
     Cursor = 0x02,
     /// Annotation data
     Annotation = 0x03,
+    /// Damage region metadata (sent before associated video frame)
+    DamageInfo = 0x04,
     /// End of stream
     EndOfStream = 0xFF,
 }
@@ -30,6 +32,7 @@ impl From<u8> for FrameType {
             0x01 => FrameType::Video,
             0x02 => FrameType::Cursor,
             0x03 => FrameType::Annotation,
+            0x04 => FrameType::DamageInfo,
             0xFF => FrameType::EndOfStream,
             _ => FrameType::Video, // Default
         }
@@ -104,6 +107,50 @@ impl StreamSender {
         payload[4..8].copy_from_slice(&y.to_be_bytes());
         payload[8] = u8::from(visible);
         self.send_frame(FrameType::Cursor, 0, &payload).await
+    }
+
+    /// Send damage region metadata before a video frame
+    ///
+    /// Damage info payload format:
+    /// - Count (2 bytes): Number of damage rectangles (big-endian u16)
+    /// - Per rect (16 bytes each): x (i32 BE), y (i32 BE), width (u32 BE), height (u32 BE)
+    pub async fn send_damage_info(&mut self, damage_rects: &[(i32, i32, u32, u32)]) -> Result<()> {
+        let count = damage_rects.len().min(usize::from(u16::MAX));
+        let mut payload = Vec::with_capacity(2 + count * 16);
+
+        // Write rect count (safe: count is clamped to u16::MAX above)
+        #[allow(clippy::cast_possible_truncation)]
+        payload.extend_from_slice(&(count as u16).to_be_bytes());
+
+        // Write each rect
+        for &(x, y, w, h) in damage_rects.iter().take(count) {
+            payload.extend_from_slice(&x.to_be_bytes());
+            payload.extend_from_slice(&y.to_be_bytes());
+            payload.extend_from_slice(&w.to_be_bytes());
+            payload.extend_from_slice(&h.to_be_bytes());
+        }
+
+        self.send_frame(FrameType::DamageInfo, 0, &payload).await
+    }
+
+    /// Send a video frame with optional damage info
+    ///
+    /// If damage rects are provided, sends a DamageInfo frame before the video frame.
+    pub async fn send_video_frame_with_damage(
+        &mut self,
+        data: &[u8],
+        timestamp_ns: u64,
+        damage_rects: Option<&[(i32, i32, u32, u32)]>,
+    ) -> Result<()> {
+        // Send damage info first if available
+        if let Some(rects) = damage_rects {
+            if !rects.is_empty() {
+                self.send_damage_info(rects).await?;
+            }
+        }
+
+        // Then send the video frame
+        self.send_video_frame(data, timestamp_ns).await
     }
 
     /// Send end of stream marker
@@ -240,7 +287,10 @@ mod tests {
     fn test_frame_type_conversion() {
         assert_eq!(FrameType::from(0x01), FrameType::Video);
         assert_eq!(FrameType::from(0x02), FrameType::Cursor);
+        assert_eq!(FrameType::from(0x03), FrameType::Annotation);
+        assert_eq!(FrameType::from(0x04), FrameType::DamageInfo);
         assert_eq!(FrameType::from(0xFF), FrameType::EndOfStream);
+        assert_eq!(FrameType::from(0x99), FrameType::Video); // Unknown -> default
     }
 
     #[test]
@@ -248,5 +298,11 @@ mod tests {
         let sender = StreamSender::new();
         assert!(!sender.is_connected());
         assert_eq!(sender.stats(), (0, 0));
+    }
+
+    #[test]
+    fn test_damage_info_frame_type() {
+        assert_eq!(FrameType::DamageInfo as u8, 0x04);
+        assert_eq!(FrameType::from(0x04), FrameType::DamageInfo);
     }
 }

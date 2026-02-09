@@ -318,13 +318,28 @@ impl FrameEncoder {
         Ok(yuv)
     }
 
-    /// Encode with Hextile (VNC standard)
+    /// Encode with Hextile (VNC standard), optionally using damage regions
     fn encode_hextile(&self, frame: &RawFrame) -> Result<EncodedFrame> {
         // Hextile encoding per RFC 6143 Section 7.7.4
         // Divides framebuffer into 16x16 tiles and encodes each tile
         const TILE_SIZE: u32 = 16;
 
         let mut encoded_data = Vec::new();
+        let mut tiles_skipped = 0u32;
+        let mut tiles_encoded = 0u32;
+
+        let damage = frame.damage_rects.as_deref();
+
+        // If damage info says nothing changed, return empty encoded frame
+        if matches!(damage, Some(rects) if rects.is_empty()) {
+            return Ok(EncodedFrame::new(
+                frame.width,
+                frame.height,
+                EncodingType::Hextile,
+                Vec::new(),
+                frame.timestamp,
+            ));
+        }
 
         // Process tiles row by row
         for tile_y in (0..frame.height).step_by(TILE_SIZE as usize) {
@@ -332,6 +347,18 @@ impl FrameEncoder {
                 let tile_width = TILE_SIZE.min(frame.width - tile_x);
                 let tile_height = TILE_SIZE.min(frame.height - tile_y);
 
+                // Skip tiles that don't intersect any damage region
+                if let Some(rects) = damage {
+                    if !rects
+                        .iter()
+                        .any(|r| r.intersects_tile(tile_x, tile_y, tile_width, tile_height))
+                    {
+                        tiles_skipped += 1;
+                        continue;
+                    }
+                }
+
+                tiles_encoded += 1;
                 self.encode_hextile_tile(
                     frame,
                     tile_x,
@@ -341,6 +368,13 @@ impl FrameEncoder {
                     &mut encoded_data,
                 )?;
             }
+        }
+
+        if tiles_skipped > 0 {
+            debug!(
+                "Hextile damage optimization: encoded {}, skipped {} undamaged tiles",
+                tiles_encoded, tiles_skipped
+            );
         }
 
         let encoded = EncodedFrame::new(
@@ -747,6 +781,90 @@ mod tests {
 
         let encoded = encoder.encode(&frame).unwrap();
         assert_eq!(encoded.encoding, EncodingType::Hextile);
+    }
+
+    #[test]
+    #[cfg(feature = "remotedesktop")]
+    fn test_hextile_with_damage_rects() {
+        use crate::plugins::remotedesktop::capture::FrameDamageRect;
+
+        // Create a 640x480 frame
+        let width = 640;
+        let height = 480;
+        let data = vec![128u8; (width * height * 4) as usize];
+        let frame = RawFrame::new(width, height, PixelFormat::RGBA, data);
+
+        // Encode without damage (full frame)
+        let mut encoder = FrameEncoder::new(QualityPreset::Medium);
+        encoder.set_encoding(EncodingType::Hextile);
+        let full_encoded = encoder.encode(&frame).unwrap();
+
+        // Create frame with small damage region (only 1 tile's worth)
+        let frame_with_damage = RawFrame::new(
+            width,
+            height,
+            PixelFormat::RGBA,
+            vec![128u8; (width * height * 4) as usize],
+        )
+        .with_damage(vec![FrameDamageRect {
+            x: 0,
+            y: 0,
+            width: 16,
+            height: 16,
+        }]);
+
+        encoder.reset_stats();
+        let partial_encoded = encoder.encode(&frame_with_damage).unwrap();
+
+        // Partial encode should be smaller (fewer tiles encoded)
+        assert!(
+            partial_encoded.data.len() < full_encoded.data.len(),
+            "Damage-aware encoding ({} bytes) should be smaller than full ({} bytes)",
+            partial_encoded.data.len(),
+            full_encoded.data.len()
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "remotedesktop")]
+    fn test_hextile_empty_damage() {
+        // Frame with empty damage (no changes) should produce no tile data
+        let width = 640;
+        let height = 480;
+        let frame = RawFrame::new(
+            width,
+            height,
+            PixelFormat::RGBA,
+            vec![128u8; (width * height * 4) as usize],
+        )
+        .with_damage(vec![]);
+
+        let mut encoder = FrameEncoder::new(QualityPreset::Medium);
+        encoder.set_encoding(EncodingType::Hextile);
+        let encoded = encoder.encode(&frame).unwrap();
+
+        assert!(
+            encoded.data.is_empty(),
+            "Empty damage should produce empty encoded data, got {} bytes",
+            encoded.data.len()
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "remotedesktop")]
+    fn test_frame_damage_rect_intersects_tile() {
+        use crate::plugins::remotedesktop::capture::FrameDamageRect;
+
+        let rect = FrameDamageRect {
+            x: 10,
+            y: 10,
+            width: 30,
+            height: 30,
+        };
+
+        assert!(rect.intersects_tile(0, 0, 16, 16)); // Overlaps corner
+        assert!(rect.intersects_tile(16, 16, 16, 16)); // Overlaps center
+        assert!(!rect.intersects_tile(48, 48, 16, 16)); // No overlap
     }
 
     #[test]

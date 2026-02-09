@@ -395,6 +395,58 @@ impl futures::Stream for FrameStream {
     }
 }
 
+/// A rectangular damage region within a video frame
+///
+/// Represents a screen region that changed between consecutive frames,
+/// as reported by `PipeWire` via `SPA_META_VideoDamage`. Coordinates
+/// are in pixels relative to the frame's top-left corner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DamageRect {
+    /// X offset of the damaged region
+    pub x: i32,
+    /// Y offset of the damaged region
+    pub y: i32,
+    /// Width of the damaged region
+    pub width: u32,
+    /// Height of the damaged region
+    pub height: u32,
+}
+
+impl DamageRect {
+    /// Create a new damage rectangle
+    #[must_use]
+    pub fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
+        Self { x, y, width, height }
+    }
+
+    /// Create a damage rect covering the entire frame
+    #[must_use]
+    pub fn full_frame(width: u32, height: u32) -> Self {
+        Self { x: 0, y: 0, width, height }
+    }
+
+    /// Area of this damage rectangle in pixels
+    #[must_use]
+    pub fn area(&self) -> u64 {
+        u64::from(self.width) * u64::from(self.height)
+    }
+
+    /// Check if this rect intersects with a tile region
+    #[must_use]
+    pub fn intersects_tile(&self, tile_x: u32, tile_y: u32, tile_w: u32, tile_h: u32) -> bool {
+        let w = i32::try_from(self.width).unwrap_or(i32::MAX);
+        let h = i32::try_from(self.height).unwrap_or(i32::MAX);
+        let r_right = self.x.saturating_add(w);
+        let r_bottom = self.y.saturating_add(h);
+        let tw = i32::try_from(tile_x.saturating_add(tile_w)).unwrap_or(i32::MAX);
+        let th = i32::try_from(tile_y.saturating_add(tile_h)).unwrap_or(i32::MAX);
+        let tx = i32::try_from(tile_x).unwrap_or(i32::MAX);
+        let ty = i32::try_from(tile_y).unwrap_or(i32::MAX);
+
+        self.x < tw && r_right > tx && self.y < th && r_bottom > ty
+    }
+}
+
 /// Type of video frame buffer
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum BufferType {
@@ -439,6 +491,12 @@ pub struct VideoFrame {
 
     /// Buffer type (SHM or DMA-BUF)
     pub buffer_type: BufferType,
+
+    /// Damage rectangles from `PipeWire` `SPA_META_VideoDamage`
+    ///
+    /// `None` means damage info is unavailable (treat as full-frame damage).
+    /// An empty `Vec` means no damage (frame is identical to previous).
+    pub damage_rects: Option<Vec<DamageRect>>,
 }
 
 impl VideoFrame {
@@ -460,6 +518,7 @@ impl VideoFrame {
             timestamp,
             sequence,
             buffer_type: BufferType::Shm,
+            damage_rects: None,
         }
     }
 
@@ -507,6 +566,7 @@ impl VideoFrame {
                 modifier,
                 drm_format,
             },
+            damage_rects: None,
         }
     }
 
@@ -540,6 +600,41 @@ impl VideoFrame {
             BufferType::DmaBuf { fd, .. } => Some(fd),
             BufferType::Shm => None,
         }
+    }
+
+    /// Check if damage information is available for this frame
+    #[must_use]
+    pub fn has_damage_info(&self) -> bool {
+        self.damage_rects.is_some()
+    }
+
+    /// Get total damaged area in pixels (0 if no damage or no damage info)
+    #[must_use]
+    pub fn damage_area(&self) -> u64 {
+        self.damage_rects
+            .as_ref()
+            .map_or(0, |rects| rects.iter().map(DamageRect::area).sum())
+    }
+
+    /// Check if this frame has full-frame damage (no damage info or covers entire frame)
+    #[must_use]
+    pub fn is_full_damage(&self) -> bool {
+        match &self.damage_rects {
+            None => true, // No damage info = assume full damage
+            Some(rects) if rects.is_empty() => false, // Empty = no damage
+            Some(rects) => {
+                let frame_area = u64::from(self.width) * u64::from(self.height);
+                let damage = rects.iter().map(DamageRect::area).sum::<u64>();
+                damage >= frame_area
+            }
+        }
+    }
+
+    /// Set damage rectangles on this frame
+    #[must_use]
+    pub fn with_damage(mut self, damage_rects: Vec<DamageRect>) -> Self {
+        self.damage_rects = Some(damage_rects);
+        self
     }
 }
 
@@ -634,5 +729,92 @@ mod tests {
     #[test]
     fn test_buffer_type_default() {
         assert_eq!(BufferType::default(), BufferType::Shm);
+    }
+
+    #[test]
+    fn test_damage_rect_creation() {
+        let rect = DamageRect::new(10, 20, 100, 50);
+        assert_eq!(rect.x, 10);
+        assert_eq!(rect.y, 20);
+        assert_eq!(rect.width, 100);
+        assert_eq!(rect.height, 50);
+        assert_eq!(rect.area(), 5000);
+    }
+
+    #[test]
+    fn test_damage_rect_full_frame() {
+        let rect = DamageRect::full_frame(1920, 1080);
+        assert_eq!(rect.x, 0);
+        assert_eq!(rect.y, 0);
+        assert_eq!(rect.area(), 1920 * 1080);
+    }
+
+    #[test]
+    fn test_damage_rect_intersects_tile() {
+        let rect = DamageRect::new(10, 10, 30, 30); // 10,10 -> 40,40
+
+        // Tile fully inside damage
+        assert!(rect.intersects_tile(16, 16, 16, 16)); // 16,16 -> 32,32
+
+        // Tile overlapping damage edge
+        assert!(rect.intersects_tile(0, 0, 16, 16)); // 0,0 -> 16,16
+
+        // Tile completely outside damage
+        assert!(!rect.intersects_tile(48, 48, 16, 16)); // 48,48 -> 64,64
+
+        // Tile just touching damage boundary (not intersecting)
+        assert!(!rect.intersects_tile(40, 0, 16, 16)); // 40,0 -> 56,16 - right edge
+    }
+
+    #[test]
+    fn test_video_frame_no_damage_info() {
+        let frame = VideoFrame::new(
+            vec![0u8; 100],
+            10,
+            10,
+            "BGRx".to_string(),
+            0,
+            0,
+        );
+        assert!(!frame.has_damage_info());
+        assert!(frame.is_full_damage()); // No damage info = full damage
+        assert_eq!(frame.damage_area(), 0);
+    }
+
+    #[test]
+    fn test_video_frame_with_damage() {
+        let frame = VideoFrame::new(
+            vec![0u8; 1920 * 1080 * 4],
+            1920,
+            1080,
+            "BGRx".to_string(),
+            0,
+            0,
+        )
+        .with_damage(vec![
+            DamageRect::new(0, 0, 100, 100),
+            DamageRect::new(200, 200, 50, 50),
+        ]);
+
+        assert!(frame.has_damage_info());
+        assert!(!frame.is_full_damage());
+        assert_eq!(frame.damage_area(), 100 * 100 + 50 * 50);
+    }
+
+    #[test]
+    fn test_video_frame_empty_damage() {
+        let frame = VideoFrame::new(
+            vec![0u8; 100],
+            10,
+            10,
+            "BGRx".to_string(),
+            0,
+            0,
+        )
+        .with_damage(vec![]);
+
+        assert!(frame.has_damage_info());
+        assert!(!frame.is_full_damage()); // Empty vec = no damage
+        assert_eq!(frame.damage_area(), 0);
     }
 }

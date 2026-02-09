@@ -4,6 +4,38 @@
 
 use std::time::Instant;
 
+/// A rectangular damage region within a frame
+///
+/// Indicates a screen area that changed since the previous frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameDamageRect {
+    /// X offset in pixels
+    pub x: i32,
+    /// Y offset in pixels
+    pub y: i32,
+    /// Width in pixels
+    pub width: u32,
+    /// Height in pixels
+    pub height: u32,
+}
+
+impl FrameDamageRect {
+    /// Check if this damage rect intersects a tile region
+    #[must_use]
+    pub fn intersects_tile(&self, tile_x: u32, tile_y: u32, tile_w: u32, tile_h: u32) -> bool {
+        let w = i32::try_from(self.width).unwrap_or(i32::MAX);
+        let h = i32::try_from(self.height).unwrap_or(i32::MAX);
+        let r_right = self.x.saturating_add(w);
+        let r_bottom = self.y.saturating_add(h);
+        let tw = i32::try_from(tile_x.saturating_add(tile_w)).unwrap_or(i32::MAX);
+        let th = i32::try_from(tile_y.saturating_add(tile_h)).unwrap_or(i32::MAX);
+        let tx = i32::try_from(tile_x).unwrap_or(i32::MAX);
+        let ty = i32::try_from(tile_y).unwrap_or(i32::MAX);
+
+        self.x < tw && r_right > tx && self.y < th && r_bottom > ty
+    }
+}
+
 /// Raw uncompressed frame from screen capture
 #[derive(Debug, Clone)]
 pub struct RawFrame {
@@ -24,6 +56,12 @@ pub struct RawFrame {
 
     /// Stride (bytes per row)
     pub stride: u32,
+
+    /// Damage rectangles (regions that changed since last frame)
+    ///
+    /// `None` means damage info unavailable (treat as full-frame damage).
+    /// Empty `Vec` means no changes.
+    pub damage_rects: Option<Vec<FrameDamageRect>>,
 }
 
 impl RawFrame {
@@ -37,7 +75,14 @@ impl RawFrame {
             data,
             timestamp: Instant::now(),
             stride,
+            damage_rects: None,
         }
+    }
+
+    /// Set damage rectangles on this frame
+    pub fn with_damage(mut self, rects: Vec<FrameDamageRect>) -> Self {
+        self.damage_rects = Some(rects);
+        self
     }
 
     /// Get frame size in bytes
