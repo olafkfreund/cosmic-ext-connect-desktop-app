@@ -84,7 +84,7 @@ webrtc = "0.12"
 tokio-tungstenite = "0.26"
 
 # Configuration
-toml = "0.9"
+toml = "0.8"
 
 # Input Control (for Remote Input plugin)
 mouse-keyboard-input = "0.9"
