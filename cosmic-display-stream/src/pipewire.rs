@@ -3,7 +3,7 @@
 //! This module provides integration with `PipeWire` to receive raw video frames
 //! from the screen capture session.
 
-use crate::capture::{BufferType, VideoFrame};
+use crate::capture::{BufferType, DamageRect, VideoFrame};
 use crate::error::Result;
 use pipewire as pw;
 use pipewire::context::Context;
@@ -11,6 +11,7 @@ use pipewire::main_loop::MainLoop;
 use pipewire::properties::properties;
 use pipewire::spa::buffer::DataType;
 use pipewire::spa::param::ParamType;
+use pipewire::spa::sys as spa_sys;
 use pipewire::spa::utils::Direction;
 use pipewire::stream::{Stream, StreamFlags, StreamState};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -242,113 +243,141 @@ fn run_pipewire_loop(
                 return;
             }
 
-            // Dequeue buffer
-            if let Some(mut buffer) = stream.dequeue_buffer() {
-                let datas = buffer.datas_mut();
-                if let Some(data) = datas.first_mut() {
-                    let chunk = data.chunk();
-                    // These casts are safe: u32 always fits in usize on 32/64-bit
-                    let offset = usize::try_from(chunk.offset()).unwrap_or(0);
-                    let size = usize::try_from(chunk.size()).unwrap_or(0);
-                    // Stride can be i32 (negative for bottom-up images), use absolute value
-                    let stride = usize::try_from(chunk.stride().unsigned_abs()).unwrap_or(0);
+            // Dequeue buffer using raw API for damage metadata access
+            // Safety: stream is valid within the process callback
+            let raw_pw_buf = unsafe { stream.dequeue_raw_buffer() };
+            if raw_pw_buf.is_null() {
+                return;
+            }
 
-                    // Check buffer type from data type
-                    let data_type = data.type_();
-                    let is_dmabuf = data_type == DataType::DmaBuf;
+            // Access spa_buffer and extract damage metadata + frame data
+            // Safety: raw_pw_buf and its spa_buffer are valid while dequeued
+            let spa_buf = unsafe { (*raw_pw_buf).buffer };
+            if spa_buf.is_null() {
+                unsafe { stream.queue_raw_buffer(raw_pw_buf) };
+                return;
+            }
 
-                    if is_dmabuf {
-                        // DMA-BUF path: extract fd instead of copying data
-                        debug!("Processing DMA-BUF frame");
-                        let raw_data = data.as_raw();
-                        // The fd field is i64 in spa_data struct
-                        let fd_i64 = raw_data.fd;
+            let damage_rects = unsafe { extract_damage_rects(spa_buf) };
 
-                        // Only process if we have a valid fd (>= 0)
-                        if fd_i64 >= 0 {
-                            #[allow(clippy::cast_possible_truncation)]
-                            let fd_raw = fd_i64 as i32;
-                            let width = stream_width_clone.load(Ordering::Relaxed);
-                            let height = stream_height_clone.load(Ordering::Relaxed);
-                            let seq = frame_sequence_clone.fetch_add(1, Ordering::Relaxed);
+            let (n_datas, datas_ptr) = unsafe {
+                ((*spa_buf).n_datas, (*spa_buf).datas)
+            };
 
-                            let frame = VideoFrame {
-                                data: Vec::new(), // No CPU copy for DMA-BUF
-                                width,
-                                height,
-                                format: "DMA-BUF".to_string(),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .map(|d| i64::try_from(d.as_micros()).unwrap_or(i64::MAX))
-                                    .unwrap_or(0),
-                                sequence: seq,
-                                buffer_type: BufferType::DmaBuf {
-                                    fd: fd_raw,
-                                    stride: u32::try_from(stride).unwrap_or(0),
-                                    offset: u32::try_from(offset).unwrap_or(0),
-                                    modifier: 0, // Will be set from format negotiation
-                                    drm_format: 0, // Will be set from format negotiation
-                                },
-                            };
+            if n_datas == 0 || datas_ptr.is_null() {
+                unsafe { stream.queue_raw_buffer(raw_pw_buf) };
+                return;
+            }
 
-                            if let Err(e) = frame_tx.try_send(frame) {
-                                if matches!(e, mpsc::error::TrySendError::Full(_)) {
-                                    debug!("Frame channel full, dropping DMA-BUF frame");
-                                } else {
-                                    warn!("Failed to send DMA-BUF frame: {}", e);
-                                }
-                            }
-                            return; // DMA-BUF path done
+            // Safety: n_datas > 0 and datas_ptr is valid; Data is #[repr(transparent)]
+            let data: &mut pipewire::spa::buffer::Data = unsafe {
+                &mut *datas_ptr.cast::<pipewire::spa::buffer::Data>()
+            };
+            let chunk = data.chunk();
+            // These casts are safe: u32 always fits in usize on 32/64-bit
+            let offset = usize::try_from(chunk.offset()).unwrap_or(0);
+            let size = usize::try_from(chunk.size()).unwrap_or(0);
+            // Stride can be i32 (negative for bottom-up images), use absolute value
+            let stride = usize::try_from(chunk.stride().unsigned_abs()).unwrap_or(0);
+
+            if data.type_() == DataType::DmaBuf {
+                // DMA-BUF path: extract fd instead of copying data
+                debug!("Processing DMA-BUF frame");
+                let raw_data = data.as_raw();
+                // The fd field is i64 in spa_data struct
+                let fd_i64 = raw_data.fd;
+
+                // Only process if we have a valid fd (>= 0)
+                if fd_i64 >= 0 {
+                    #[allow(clippy::cast_possible_truncation)]
+                    let fd_raw = fd_i64 as i32;
+                    let width = stream_width_clone.load(Ordering::Relaxed);
+                    let height = stream_height_clone.load(Ordering::Relaxed);
+                    let seq = frame_sequence_clone.fetch_add(1, Ordering::Relaxed);
+
+                    let frame = VideoFrame {
+                        data: Vec::new(), // No CPU copy for DMA-BUF
+                        width,
+                        height,
+                        format: "DMA-BUF".to_string(),
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| i64::try_from(d.as_micros()).unwrap_or(i64::MAX))
+                            .unwrap_or(0),
+                        sequence: seq,
+                        buffer_type: BufferType::DmaBuf {
+                            fd: fd_raw,
+                            stride: u32::try_from(stride).unwrap_or(0),
+                            offset: u32::try_from(offset).unwrap_or(0),
+                            modifier: 0, // Will be set from format negotiation
+                            drm_format: 0, // Will be set from format negotiation
+                        },
+                        damage_rects: damage_rects.clone(),
+                    };
+
+                    if let Err(e) = frame_tx.try_send(frame) {
+                        if matches!(e, mpsc::error::TrySendError::Full(_)) {
+                            debug!("Frame channel full, dropping DMA-BUF frame");
+                        } else {
+                            warn!("Failed to send DMA-BUF frame: {}", e);
                         }
-                        debug!("DMA-BUF buffer has invalid fd ({}), falling back to SHM", fd_i64);
                     }
+                    // DMA-BUF path: queue buffer back and return early
+                    unsafe { stream.queue_raw_buffer(raw_pw_buf) };
+                    return;
+                }
+                debug!("DMA-BUF buffer has invalid fd ({}), falling back to SHM", fd_i64);
+            }
 
-                    // SHM path (existing code, unchanged)
-                    if let Some(slice) = data.data() {
-                        if size > 0 && offset + size <= slice.len() {
-                            let frame_data = slice[offset..offset + size].to_vec();
+            // SHM path
+            if let Some(slice) = data.data() {
+                if size > 0 && offset + size <= slice.len() {
+                    let frame_data = slice[offset..offset + size].to_vec();
 
-                            let width = stream_width_clone.load(Ordering::Relaxed);
-                            let height = stream_height_clone.load(Ordering::Relaxed);
-                            let seq = frame_sequence_clone.fetch_add(1, Ordering::Relaxed);
+                    let width = stream_width_clone.load(Ordering::Relaxed);
+                    let height = stream_height_clone.load(Ordering::Relaxed);
+                    let seq = frame_sequence_clone.fetch_add(1, Ordering::Relaxed);
 
-                            // Infer dimensions from stride if needed
-                            // Dimensions from video frames are always within u32 range
-                            let inferred_width = if stride > 0 {
-                                u32::try_from(stride / 4).unwrap_or(width)
-                            } else {
-                                width
-                            };
-                            let inferred_height = if size > 0 && stride > 0 {
-                                u32::try_from(size / stride).unwrap_or(height)
-                            } else {
-                                height
-                            };
+                    // Infer dimensions from stride if needed
+                    // Dimensions from video frames are always within u32 range
+                    let inferred_width = if stride > 0 {
+                        u32::try_from(stride / 4).unwrap_or(width)
+                    } else {
+                        width
+                    };
+                    let inferred_height = if size > 0 && stride > 0 {
+                        u32::try_from(size / stride).unwrap_or(height)
+                    } else {
+                        height
+                    };
 
-                            let frame = VideoFrame::new(
-                                frame_data,
-                                inferred_width,
-                                inferred_height,
-                                "BGRx".to_string(), // Most common format from screen capture
-                                std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .map(|d| i64::try_from(d.as_micros()).unwrap_or(i64::MAX))
-                                    .unwrap_or(0),
-                                seq,
-                            );
+                    let mut frame = VideoFrame::new(
+                        frame_data,
+                        inferred_width,
+                        inferred_height,
+                        "BGRx".to_string(), // Most common format from screen capture
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| i64::try_from(d.as_micros()).unwrap_or(i64::MAX))
+                            .unwrap_or(0),
+                        seq,
+                    );
+                    frame.damage_rects = damage_rects;
 
-                            // Try to send frame (non-blocking)
-                            if let Err(e) = frame_tx.try_send(frame) {
-                                if matches!(e, mpsc::error::TrySendError::Full(_)) {
-                                    debug!("Frame channel full, dropping frame");
-                                } else {
-                                    warn!("Failed to send frame: {}", e);
-                                }
-                            }
+                    // Try to send frame (non-blocking)
+                    if let Err(e) = frame_tx.try_send(frame) {
+                        if matches!(e, mpsc::error::TrySendError::Full(_)) {
+                            debug!("Frame channel full, dropping frame");
+                        } else {
+                            warn!("Failed to send frame: {}", e);
                         }
                     }
                 }
             }
+
+            // Queue buffer back to PipeWire
+            // Safety: raw_pw_buf was dequeued from this stream and is still valid
+            unsafe { stream.queue_raw_buffer(raw_pw_buf) };
         })
         .register()
         .map_err(|e| {
@@ -381,6 +410,73 @@ fn run_pipewire_loop(
 
     info!("PipeWire main loop exited");
     Ok(())
+}
+
+/// Extract damage rectangles from a `PipeWire` buffer's `SPA_META_VideoDamage` metadata
+///
+/// # Safety
+///
+/// The raw `spa_buffer` pointer must be valid for the duration of this call.
+/// This is guaranteed when called from within the process callback while the
+/// buffer is dequeued.
+unsafe fn extract_damage_rects(spa_buffer: *const spa_sys::spa_buffer) -> Option<Vec<DamageRect>> {
+    if spa_buffer.is_null() {
+        return None;
+    }
+
+    let buffer = &*spa_buffer;
+    if buffer.n_metas == 0 || buffer.metas.is_null() {
+        return None;
+    }
+
+    let metas = std::slice::from_raw_parts(buffer.metas, buffer.n_metas as usize);
+
+    // Find the VideoDamage meta entry
+    for meta in metas {
+        if meta.type_ != spa_sys::SPA_META_VideoDamage {
+            continue;
+        }
+
+        if meta.data.is_null() || meta.size == 0 {
+            return None;
+        }
+
+        let region_size = std::mem::size_of::<spa_sys::spa_meta_region>();
+        let max_regions = meta.size as usize / region_size;
+
+        if max_regions == 0 {
+            return None;
+        }
+
+        let regions = meta.data as *const spa_sys::spa_meta_region;
+        let mut damage_rects = Vec::new();
+
+        for i in 0..max_regions {
+            let region = &*regions.add(i);
+            let w = region.region.size.width;
+            let h = region.region.size.height;
+
+            // Zero-size region marks end of array
+            if w == 0 && h == 0 {
+                break;
+            }
+
+            damage_rects.push(DamageRect::new(
+                region.region.position.x,
+                region.region.position.y,
+                w,
+                h,
+            ));
+        }
+
+        debug!(
+            "Extracted {} damage rect(s) from PipeWire metadata",
+            damage_rects.len()
+        );
+        return Some(damage_rects);
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -431,5 +527,94 @@ mod tests {
         assert_eq!(props.buffer_mode, BufferMode::DmaBuf);
         assert_eq!(props.drm_format, Some(0x34325258));
         assert!(props.modifier.is_some());
+    }
+
+    #[test]
+    fn test_extract_damage_rects_null_buffer() {
+        let result = unsafe { extract_damage_rects(std::ptr::null()) };
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_damage_rects_no_metas() {
+        let mut buffer = spa_sys::spa_buffer {
+            n_metas: 0,
+            n_datas: 0,
+            metas: std::ptr::null_mut(),
+            datas: std::ptr::null_mut(),
+        };
+        let result = unsafe { extract_damage_rects(&buffer) };
+        assert!(result.is_none());
+
+        // Also test with non-null but zero n_metas
+        buffer.n_metas = 0;
+        let result = unsafe { extract_damage_rects(&buffer) };
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_damage_rects_with_regions() {
+        // Create damage regions: two rects + zero-size terminator
+        let regions = [
+            spa_sys::spa_meta_region {
+                region: spa_sys::spa_region {
+                    position: spa_sys::spa_point { x: 10, y: 20 },
+                    size: spa_sys::spa_rectangle { width: 100, height: 50 },
+                },
+            },
+            spa_sys::spa_meta_region {
+                region: spa_sys::spa_region {
+                    position: spa_sys::spa_point { x: 200, y: 300 },
+                    size: spa_sys::spa_rectangle { width: 64, height: 32 },
+                },
+            },
+            // Terminator
+            spa_sys::spa_meta_region {
+                region: spa_sys::spa_region {
+                    position: spa_sys::spa_point { x: 0, y: 0 },
+                    size: spa_sys::spa_rectangle { width: 0, height: 0 },
+                },
+            },
+        ];
+
+        let mut meta = spa_sys::spa_meta {
+            type_: spa_sys::SPA_META_VideoDamage,
+            size: (std::mem::size_of_val(&regions)) as u32,
+            data: regions.as_ptr() as *mut std::os::raw::c_void,
+        };
+
+        let buffer = spa_sys::spa_buffer {
+            n_metas: 1,
+            n_datas: 0,
+            metas: &mut meta,
+            datas: std::ptr::null_mut(),
+        };
+
+        let result = unsafe { extract_damage_rects(&buffer) };
+        assert!(result.is_some());
+
+        let rects = result.unwrap();
+        assert_eq!(rects.len(), 2);
+        assert_eq!(rects[0], DamageRect::new(10, 20, 100, 50));
+        assert_eq!(rects[1], DamageRect::new(200, 300, 64, 32));
+    }
+
+    #[test]
+    fn test_extract_damage_rects_wrong_meta_type() {
+        let mut meta = spa_sys::spa_meta {
+            type_: spa_sys::SPA_META_Header, // Not VideoDamage
+            size: 16,
+            data: std::ptr::null_mut(),
+        };
+
+        let buffer = spa_sys::spa_buffer {
+            n_metas: 1,
+            n_datas: 0,
+            metas: &mut meta,
+            datas: std::ptr::null_mut(),
+        };
+
+        let result = unsafe { extract_damage_rects(&buffer) };
+        assert!(result.is_none());
     }
 }

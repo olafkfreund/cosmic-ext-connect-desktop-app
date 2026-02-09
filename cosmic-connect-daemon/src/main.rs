@@ -531,7 +531,9 @@ impl Daemon {
         if config.plugins.enable_screenshare {
             info!("Registering ScreenShare plugin factory");
             manager
-                .register_factory(Arc::new(ScreenSharePluginFactory))
+                .register_factory(Arc::new(ScreenSharePluginFactory::with_restore_session(
+                    config.plugins.screenshare_restore_session,
+                )))
                 .context("Failed to register ScreenShare plugin factory")?;
         }
 

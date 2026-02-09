@@ -284,6 +284,13 @@ pub struct PluginConfig {
     #[serde(default = "default_true")]
     pub enable_screenshare: bool,
 
+    /// Remember screenshare source selection between sessions
+    ///
+    /// When enabled, the portal restore token is saved so the user doesn't
+    /// need to re-select their capture source on every screenshare start.
+    #[serde(default = "default_true")]
+    pub screenshare_restore_session: bool,
+
     /// Enable MouseKeyboardShare plugin (Synergy-like input sharing)
     #[serde(default = "default_true")]
     pub enable_mousekeyboardshare: bool,
@@ -449,6 +456,7 @@ impl Default for PluginConfig {
             enable_audiostream: true,
             enable_filesync: true,
             enable_screenshare: true,
+            screenshare_restore_session: true,
             enable_mousekeyboardshare: true,
             enable_networkshare: true,
             enable_camera: true,

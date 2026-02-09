@@ -28,7 +28,7 @@
 
 pub mod frame;
 
-pub use frame::{EncodedFrame, EncodingType, PixelFormat, QualityPreset, RawFrame};
+pub use frame::{EncodedFrame, EncodingType, FrameDamageRect, PixelFormat, QualityPreset, RawFrame};
 
 use crate::Result;
 #[cfg(feature = "remotedesktop")]
