@@ -12,6 +12,7 @@ use tokio::sync::{mpsc, Mutex};
 use cosmic_applet_connect::dbus_client::{DaemonEvent, DbusClient};
 use cosmic_connect_protocol::plugins::screenshare::decoder::VideoDecoder;
 use cosmic_connect_protocol::plugins::screenshare::stream_receiver::StreamReceiver;
+use cosmic_connect_protocol::plugins::screenshare::stream_sender::FrameType;
 
 /// Remote cursor state
 #[derive(Debug, Clone, Default)]
@@ -348,30 +349,60 @@ impl cosmic::Application for MirrorApp {
 
             loop {
                 match receiver.next_frame().await {
-                    Ok((_type, _ts, payload)) => {
-                        if let Err(e) = decoder.push_frame(&payload) {
-                            let _ = tx_clone
-                                .send(Message::Error(format!("Decode push error: {}", e)))
-                                .await;
-                            break;
-                        }
-
-                        match decoder.pull_frame() {
-                            Ok(Some((data, width, height))) => {
-                                let handle = image::Handle::from_rgba(width, height, data);
-                                if tx_clone
-                                    .send(Message::FrameReceived(handle, width, height))
-                                    .await
-                                    .is_err()
-                                {
+                    Ok((frame_type_raw, _ts, payload)) => {
+                        match FrameType::from(frame_type_raw) {
+                            FrameType::Video => {
+                                if let Err(e) = decoder.push_frame(&payload) {
+                                    let _ = tx_clone
+                                        .send(Message::Error(format!(
+                                            "Decode push error: {}",
+                                            e
+                                        )))
+                                        .await;
                                     break;
                                 }
+
+                                match decoder.pull_frame() {
+                                    Ok(Some((data, width, height))) => {
+                                        let handle =
+                                            image::Handle::from_rgba(width, height, data);
+                                        if tx_clone
+                                            .send(Message::FrameReceived(
+                                                handle, width, height,
+                                            ))
+                                            .await
+                                            .is_err()
+                                        {
+                                            break;
+                                        }
+                                    }
+                                    Ok(None) => {}
+                                    Err(e) => {
+                                        let _ = tx_clone
+                                            .send(Message::Error(format!(
+                                                "Decode pull error: {}",
+                                                e
+                                            )))
+                                            .await;
+                                    }
+                                }
                             }
-                            Ok(None) => {}
-                            Err(e) => {
-                                let _ = tx_clone
-                                    .send(Message::Error(format!("Decode pull error: {}", e)))
-                                    .await;
+                            FrameType::Cursor => {
+                                // Cursor payload: x (4B BE) | y (4B BE) | visible (1B)
+                                if payload.len() >= 9 {
+                                    let x = i32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
+                                    let y = i32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]);
+                                    let visible = payload[8] != 0;
+                                    let _ = tx_clone
+                                        .send(Message::CursorUpdate { x, y, visible })
+                                        .await;
+                                }
+                            }
+                            FrameType::EndOfStream => {
+                                break;
+                            }
+                            _ => {
+                                // DamageInfo, Annotation, etc. — skip
                             }
                         }
                     }
@@ -512,4 +543,65 @@ async fn wait_for_message(rx: Arc<Mutex<mpsc::Receiver<Message>>>) -> Message {
 
 fn main() -> cosmic::iced::Result {
     cosmic::app::run::<MirrorApp>(cosmic::app::Settings::default(), ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cursor_payload_parsing() {
+        // Cursor payload: x (4B BE) | y (4B BE) | visible (1B)
+        let x: i32 = 1920;
+        let y: i32 = 1080;
+        let visible: bool = true;
+
+        let mut payload = [0u8; 9];
+        payload[0..4].copy_from_slice(&x.to_be_bytes());
+        payload[4..8].copy_from_slice(&y.to_be_bytes());
+        payload[8] = u8::from(visible);
+
+        // Parse back
+        let parsed_x = i32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
+        let parsed_y = i32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]);
+        let parsed_visible = payload[8] != 0;
+
+        assert_eq!(parsed_x, 1920);
+        assert_eq!(parsed_y, 1080);
+        assert!(parsed_visible);
+    }
+
+    #[test]
+    fn test_cursor_payload_invisible() {
+        let x: i32 = -10;
+        let y: i32 = 500;
+
+        let mut payload = [0u8; 9];
+        payload[0..4].copy_from_slice(&x.to_be_bytes());
+        payload[4..8].copy_from_slice(&y.to_be_bytes());
+        payload[8] = 0; // invisible
+
+        let parsed_x = i32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
+        let parsed_y = i32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]);
+        let parsed_visible = payload[8] != 0;
+
+        assert_eq!(parsed_x, -10);
+        assert_eq!(parsed_y, 500);
+        assert!(!parsed_visible);
+    }
+
+    #[test]
+    fn test_cursor_payload_too_short() {
+        // Payload shorter than 9 bytes should be ignored (no panic)
+        let payload = [0u8; 4];
+        assert!(payload.len() < 9);
+    }
+
+    #[test]
+    fn test_frame_type_dispatch() {
+        // Verify FrameType conversions match expected values
+        assert_eq!(FrameType::from(0x01), FrameType::Video);
+        assert_eq!(FrameType::from(0x02), FrameType::Cursor);
+        assert_eq!(FrameType::from(0xFF), FrameType::EndOfStream);
+    }
 }

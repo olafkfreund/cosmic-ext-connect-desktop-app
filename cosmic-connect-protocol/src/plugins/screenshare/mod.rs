@@ -62,6 +62,7 @@
 //! - [x] Canvas-based cursor/annotation rendering (Stack + Canvas overlay on video)
 
 pub mod capture;
+pub mod cursor_monitor;
 pub mod decoder;
 pub mod portal;
 pub mod stream_receiver;
@@ -182,6 +183,10 @@ pub fn has_restore_token() -> bool {
 
 #[cfg(feature = "screenshare")]
 use capture::{CaptureConfig, ScreenCapture};
+#[cfg(feature = "screenshare")]
+use cursor_monitor::{CursorMonitor, CursorUpdate};
+#[cfg(feature = "screenshare")]
+use portal::GrantedCursorMode;
 #[cfg(feature = "screenshare")]
 use stream_sender::StreamSender;
 
@@ -600,6 +605,14 @@ pub struct ScreenSharePlugin {
 
     /// Whether to persist portal source selection across sessions
     restore_session: bool,
+
+    /// Cursor metadata monitor (active when portal grants CursorMode::Metadata)
+    #[cfg(feature = "screenshare")]
+    cursor_monitor: Option<CursorMonitor>,
+
+    /// Broadcast channel for cursor position updates to viewers
+    #[cfg(feature = "screenshare")]
+    cursor_sender: Option<tokio::sync::broadcast::Sender<CursorUpdate>>,
 }
 
 impl ScreenSharePlugin {
@@ -623,6 +636,10 @@ impl ScreenSharePlugin {
             stop_streaming: Arc::new(Mutex::new(false)),
             pause_streaming: Arc::new(Mutex::new(false)),
             restore_session,
+            #[cfg(feature = "screenshare")]
+            cursor_monitor: None,
+            #[cfg(feature = "screenshare")]
+            cursor_sender: None,
         }
     }
 
@@ -984,6 +1001,10 @@ impl ScreenSharePlugin {
                 .map(|s| (Some(s.fd()), Some(s.pipewire_node_id)))
                 .unwrap_or((None, None));
 
+            let cursor_metadata_active = portal_session
+                .as_ref()
+                .is_some_and(|s| s.cursor_mode == GrantedCursorMode::Metadata);
+
             let capture_config = CaptureConfig {
                 fps: config.fps as u32,
                 bitrate_kbps: config.bitrate_kbps,
@@ -992,7 +1013,33 @@ impl ScreenSharePlugin {
                 pipewire_node_id,
                 pipewire_fd,
                 include_audio: config.include_audio,
+                cursor_metadata_mode: cursor_metadata_active,
             };
+
+            // Start cursor monitor if portal granted CursorMode::Metadata
+            if cursor_metadata_active {
+                if let Some(ref session) = portal_session {
+                    info!("Starting cursor metadata monitor for lower-latency cursor");
+                    let (cursor_tx, _) =
+                        tokio::sync::broadcast::channel::<CursorUpdate>(64);
+                    let cursor_broadcast_tx = cursor_tx.clone();
+                    self.cursor_sender = Some(cursor_tx);
+
+                    // mpsc channel from monitor thread -> async forwarder -> broadcast
+                    let (monitor_tx, mut monitor_rx) =
+                        tokio::sync::mpsc::channel::<CursorUpdate>(64);
+                    let monitor =
+                        CursorMonitor::start(session.pipewire_node_id, monitor_tx);
+                    self.cursor_monitor = Some(monitor);
+
+                    // Spawn async task to forward mpsc -> broadcast
+                    tokio::spawn(async move {
+                        while let Some(update) = monitor_rx.recv().await {
+                            let _ = cursor_broadcast_tx.send(update);
+                        }
+                    });
+                }
+            }
 
             // Adaptive bitrate settings
             let adaptive_bitrate = config.adaptive_bitrate;
@@ -1124,6 +1171,9 @@ impl ScreenSharePlugin {
             .ok_or_else(|| ProtocolError::Plugin("No frame sender available".to_string()))?
             .subscribe();
 
+        // Subscribe to cursor channel if available
+        let cursor_rx = self.cursor_sender.as_ref().map(|s| s.subscribe());
+
         let stop_flag = self.stop_streaming.clone();
         let viewer_id_clone = viewer_id.clone();
 
@@ -1143,7 +1193,8 @@ impl ScreenSharePlugin {
                 viewer_id_clone, host, port
             );
 
-            let mut rx = frame_rx;
+            let mut frame_rx = frame_rx;
+            let mut cursor_rx = cursor_rx;
 
             loop {
                 // Check stop flag
@@ -1152,21 +1203,48 @@ impl ScreenSharePlugin {
                     break;
                 }
 
-                // Receive frame from broadcast
-                match rx.recv().await {
-                    Ok(frame) => {
-                        if let Err(e) = sender.send_video_frame(&frame.data, frame.pts).await {
-                            error!("Failed to send frame to viewer {}: {}", viewer_id_clone, e);
-                            break;
+                tokio::select! {
+                    // Video frame from capture
+                    frame_result = frame_rx.recv() => {
+                        match frame_result {
+                            Ok(frame) => {
+                                if let Err(e) = sender.send_video_frame(&frame.data, frame.pts).await {
+                                    error!("Failed to send frame to viewer {}: {}", viewer_id_clone, e);
+                                    break;
+                                }
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                                warn!("Viewer {} lagged {} frames", viewer_id_clone, n);
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                                info!("Broadcast channel closed for viewer {}", viewer_id_clone);
+                                break;
+                            }
                         }
                     }
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                        warn!("Viewer {} lagged {} frames", viewer_id_clone, n);
-                        // Continue - we'll catch up
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                        info!("Broadcast channel closed for viewer {}", viewer_id_clone);
-                        break;
+                    // Cursor update from metadata monitor (if active)
+                    cursor_result = async {
+                        match cursor_rx.as_mut() {
+                            Some(rx) => rx.recv().await,
+                            None => std::future::pending().await,
+                        }
+                    } => {
+                        match cursor_result {
+                            Ok(update) => {
+                                if let Err(e) = sender.send_cursor(update.x, update.y, update.visible).await {
+                                    error!("Failed to send cursor to viewer {}: {}", viewer_id_clone, e);
+                                    break;
+                                }
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                                debug!("Viewer {} lagged {} cursor updates", viewer_id_clone, n);
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                                debug!("Cursor channel closed for viewer {}", viewer_id_clone);
+                                // Cursor channel closed, clear it so we stop selecting on it
+                                cursor_rx = None;
+                            }
+                        }
                     }
                 }
             }
@@ -1251,6 +1329,15 @@ impl ScreenSharePlugin {
         if let Some(handle) = self.capture_task.take() {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             handle.abort();
+        }
+
+        // Stop cursor monitor
+        #[cfg(feature = "screenshare")]
+        {
+            if let Some(mut monitor) = self.cursor_monitor.take() {
+                monitor.stop();
+            }
+            self.cursor_sender = None;
         }
 
         // Clear frame sender
