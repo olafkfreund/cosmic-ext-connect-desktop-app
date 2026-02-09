@@ -61,6 +61,7 @@
 //! - [x] Annotation system (DBus signals emitted, mirror UI receives updates)
 //! - [x] Canvas-based cursor/annotation rendering (Stack + Canvas overlay on video)
 
+pub mod bitrate_controller;
 pub mod capture;
 pub mod cursor_monitor;
 pub mod decoder;
@@ -613,6 +614,10 @@ pub struct ScreenSharePlugin {
     /// Broadcast channel for cursor position updates to viewers
     #[cfg(feature = "screenshare")]
     cursor_sender: Option<tokio::sync::broadcast::Sender<CursorUpdate>>,
+
+    /// Per-viewer network condition reports for adaptive bitrate
+    #[cfg(feature = "screenshare")]
+    viewer_reports: bitrate_controller::ViewerNetworkReports,
 }
 
 impl ScreenSharePlugin {
@@ -640,6 +645,8 @@ impl ScreenSharePlugin {
             cursor_monitor: None,
             #[cfg(feature = "screenshare")]
             cursor_sender: None,
+            #[cfg(feature = "screenshare")]
+            viewer_reports: bitrate_controller::ViewerNetworkReports::new(),
         }
     }
 
@@ -1050,6 +1057,7 @@ impl ScreenSharePlugin {
             let stop_flag = self.stop_streaming.clone();
             let pause_flag = self.pause_streaming.clone();
             let frame_tx = tx.clone();
+            let capture_viewer_reports = self.viewer_reports.clone();
 
             // Spawn capture task
             let capture_handle = tokio::spawn(async move {
@@ -1073,6 +1081,11 @@ impl ScreenSharePlugin {
                 let bitrate_check_interval = std::time::Duration::from_secs(2);
                 let mut frames_captured: u64 = 0;
                 let mut was_paused = false;
+                let mut bitrate_ctrl = bitrate_controller::BitrateController::new(
+                    target_bitrate_kbps,
+                    min_bitrate_kbps,
+                    max_bitrate_kbps,
+                );
 
                 loop {
                     // Check stop flag
@@ -1105,28 +1118,22 @@ impl ScreenSharePlugin {
                         continue;
                     }
 
-                    // Adaptive bitrate control (based on subscriber count/health)
+                    // Adaptive bitrate control (AIMD based on viewer network reports)
                     if adaptive_bitrate && last_bitrate_check.elapsed() >= bitrate_check_interval {
                         last_bitrate_check = std::time::Instant::now();
                         let current_bitrate = capture.current_bitrate_kbps();
-
-                        // Check receiver count - if 0 receivers, we might reduce quality
                         let receiver_count = frame_tx.receiver_count();
-                        if receiver_count == 0 && current_bitrate > min_bitrate_kbps {
-                            // No active viewers, reduce bitrate to minimum
-                            debug!("No active viewers, reducing bitrate to minimum");
-                            let _ = capture.set_bitrate(min_bitrate_kbps);
-                        } else if receiver_count > 0 && current_bitrate < target_bitrate_kbps {
-                            // Viewers present and below target, increase bitrate
-                            let new_bitrate = (current_bitrate as f32 * 1.1) as u32;
-                            let new_bitrate = new_bitrate.min(max_bitrate_kbps);
-                            if new_bitrate != current_bitrate {
-                                debug!(
-                                    "Adaptive bitrate: {} kbps -> {} kbps ({} viewers)",
-                                    current_bitrate, new_bitrate, receiver_count
-                                );
-                                let _ = capture.set_bitrate(new_bitrate);
-                            }
+
+                        if let Some(new_bitrate) = bitrate_ctrl.update(
+                            &capture_viewer_reports,
+                            current_bitrate,
+                            receiver_count,
+                        ) {
+                            debug!(
+                                "Adaptive bitrate: {} -> {} kbps ({} viewers)",
+                                current_bitrate, new_bitrate, receiver_count
+                            );
+                            let _ = capture.set_bitrate(new_bitrate);
                         }
                     }
 
@@ -1176,6 +1183,7 @@ impl ScreenSharePlugin {
 
         let stop_flag = self.stop_streaming.clone();
         let viewer_id_clone = viewer_id.clone();
+        let sender_viewer_reports = self.viewer_reports.clone();
 
         let sender_handle = tokio::spawn(async move {
             // Connect to viewer
@@ -1195,6 +1203,7 @@ impl ScreenSharePlugin {
 
             let mut frame_rx = frame_rx;
             let mut cursor_rx = cursor_rx;
+            let mut lagged_frames: u64 = 0;
 
             loop {
                 // Check stop flag
@@ -1212,9 +1221,21 @@ impl ScreenSharePlugin {
                                     error!("Failed to send frame to viewer {}: {}", viewer_id_clone, e);
                                     break;
                                 }
+                                // Report throughput to bitrate controller
+                                sender_viewer_reports.update(
+                                    &viewer_id_clone,
+                                    sender.throughput_kbps(),
+                                    lagged_frames,
+                                );
                             }
                             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                                 warn!("Viewer {} lagged {} frames", viewer_id_clone, n);
+                                lagged_frames += n;
+                                sender_viewer_reports.update(
+                                    &viewer_id_clone,
+                                    sender.throughput_kbps(),
+                                    lagged_frames,
+                                );
                             }
                             Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                                 info!("Broadcast channel closed for viewer {}", viewer_id_clone);
@@ -1251,6 +1272,7 @@ impl ScreenSharePlugin {
 
             // Cleanup
             info!("Streaming to viewer {} ended", viewer_id_clone);
+            sender_viewer_reports.remove(&viewer_id_clone);
             let _ = sender.send_end_of_stream().await;
             sender.close().await;
 
@@ -1282,6 +1304,8 @@ impl ScreenSharePlugin {
     pub async fn remove_viewer_stream(&mut self, viewer_id: &str) {
         if let Some(handle) = self.sender_tasks.remove(viewer_id) {
             handle.abort();
+            #[cfg(feature = "screenshare")]
+            self.viewer_reports.remove(viewer_id);
             info!("Removed streaming task for viewer {}", viewer_id);
         }
 
@@ -1324,6 +1348,10 @@ impl ScreenSharePlugin {
             info!("Stopping sender task for viewer {}", viewer_id);
             handle.abort();
         }
+
+        // Clear all viewer network reports
+        #[cfg(feature = "screenshare")]
+        self.viewer_reports.clear();
 
         // Stop capture task with brief delay to allow graceful shutdown
         if let Some(handle) = self.capture_task.take() {
