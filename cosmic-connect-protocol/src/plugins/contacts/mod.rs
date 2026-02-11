@@ -37,6 +37,25 @@ use tracing::{debug, info, warn};
 // Re-export for external use
 pub use database::{Contact as ContactData, Email as EmailAddress, PhoneNumber as PhoneInfo};
 
+/// All incoming packet types handled by this plugin.
+///
+/// Desktops can both send and receive contact requests/responses,
+/// enabling desktop-to-desktop contact synchronization.
+fn contacts_incoming_capabilities() -> Vec<String> {
+    vec![
+        // Response types (from phone → desktop)
+        PACKET_TYPE_RESPONSE_UIDS_TIMESTAMPS.to_string(),
+        PACKET_TYPE_RESPONSE_VCARDS.to_string(),
+        "kdeconnect.contacts.response_uids_timestamps".to_string(),
+        "kdeconnect.contacts.response_vcards".to_string(),
+        // Request types (from desktop → desktop)
+        PACKET_TYPE_REQUEST_ALL_UIDS_TIMESTAMPS.to_string(),
+        PACKET_TYPE_REQUEST_VCARDS_BY_UID.to_string(),
+        "kdeconnect.contacts.request_all_uids_timestamps".to_string(),
+        "kdeconnect.contacts.request_vcards_by_uid".to_string(),
+    ]
+}
+
 /// Packet type for requesting all contact UIDs with timestamps
 pub const PACKET_TYPE_REQUEST_ALL_UIDS_TIMESTAMPS: &str =
     "cconnect.contacts.request_all_uids_timestamps";
@@ -390,6 +409,77 @@ impl ContactsPlugin {
         self.vcards_cache.clear();
         info!("Cleared contacts cache");
     }
+
+    /// Handle incoming request for all contact UIDs with timestamps (desktop-to-desktop)
+    ///
+    /// Responds with our locally cached contacts so the remote device can sync.
+    async fn handle_request_all_uids_timestamps(&self) -> Result<()> {
+        debug!("Received request for all contact UIDs with timestamps");
+
+        let uids: serde_json::Map<String, serde_json::Value> = self
+            .contacts_cache
+            .iter()
+            .map(|(uid, ts)| (uid.clone(), json!(*ts)))
+            .collect();
+
+        let response = Packet::new(
+            PACKET_TYPE_RESPONSE_UIDS_TIMESTAMPS,
+            json!({ "uids": uids }),
+        );
+
+        if let Some(sender) = &self.packet_sender {
+            if let Some(device_id) = &self.device_id {
+                if let Err(e) = sender.send((device_id.clone(), response)).await {
+                    warn!("Failed to send UIDs/timestamps response: {}", e);
+                } else {
+                    debug!("Sent {} contact UIDs to remote", uids.len());
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Handle incoming request for specific vCards by UID (desktop-to-desktop)
+    ///
+    /// Responds with vCard data for the requested UIDs from our local cache.
+    async fn handle_request_vcards_by_uid(&self, packet: &Packet) -> Result<()> {
+        debug!("Received request for vCards by UID");
+
+        let requested_uids: Vec<String> = packet
+            .body
+            .get("uids")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+
+        let mut vcards = serde_json::Map::new();
+        for uid in &requested_uids {
+            if let Some(vcard_data) = self.vcards_cache.get(uid) {
+                vcards.insert(uid.clone(), json!(vcard_data));
+            }
+        }
+
+        let response = Packet::new(
+            PACKET_TYPE_RESPONSE_VCARDS,
+            json!({ "vcards": vcards }),
+        );
+
+        if let Some(sender) = &self.packet_sender {
+            if let Some(device_id) = &self.device_id {
+                if let Err(e) = sender.send((device_id.clone(), response)).await {
+                    warn!("Failed to send vCards response: {}", e);
+                } else {
+                    debug!(
+                        "Sent {}/{} requested vCards to remote",
+                        vcards.len(),
+                        requested_uids.len()
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for ContactsPlugin {
@@ -413,18 +503,15 @@ impl Plugin for ContactsPlugin {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec![
-            PACKET_TYPE_RESPONSE_UIDS_TIMESTAMPS.to_string(),
-            PACKET_TYPE_RESPONSE_VCARDS.to_string(),
-            "kdeconnect.contacts.response_uids_timestamps".to_string(),
-            "kdeconnect.contacts.response_vcards".to_string(),
-        ]
+        contacts_incoming_capabilities()
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
         vec![
             PACKET_TYPE_REQUEST_ALL_UIDS_TIMESTAMPS.to_string(),
             PACKET_TYPE_REQUEST_VCARDS_BY_UID.to_string(),
+            PACKET_TYPE_RESPONSE_UIDS_TIMESTAMPS.to_string(),
+            PACKET_TYPE_RESPONSE_VCARDS.to_string(),
         ]
     }
 
@@ -465,6 +552,10 @@ impl Plugin for ContactsPlugin {
             self.handle_uids_timestamps_response(packet).await
         } else if packet.is_type(PACKET_TYPE_RESPONSE_VCARDS) {
             self.handle_vcards_response(packet).await
+        } else if packet.is_type(PACKET_TYPE_REQUEST_ALL_UIDS_TIMESTAMPS) {
+            self.handle_request_all_uids_timestamps().await
+        } else if packet.is_type(PACKET_TYPE_REQUEST_VCARDS_BY_UID) {
+            self.handle_request_vcards_by_uid(packet).await
         } else {
             Ok(())
         }
@@ -480,18 +571,15 @@ impl PluginFactory for ContactsPluginFactory {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec![
-            PACKET_TYPE_RESPONSE_UIDS_TIMESTAMPS.to_string(),
-            PACKET_TYPE_RESPONSE_VCARDS.to_string(),
-            "kdeconnect.contacts.response_uids_timestamps".to_string(),
-            "kdeconnect.contacts.response_vcards".to_string(),
-        ]
+        contacts_incoming_capabilities()
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
         vec![
             PACKET_TYPE_REQUEST_ALL_UIDS_TIMESTAMPS.to_string(),
             PACKET_TYPE_REQUEST_VCARDS_BY_UID.to_string(),
+            PACKET_TYPE_RESPONSE_UIDS_TIMESTAMPS.to_string(),
+            PACKET_TYPE_RESPONSE_VCARDS.to_string(),
         ]
     }
 
