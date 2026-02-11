@@ -2538,7 +2538,18 @@ impl CConnectInterface {
                     zbus::fdo::Error::Failed(format!("Failed to set local port: {}", e))
                 })?;
 
-                info!("Screen share configured for device {}", device_id);
+                // Also request the remote device to start sharing its screen
+                screenshare.request_screen_share().await.map_err(|e| {
+                    zbus::fdo::Error::Failed(format!(
+                        "Failed to send screen share request: {}",
+                        e
+                    ))
+                })?;
+
+                info!(
+                    "Screen share configured and request sent to device {}",
+                    device_id
+                );
                 Ok(())
             } else {
                 Err(zbus::fdo::Error::Failed(

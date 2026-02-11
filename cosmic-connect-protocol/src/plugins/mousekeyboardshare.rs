@@ -78,6 +78,32 @@ const PLUGIN_NAME: &str = "mousekeyboardshare";
 const INCOMING_CAPABILITY: &str = "cconnect.mkshare";
 const OUTGOING_CAPABILITY: &str = "cconnect.mkshare";
 
+/// All incoming packet types handled by this plugin.
+///
+/// The capability map uses exact-match lookups, so every sub-type
+/// must be registered individually.
+fn mkshare_incoming_capabilities() -> Vec<String> {
+    vec![
+        // Base capability
+        INCOMING_CAPABILITY.to_string(),
+        "kdeconnect.mkshare".to_string(),
+        // Specific packet types
+        "cconnect.mkshare.config".to_string(),
+        "cconnect.mkshare.mouse".to_string(),
+        "cconnect.mkshare.keyboard".to_string(),
+        "cconnect.mkshare.enter".to_string(),
+        "cconnect.mkshare.leave".to_string(),
+        "cconnect.mkshare.hotkey".to_string(),
+        // KDE Connect compatibility
+        "kdeconnect.mkshare.config".to_string(),
+        "kdeconnect.mkshare.mouse".to_string(),
+        "kdeconnect.mkshare.keyboard".to_string(),
+        "kdeconnect.mkshare.enter".to_string(),
+        "kdeconnect.mkshare.leave".to_string(),
+        "kdeconnect.mkshare.hotkey".to_string(),
+    ]
+}
+
 /// Screen edge
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -732,10 +758,7 @@ impl Plugin for MouseKeyboardSharePlugin {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec![
-            INCOMING_CAPABILITY.to_string(),
-            "kdeconnect.mkshare".to_string(),
-        ]
+        mkshare_incoming_capabilities()
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
@@ -966,10 +989,7 @@ impl PluginFactory for MouseKeyboardSharePluginFactory {
     }
 
     fn incoming_capabilities(&self) -> Vec<String> {
-        vec![
-            INCOMING_CAPABILITY.to_string(),
-            "kdeconnect.mkshare".to_string(),
-        ]
+        mkshare_incoming_capabilities()
     }
 
     fn outgoing_capabilities(&self) -> Vec<String> {
