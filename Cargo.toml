@@ -27,7 +27,7 @@ libcosmic = { git = "https://github.com/pop-os/libcosmic", default-features = fa
 
 # Shared Cosmic Connect Core (TLS and crypto layer)
 # Using git dependency instead of path for better Nix flake support
-cosmic-ext-connect-core = { git = "https://github.com/olafkfreund/cosmic-connect-core.git", branch = "main", package = "cosmic-connect-core" }
+cosmic-ext-connect-core = { git = "https://github.com/olafkfreund/cosmic-connect-core.git", branch = "main", package = "cosmic-ext-connect-core" }
 
 # Protocol implementation
 cosmic-ext-connect-protocol = { path = "./cosmic-ext-connect-protocol" }
