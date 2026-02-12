@@ -224,6 +224,11 @@ rustPlatform.buildRustPackage rec {
     mkdir -p $out/share/icons/hicolor/symbolic/apps
     cp data/icons/hicolor/scalable/apps/cosmic-ext-connect.svg $out/share/icons/hicolor/scalable/apps/
     cp data/icons/hicolor/symbolic/apps/cosmic-ext-connect-symbolic.svg $out/share/icons/hicolor/symbolic/apps/
+    cp data/icons/hicolor/symbolic/apps/cosmic-ext-connect-phone-symbolic.svg $out/share/icons/hicolor/symbolic/apps/
+    cp data/icons/hicolor/symbolic/apps/cosmic-ext-connect-tablet-symbolic.svg $out/share/icons/hicolor/symbolic/apps/
+    cp data/icons/hicolor/symbolic/apps/cosmic-ext-connect-laptop-symbolic.svg $out/share/icons/hicolor/symbolic/apps/
+    cp data/icons/hicolor/symbolic/apps/cosmic-ext-connect-desktop-symbolic.svg $out/share/icons/hicolor/symbolic/apps/
+    cp data/icons/hicolor/symbolic/apps/cosmic-ext-connect-tv-symbolic.svg $out/share/icons/hicolor/symbolic/apps/
 
     # Install desktop entry for applet (COSMIC panel integration)
     cat > $out/share/applications/cosmic-ext-applet-connect.desktop << EOF

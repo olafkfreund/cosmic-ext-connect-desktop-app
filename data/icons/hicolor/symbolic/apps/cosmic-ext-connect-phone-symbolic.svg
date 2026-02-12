@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <style>
+    .outline { fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+    .fill { fill: currentColor; }
+    .screen { fill: currentColor; opacity: 0.15; }
+  </style>
+  <!-- Phone body -->
+  <rect class="outline" x="3.5" y="0.5" width="9" height="15" rx="2" ry="2"/>
+  <!-- Screen -->
+  <rect class="screen" x="4.8" y="3" width="6.4" height="9.5" rx="0.5" ry="0.5"/>
+  <!-- Speaker notch -->
+  <line class="outline" x1="6.5" y1="1.8" x2="9.5" y2="1.8" stroke-width="0.9"/>
+  <!-- Home indicator -->
+  <rect class="fill" x="6.5" y="13.5" width="3" height="0.8" rx="0.4" ry="0.4"/>
+</svg>

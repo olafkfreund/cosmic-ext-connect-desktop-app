@@ -290,9 +290,11 @@ fn get_available_actions(device: &DeviceInfo) -> Vec<DeviceAction> {
 
 fn device_icon_name(device_type: &str) -> &'static str {
     match device_type {
-        "phone" => "phone-symbolic",
-        "tablet" => "tablet-symbolic",
-        "desktop" | "laptop" => "computer-symbolic",
+        "phone" => "cosmic-ext-connect-phone-symbolic",
+        "tablet" => "cosmic-ext-connect-tablet-symbolic",
+        "desktop" => "cosmic-ext-connect-desktop-symbolic",
+        "laptop" => "cosmic-ext-connect-laptop-symbolic",
+        "tv" => "cosmic-ext-connect-tv-symbolic",
         _ => "network-wireless-symbolic",
     }
 }

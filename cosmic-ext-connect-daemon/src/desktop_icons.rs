@@ -13,14 +13,14 @@ use crate::device_config::DeviceConfig;
 
 /// Get the icon name based on device type
 ///
-/// Returns symbolic icon names from the freedesktop icon theme spec
+/// Returns custom symbolic icon names for each device type
 fn get_device_icon(device_type: DeviceType) -> &'static str {
     match device_type {
-        DeviceType::Phone => "phone-symbolic",
-        DeviceType::Tablet => "tablet-symbolic",
-        DeviceType::Desktop => "computer-symbolic",
-        DeviceType::Laptop => "laptop-symbolic",
-        DeviceType::Tv => "video-display-symbolic",
+        DeviceType::Phone => "cosmic-ext-connect-phone-symbolic",
+        DeviceType::Tablet => "cosmic-ext-connect-tablet-symbolic",
+        DeviceType::Desktop => "cosmic-ext-connect-desktop-symbolic",
+        DeviceType::Laptop => "cosmic-ext-connect-laptop-symbolic",
+        DeviceType::Tv => "cosmic-ext-connect-tv-symbolic",
     }
 }
 
@@ -322,11 +322,11 @@ mod tests {
 
     #[test]
     fn test_get_device_icon() {
-        assert_eq!(get_device_icon(DeviceType::Phone), "phone-symbolic");
-        assert_eq!(get_device_icon(DeviceType::Tablet), "tablet-symbolic");
-        assert_eq!(get_device_icon(DeviceType::Desktop), "computer-symbolic");
-        assert_eq!(get_device_icon(DeviceType::Laptop), "laptop-symbolic");
-        assert_eq!(get_device_icon(DeviceType::Tv), "video-display-symbolic");
+        assert_eq!(get_device_icon(DeviceType::Phone), "cosmic-ext-connect-phone-symbolic");
+        assert_eq!(get_device_icon(DeviceType::Tablet), "cosmic-ext-connect-tablet-symbolic");
+        assert_eq!(get_device_icon(DeviceType::Desktop), "cosmic-ext-connect-desktop-symbolic");
+        assert_eq!(get_device_icon(DeviceType::Laptop), "cosmic-ext-connect-laptop-symbolic");
+        assert_eq!(get_device_icon(DeviceType::Tv), "cosmic-ext-connect-tv-symbolic");
     }
 
     #[test]
@@ -338,7 +338,7 @@ mod tests {
         assert!(content.contains("[Desktop Entry]"));
         assert!(content.contains("Type=Application"));
         assert!(content.contains("Name=Test Phone"));
-        assert!(content.contains("Icon=phone-symbolic"));
+        assert!(content.contains("Icon=cosmic-ext-connect-phone-symbolic"));
         assert!(content.contains("Comment=Connected phone device - Drop files here to send"));
         assert!(content.contains(&device.info.device_id));
 

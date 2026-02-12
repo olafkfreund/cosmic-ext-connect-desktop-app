@@ -113,11 +113,25 @@ install: build-release
         /usr/bin/cosmic-ext-applet-connect
     sudo install -Dm755 target/release/cosmic-ext-connect-daemon \
         /usr/bin/cosmic-ext-connect-daemon
-    sudo install -Dm755 target/release/cosmic-ext-connect-daemon \
-        /usr/bin/cosmic-ext-connect-daemon
+    sudo install -Dm755 target/release/cosmic-ext-connect-manager \
+        /usr/bin/cosmic-ext-connect-manager
     sudo install -Dm644 cosmic-ext-applet-connect/data/cosmic-ext-applet-connect.desktop \
         /usr/share/applications/cosmic-ext-applet-connect.desktop
-    @echo "✅ Installed successfully!"
+    sudo install -Dm644 data/icons/hicolor/scalable/apps/cosmic-ext-connect.svg \
+        /usr/share/icons/hicolor/scalable/apps/cosmic-ext-connect.svg
+    sudo install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-symbolic.svg \
+        /usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-symbolic.svg
+    sudo install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-phone-symbolic.svg \
+        /usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-phone-symbolic.svg
+    sudo install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-tablet-symbolic.svg \
+        /usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-tablet-symbolic.svg
+    sudo install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-laptop-symbolic.svg \
+        /usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-laptop-symbolic.svg
+    sudo install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-desktop-symbolic.svg \
+        /usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-desktop-symbolic.svg
+    sudo install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-tv-symbolic.svg \
+        /usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-tv-symbolic.svg
+    @echo "Installed successfully!"
 
 # Install only the applet
 install-applet: build-release
@@ -132,17 +146,38 @@ install-local PREFIX="$HOME/.local": build-release
         {{PREFIX}}/bin/cosmic-ext-applet-connect
     install -Dm755 target/release/cosmic-ext-connect-daemon \
         {{PREFIX}}/bin/cosmic-ext-connect-daemon
-    install -Dm755 target/release/cosmic-ext-connect-daemon \
-        {{PREFIX}}/bin/cosmic-ext-connect-daemon
+    install -Dm755 target/release/cosmic-ext-connect-manager \
+        {{PREFIX}}/bin/cosmic-ext-connect-manager
     install -Dm644 cosmic-ext-applet-connect/data/cosmic-ext-applet-connect.desktop \
         {{PREFIX}}/share/applications/cosmic-ext-applet-connect.desktop
+    install -Dm644 data/icons/hicolor/scalable/apps/cosmic-ext-connect.svg \
+        {{PREFIX}}/share/icons/hicolor/scalable/apps/cosmic-ext-connect.svg
+    install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-symbolic.svg \
+        {{PREFIX}}/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-symbolic.svg
+    install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-phone-symbolic.svg \
+        {{PREFIX}}/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-phone-symbolic.svg
+    install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-tablet-symbolic.svg \
+        {{PREFIX}}/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-tablet-symbolic.svg
+    install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-laptop-symbolic.svg \
+        {{PREFIX}}/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-laptop-symbolic.svg
+    install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-desktop-symbolic.svg \
+        {{PREFIX}}/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-desktop-symbolic.svg
+    install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-tv-symbolic.svg \
+        {{PREFIX}}/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-tv-symbolic.svg
 
 # Uninstall all components
 uninstall:
     sudo rm -f /usr/bin/cosmic-ext-applet-connect
     sudo rm -f /usr/bin/cosmic-ext-connect-daemon
-    sudo rm -f /usr/bin/cosmic-ext-connect-daemon
+    sudo rm -f /usr/bin/cosmic-ext-connect-manager
     sudo rm -f /usr/share/applications/cosmic-ext-applet-connect.desktop
+    sudo rm -f /usr/share/icons/hicolor/scalable/apps/cosmic-ext-connect.svg
+    sudo rm -f /usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-symbolic.svg
+    sudo rm -f /usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-phone-symbolic.svg
+    sudo rm -f /usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-tablet-symbolic.svg
+    sudo rm -f /usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-laptop-symbolic.svg
+    sudo rm -f /usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-desktop-symbolic.svg
+    sudo rm -f /usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-tv-symbolic.svg
 
 # Setup development environment
 setup:

@@ -13,7 +13,7 @@ use cosmic_ext_connect_protocol::{ConnectionState, Device, DeviceType, PairingSt
 use crate::{
     horizontal_space, messages::OperationType, space_xxs, space_xxs_f32,
     space_xs, space_xxxs, state::*, theme_destructive_color, theme_muted_color,
-    theme_success_color, theme_warning_color, CConnectApplet, Message, ICON_L, ICON_S, ICON_XL, ICON_XS,
+    theme_success_color, theme_warning_color, CConnectApplet, Message, ICON_L, ICON_S, ICON_XS,
 };
 
 /// Device category for grouping in popup
@@ -250,10 +250,9 @@ impl CConnectApplet {
         // Main device row layout
         let mut content = column![
             row![
-                container(icon::from_name(device_icon).size(ICON_XL))
-                    .width(Length::Fixed(f32::from(theme::active().cosmic().space_xxl())))
-                    .align_x(Horizontal::Center)
-                    .padding(Padding::new(space_xxs_f32())),
+                container(icon::from_name(device_icon).size(ICON_L))
+                    .width(Length::Fixed(f32::from(ICON_L) + space_xxs_f32() * 2.0))
+                    .align_x(Horizontal::Center),
                 info_col,
                 star_button,
             ]
@@ -263,7 +262,7 @@ impl CConnectApplet {
             // Actions row below
             container(actions_row)
                 .width(Length::Fill)
-                .padding(Padding::new(0.0).left(48.0 + space_xxs_f32())) // Indent to align with text
+                .padding(Padding::new(0.0).left(f32::from(ICON_L) + space_xxs_f32() * 3.0)) // Indent to align with text
                 .align_x(Horizontal::Left),
         ]
         .spacing(space_xxs())
@@ -966,11 +965,11 @@ pub(crate) fn action_button_with_tooltip_loading(
 /// Returns the icon name for a device type
 pub(crate) fn device_type_icon(device_type: DeviceType) -> &'static str {
     match device_type {
-        DeviceType::Phone => "phone-symbolic",
-        DeviceType::Tablet => "tablet-symbolic",
-        DeviceType::Desktop => "computer-symbolic",
-        DeviceType::Laptop => "laptop-symbolic",
-        DeviceType::Tv => "tv-symbolic",
+        DeviceType::Phone => "cosmic-ext-connect-phone-symbolic",
+        DeviceType::Tablet => "cosmic-ext-connect-tablet-symbolic",
+        DeviceType::Desktop => "cosmic-ext-connect-desktop-symbolic",
+        DeviceType::Laptop => "cosmic-ext-connect-laptop-symbolic",
+        DeviceType::Tv => "cosmic-ext-connect-tv-symbolic",
     }
 }
 

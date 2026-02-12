@@ -160,8 +160,15 @@ modules:
       # Install AppStream metadata
       - install -Dm644 flatpak/io.github.olafkfreund.CosmicExtConnect.metainfo.xml -t /app/share/metainfo/
 
-      # Install icon
+      # Install icons
       - install -Dm644 connect_logo.png /app/share/icons/hicolor/256x256/apps/io.github.olafkfreund.CosmicExtConnect.png
+      - install -Dm644 data/icons/hicolor/scalable/apps/cosmic-ext-connect.svg /app/share/icons/hicolor/scalable/apps/cosmic-ext-connect.svg
+      - install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-symbolic.svg /app/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-symbolic.svg
+      - install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-phone-symbolic.svg /app/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-phone-symbolic.svg
+      - install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-tablet-symbolic.svg /app/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-tablet-symbolic.svg
+      - install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-laptop-symbolic.svg /app/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-laptop-symbolic.svg
+      - install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-desktop-symbolic.svg /app/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-desktop-symbolic.svg
+      - install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-tv-symbolic.svg /app/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-tv-symbolic.svg
 
       # Install D-Bus service files
       - mkdir -p /app/share/dbus-1/services

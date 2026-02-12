@@ -136,9 +136,23 @@ EOF
   install -Dm644 flatpak/io.github.olafkfreund.CosmicExtConnect.metainfo.xml \
     "$pkgdir/usr/share/metainfo/io.github.olafkfreund.CosmicExtConnect.metainfo.xml"
 
-  # Install icon
+  # Install icons
   install -Dm644 connect_logo.png \
     "$pkgdir/usr/share/icons/hicolor/256x256/apps/io.github.olafkfreund.CosmicExtConnect.png"
+  install -Dm644 data/icons/hicolor/scalable/apps/cosmic-ext-connect.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/cosmic-ext-connect.svg"
+  install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-symbolic.svg \
+    "$pkgdir/usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-symbolic.svg"
+  install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-phone-symbolic.svg \
+    "$pkgdir/usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-phone-symbolic.svg"
+  install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-tablet-symbolic.svg \
+    "$pkgdir/usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-tablet-symbolic.svg"
+  install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-laptop-symbolic.svg \
+    "$pkgdir/usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-laptop-symbolic.svg"
+  install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-desktop-symbolic.svg \
+    "$pkgdir/usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-desktop-symbolic.svg"
+  install -Dm644 data/icons/hicolor/symbolic/apps/cosmic-ext-connect-tv-symbolic.svg \
+    "$pkgdir/usr/share/icons/hicolor/symbolic/apps/cosmic-ext-connect-tv-symbolic.svg"
 
   # Install documentation
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
