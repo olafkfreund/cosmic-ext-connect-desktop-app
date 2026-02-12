@@ -10,8 +10,8 @@ use std::collections::HashMap;
 use messages::{Message, NotificationType, OperationType};
 use state::{
     ActiveScreenShare, AppNotification, CameraStats, ConversationSummary, DeviceState, FocusTarget,
-    HistoryEvent, ReceivedFile, SystemInfo, TransferState, ViewMode, MAX_DISPLAYED_HISTORY_ITEMS,
-    MAX_RECEIVED_FILES_HISTORY,
+    HistoryEvent, ReceivedFile, SmsMessageDisplay, SystemInfo, TransferState, ViewMode,
+    MAX_DISPLAYED_HISTORY_ITEMS, MAX_RECEIVED_FILES_HISTORY,
 };
 
 use cosmic::{
@@ -450,12 +450,22 @@ struct CConnectApplet {
     conversations_device: Option<String>,  // device_id showing conversations list
     active_conversation: Option<(String, i64)>, // (device_id, thread_id)
     conversations_cache: HashMap<String, Vec<ConversationSummary>>, // device_id -> summaries
+    conversation_messages: HashMap<(String, i64), Vec<SmsMessageDisplay>>, // (device_id, thread_id) -> messages
     // System Monitor state
     system_info: HashMap<String, SystemInfo>, // device_id -> system information
     // Screenshot state
     screenshots: HashMap<String, Vec<u8>>, // device_id -> last screenshot image data
+    // Destructive action confirmation
+    pending_destructive_confirmation: Option<PendingDestructiveAction>,
 }
 
+/// Pending destructive action awaiting user confirmation
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+enum PendingDestructiveAction {
+    UnpairDevice(String),  // device_id
+    DismissDevice(String), // device_id
+}
 
 /// Fetches device list from the daemon via D-Bus
 async fn fetch_devices() -> HashMap<String, dbus_client::DeviceInfo> {
@@ -797,8 +807,10 @@ impl cosmic::Application for CConnectApplet {
             conversations_device: None,
             active_conversation: None,
             conversations_cache: HashMap::new(),
+            conversation_messages: HashMap::new(),
             system_info: HashMap::new(),
             screenshots: HashMap::new(),
+            pending_destructive_confirmation: None,
         };
         (app, Task::none())
     }
@@ -894,7 +906,27 @@ impl cosmic::Application for CConnectApplet {
                     ),
                 ])
             }
+            Message::ConfirmUnpairDevice(device_id) => {
+                let device_name = self
+                    .devices
+                    .iter()
+                    .find(|d| d.device.id() == device_id)
+                    .map(|d| d.device.name().to_string())
+                    .unwrap_or_else(|| device_id.clone());
+                self.pending_destructive_confirmation =
+                    Some(PendingDestructiveAction::UnpairDevice(device_id.clone()));
+                self.notification = Some(AppNotification {
+                    message: format!("Unpair \"{}\"? You'll need to pair again.", device_name),
+                    kind: NotificationType::Info,
+                    action: Some((
+                        "Unpair".to_string(),
+                        Box::new(Message::UnpairDevice(device_id)),
+                    )),
+                });
+                Task::none()
+            }
             Message::UnpairDevice(device_id) => {
+                self.pending_destructive_confirmation = None;
                 let id = device_id.clone();
                 Task::batch(vec![
                     Task::done(cosmic::Action::App(Message::OperationStarted(
@@ -908,7 +940,35 @@ impl cosmic::Application for CConnectApplet {
                     ),
                 ])
             }
+            Message::ConfirmDismissDevice(device_id) => {
+                let device_name = self
+                    .devices
+                    .iter()
+                    .find(|d| d.device.id() == device_id)
+                    .map(|d| d.device.name().to_string())
+                    .unwrap_or_else(|| device_id.clone());
+                self.pending_destructive_confirmation =
+                    Some(PendingDestructiveAction::DismissDevice(device_id.clone()));
+                self.notification = Some(AppNotification {
+                    message: format!(
+                        "Forget \"{}\"? This device will be removed permanently.",
+                        device_name
+                    ),
+                    kind: NotificationType::Info,
+                    action: Some((
+                        "Forget".to_string(),
+                        Box::new(Message::DismissDevice(device_id)),
+                    )),
+                });
+                Task::none()
+            }
+            Message::CancelDestructiveConfirmation => {
+                self.pending_destructive_confirmation = None;
+                self.notification = None;
+                Task::none()
+            }
             Message::DismissDevice(device_id) => {
+                self.pending_destructive_confirmation = None;
                 tracing::info!("User requested dismiss device: {}", device_id);
                 Task::perform(
                     async move {
@@ -1281,8 +1341,15 @@ impl cosmic::Application for CConnectApplet {
                 self.conversations_cache.insert(device_id, summaries);
                 Task::none()
             }
-            Message::ConversationMessagesLoaded(_device_id, _thread_id, _messages) => {
-                // Future: store messages for display in detail view
+            Message::ConversationMessagesLoaded(device_id, thread_id, messages) => {
+                tracing::info!(
+                    "Loaded {} messages for thread {} on {}",
+                    messages.len(),
+                    thread_id,
+                    device_id
+                );
+                self.conversation_messages
+                    .insert((device_id, thread_id), messages);
                 Task::none()
             }
             Message::RequestBatteryUpdate(device_id) => {
@@ -2821,7 +2888,8 @@ impl cosmic::Application for CConnectApplet {
                             state.popup = Some(new_id);
 
                             let mut popup_settings = state.core.applet.get_popup_settings(
-                                state.core.main_window_id().unwrap(),
+                                state.core.main_window_id()
+                                    .expect("applet must have a main window"),
                                 new_id,
                                 None,
                                 None,

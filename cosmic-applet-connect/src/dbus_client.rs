@@ -861,10 +861,13 @@ impl DbusClient {
                 if let Ok(args) = signal.args() {
                     let device_id = args.device_id().to_string();
                     let device_info = args.device_info().clone();
-                    let _ = event_tx.send(DaemonEvent::DeviceAdded {
+                    if event_tx.send(DaemonEvent::DeviceAdded {
                         device_id,
                         device_info,
-                    });
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping DeviceAdded signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -875,7 +878,10 @@ impl DbusClient {
             while let Some(signal) = device_removed_stream.next().await {
                 if let Ok(args) = signal.args() {
                     let device_id = args.device_id().to_string();
-                    let _ = event_tx.send(DaemonEvent::DeviceRemoved { device_id });
+                    if event_tx.send(DaemonEvent::DeviceRemoved { device_id }).is_err() {
+                        tracing::warn!("Event channel closed, stopping DeviceRemoved signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -887,7 +893,10 @@ impl DbusClient {
                 if let Ok(args) = signal.args() {
                     let device_id = args.device_id().to_string();
                     let state = args.state().to_string();
-                    let _ = event_tx.send(DaemonEvent::DeviceStateChanged { device_id, state });
+                    if event_tx.send(DaemonEvent::DeviceStateChanged { device_id, state }).is_err() {
+                        tracing::warn!("Event channel closed, stopping DeviceStateChanged signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -898,7 +907,10 @@ impl DbusClient {
             while let Some(signal) = pairing_request_stream.next().await {
                 if let Ok(args) = signal.args() {
                     let device_id = args.device_id().to_string();
-                    let _ = event_tx.send(DaemonEvent::PairingRequest { device_id });
+                    if event_tx.send(DaemonEvent::PairingRequest { device_id }).is_err() {
+                        tracing::warn!("Event channel closed, stopping PairingRequest signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -910,7 +922,10 @@ impl DbusClient {
                 if let Ok(args) = signal.args() {
                     let device_id = args.device_id().to_string();
                     let status = args.status().to_string();
-                    let _ = event_tx.send(DaemonEvent::PairingStatusChanged { device_id, status });
+                    if event_tx.send(DaemonEvent::PairingStatusChanged { device_id, status }).is_err() {
+                        tracing::warn!("Event channel closed, stopping PairingStatusChanged signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -923,11 +938,14 @@ impl DbusClient {
                     let device_id = args.device_id().to_string();
                     let plugin = args.plugin().to_string();
                     let data = args.data().to_string();
-                    let _ = event_tx.send(DaemonEvent::PluginEvent {
+                    if event_tx.send(DaemonEvent::PluginEvent {
                         device_id,
                         plugin,
                         data,
-                    });
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping PluginEvent signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -941,11 +959,14 @@ impl DbusClient {
                     let device_id = args.device_id().to_string();
                     let plugin_name = args.plugin_name().to_string();
                     let enabled = *args.enabled();
-                    let _ = event_tx.send(DaemonEvent::DevicePluginStateChanged {
+                    if event_tx.send(DaemonEvent::DevicePluginStateChanged {
                         device_id,
                         plugin_name,
                         enabled,
-                    });
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping DevicePluginStateChanged signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -955,14 +976,17 @@ impl DbusClient {
         tokio::spawn(async move {
             while let Some(signal) = progress_stream.next().await {
                 if let Ok(args) = signal.args() {
-                    let _ = event_tx.send(DaemonEvent::TransferProgress {
+                    if event_tx.send(DaemonEvent::TransferProgress {
                         transfer_id: args.transfer_id().to_string(),
                         device_id: args.device_id().to_string(),
                         filename: args.filename().to_string(),
                         current: *args.current(),
                         total: *args.total(),
                         direction: args.direction().to_string(),
-                    });
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping TransferProgress signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -972,13 +996,16 @@ impl DbusClient {
         tokio::spawn(async move {
             while let Some(signal) = complete_stream.next().await {
                 if let Ok(args) = signal.args() {
-                    let _ = event_tx.send(DaemonEvent::TransferComplete {
+                    if event_tx.send(DaemonEvent::TransferComplete {
                         transfer_id: args.transfer_id().to_string(),
                         device_id: args.device_id().to_string(),
                         filename: args.filename().to_string(),
                         success: *args.success(),
                         error: args.error().to_string(),
-                    });
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping TransferComplete signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -989,7 +1016,10 @@ impl DbusClient {
             while let Some(signal) = screen_share_stream.next().await {
                 if let Ok(args) = signal.args() {
                     let device_id = args.device_id().to_string();
-                    let _ = event_tx.send(DaemonEvent::ScreenShareRequested { device_id });
+                    if event_tx.send(DaemonEvent::ScreenShareRequested { device_id }).is_err() {
+                        tracing::warn!("Event channel closed, stopping ScreenShareRequested signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -1002,7 +1032,10 @@ impl DbusClient {
             while let Some(signal) = outgoing_share_stream.next().await {
                 if let Ok(args) = signal.args() {
                     let device_id = args.device_id().to_string();
-                    let _ = event_tx.send(DaemonEvent::ScreenShareOutgoingRequest { device_id });
+                    if event_tx.send(DaemonEvent::ScreenShareOutgoingRequest { device_id }).is_err() {
+                        tracing::warn!("Event channel closed, stopping ScreenShareOutgoingRequest signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -1012,12 +1045,15 @@ impl DbusClient {
         tokio::spawn(async move {
             while let Some(signal) = cursor_stream.next().await {
                 if let Ok(args) = signal.args() {
-                    let _ = event_tx.send(DaemonEvent::ScreenShareCursorUpdate {
+                    if event_tx.send(DaemonEvent::ScreenShareCursorUpdate {
                         device_id: args.device_id().to_string(),
                         x: *args.x(),
                         y: *args.y(),
                         visible: *args.visible(),
-                    });
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping ScreenShareCursorUpdate signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -1027,7 +1063,7 @@ impl DbusClient {
         tokio::spawn(async move {
             while let Some(signal) = annotation_stream.next().await {
                 if let Ok(args) = signal.args() {
-                    let _ = event_tx.send(DaemonEvent::ScreenShareAnnotation {
+                    if event_tx.send(DaemonEvent::ScreenShareAnnotation {
                         device_id: args.device_id().to_string(),
                         annotation_type: args.annotation_type().to_string(),
                         x1: *args.x1(),
@@ -1036,7 +1072,10 @@ impl DbusClient {
                         y2: *args.y2(),
                         color: args.color().to_string(),
                         width: *args.width(),
-                    });
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping ScreenShareAnnotation signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -1046,10 +1085,13 @@ impl DbusClient {
         tokio::spawn(async move {
             while let Some(signal) = started_stream.next().await {
                 if let Ok(args) = signal.args() {
-                    let _ = event_tx.send(DaemonEvent::ScreenShareStarted {
+                    if event_tx.send(DaemonEvent::ScreenShareStarted {
                         device_id: args.device_id().to_string(),
                         is_sender: *args.is_sender(),
-                    });
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping ScreenShareStarted signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -1059,9 +1101,12 @@ impl DbusClient {
         tokio::spawn(async move {
             while let Some(signal) = stopped_stream.next().await {
                 if let Ok(args) = signal.args() {
-                    let _ = event_tx.send(DaemonEvent::ScreenShareStopped {
+                    if event_tx.send(DaemonEvent::ScreenShareStopped {
                         device_id: args.device_id().to_string(),
-                    });
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping ScreenShareStopped signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -1072,12 +1117,15 @@ impl DbusClient {
         tokio::spawn(async move {
             while let Some(signal) = incoming_call_stream.next().await {
                 if let Ok(args) = signal.args() {
-                    let _ = event_tx.send(DaemonEvent::IncomingCall {
+                    if event_tx.send(DaemonEvent::IncomingCall {
                         device_id: args.device_id().to_string(),
                         phone_number: args.phone_number().to_string(),
                         contact_name: args.contact_name().to_string(),
                         event: args.event().to_string(),
-                    });
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping IncomingCall signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -1087,11 +1135,14 @@ impl DbusClient {
         tokio::spawn(async move {
             while let Some(signal) = missed_call_stream.next().await {
                 if let Ok(args) = signal.args() {
-                    let _ = event_tx.send(DaemonEvent::MissedCall {
+                    if event_tx.send(DaemonEvent::MissedCall {
                         device_id: args.device_id().to_string(),
                         phone_number: args.phone_number().to_string(),
                         contact_name: args.contact_name().to_string(),
-                    });
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping MissedCall signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -1101,12 +1152,15 @@ impl DbusClient {
         tokio::spawn(async move {
             while let Some(signal) = call_state_stream.next().await {
                 if let Ok(args) = signal.args() {
-                    let _ = event_tx.send(DaemonEvent::CallStateChanged {
+                    if event_tx.send(DaemonEvent::CallStateChanged {
                         device_id: args.device_id().to_string(),
                         state: args.state().to_string(),
                         phone_number: args.phone_number().to_string(),
                         contact_name: args.contact_name().to_string(),
-                    });
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping CallStateChanged signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -1116,13 +1170,16 @@ impl DbusClient {
         tokio::spawn(async move {
             while let Some(signal) = sms_received_stream.next().await {
                 if let Ok(args) = signal.args() {
-                    let _ = event_tx.send(DaemonEvent::SmsReceived {
+                    if event_tx.send(DaemonEvent::SmsReceived {
                         device_id: args.device_id().to_string(),
                         thread_id: *args.thread_id(),
                         address: args.address().to_string(),
                         body: args.body().to_string(),
                         timestamp: *args.timestamp(),
-                    });
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping SmsReceived signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -1132,10 +1189,13 @@ impl DbusClient {
         tokio::spawn(async move {
             while let Some(signal) = sms_conv_stream.next().await {
                 if let Ok(args) = signal.args() {
-                    let _ = event_tx.send(DaemonEvent::SmsConversationsUpdated {
+                    if event_tx.send(DaemonEvent::SmsConversationsUpdated {
                         device_id: args.device_id().to_string(),
                         count: *args.count(),
-                    });
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping SmsConversationsUpdated signal listener");
+                        break;
+                    }
                 }
             }
         });
@@ -1958,7 +2018,9 @@ impl ReconnectingClient {
                 client.start_signal_listener().await?;
 
                 // Notify about reconnection
-                let _ = self.reconnect_tx.send(DaemonEvent::DaemonReconnected);
+                if self.reconnect_tx.send(DaemonEvent::DaemonReconnected).is_err() {
+                    tracing::warn!("Reconnect channel closed");
+                }
 
                 self.client = Some(client);
                 self.event_rx = new_event_rx;
