@@ -42,7 +42,7 @@
 
 rustPlatform.buildRustPackage rec {
   pname = "cosmic-connect";
-  version = "0.17.0";
+  version = "0.18.0";
 
   # Use cleanSourceWith to exclude cosmic-connect-core (git submodule)
   # Cargo will fetch cosmic-connect-core as a git dependency via allowBuiltinFetchGit
