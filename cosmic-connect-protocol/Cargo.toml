@@ -72,6 +72,9 @@ gstreamer-app = { version = "0.24.4", optional = true }
 gstreamer-video = { version = "0.24.4", optional = true }
 ashpd = { workspace = true, optional = true }
 
+# Extended Display streaming
+cosmic-display-stream = { workspace = true, optional = true }
+
 [features]
 default = []
 remotedesktop = ["pipewire", "openh264", "lz4", "image", "ashpd"]
@@ -83,6 +86,7 @@ audiostream-opus = ["audiostream", "opus"]
 # AAC codec support - currently a placeholder feature for future implementation
 # When implementing, uncomment fdk-aac dependency and add: aac = ["audiostream", "fdk-aac"]
 aac = ["audiostream"]
+extendeddisplay = ["cosmic-display-stream"]
 
 [dev-dependencies]
 tokio-test = "0.4"

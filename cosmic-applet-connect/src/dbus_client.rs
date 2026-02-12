@@ -391,6 +391,15 @@ pub enum DaemonEvent {
         device_id: String,
         count: u32,
     },
+    /// Extended display session started
+    ExtendedDisplayStarted { device_id: String },
+    /// Extended display session stopped
+    ExtendedDisplayStopped { device_id: String },
+    /// Extended display error
+    ExtendedDisplayError {
+        device_id: String,
+        error_message: String,
+    },
 }
 
 /// DBus proxy for COSMIC Connect daemon interface
@@ -692,6 +701,12 @@ trait CConnect {
     /// Stop presenter mode
     async fn stop_presenter(&self, device_id: &str) -> zbus::fdo::Result<()>;
 
+    /// Start extended display streaming to a device
+    async fn start_extended_display(&self, device_id: &str) -> zbus::fdo::Result<()>;
+
+    /// Stop extended display streaming
+    async fn stop_extended_display(&self, device_id: &str) -> zbus::fdo::Result<()>;
+
     /// Signal: File transfer complete
     #[zbus(signal)]
     fn transfer_complete(
@@ -781,6 +796,21 @@ trait CConnect {
     fn sms_conversations_updated(
         device_id: &str,
         count: u32,
+    ) -> zbus::fdo::Result<()>;
+
+    /// Signal: Extended display session started
+    #[zbus(signal)]
+    fn extended_display_started(device_id: &str) -> zbus::fdo::Result<()>;
+
+    /// Signal: Extended display session stopped
+    #[zbus(signal)]
+    fn extended_display_stopped(device_id: &str) -> zbus::fdo::Result<()>;
+
+    /// Signal: Extended display error
+    #[zbus(signal)]
+    fn extended_display_error(
+        device_id: &str,
+        error_message: &str,
     ) -> zbus::fdo::Result<()>;
 }
 
@@ -1194,6 +1224,53 @@ impl DbusClient {
                         count: *args.count(),
                     }).is_err() {
                         tracing::warn!("Event channel closed, stopping SmsConversationsUpdated signal listener");
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Extended display signal listeners
+        let event_tx = self.event_tx.clone();
+        let mut ed_started_stream = self.proxy.receive_extended_display_started().await?;
+        tokio::spawn(async move {
+            while let Some(signal) = ed_started_stream.next().await {
+                if let Ok(args) = signal.args() {
+                    if event_tx.send(DaemonEvent::ExtendedDisplayStarted {
+                        device_id: args.device_id().to_string(),
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping ExtendedDisplayStarted signal listener");
+                        break;
+                    }
+                }
+            }
+        });
+
+        let event_tx = self.event_tx.clone();
+        let mut ed_stopped_stream = self.proxy.receive_extended_display_stopped().await?;
+        tokio::spawn(async move {
+            while let Some(signal) = ed_stopped_stream.next().await {
+                if let Ok(args) = signal.args() {
+                    if event_tx.send(DaemonEvent::ExtendedDisplayStopped {
+                        device_id: args.device_id().to_string(),
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping ExtendedDisplayStopped signal listener");
+                        break;
+                    }
+                }
+            }
+        });
+
+        let event_tx = self.event_tx.clone();
+        let mut ed_error_stream = self.proxy.receive_extended_display_error().await?;
+        tokio::spawn(async move {
+            while let Some(signal) = ed_error_stream.next().await {
+                if let Ok(args) = signal.args() {
+                    if event_tx.send(DaemonEvent::ExtendedDisplayError {
+                        device_id: args.device_id().to_string(),
+                        error_message: args.error_message().to_string(),
+                    }).is_err() {
+                        tracing::warn!("Event channel closed, stopping ExtendedDisplayError signal listener");
                         break;
                     }
                 }
@@ -1970,6 +2047,24 @@ impl DbusClient {
             .stop_presenter(device_id)
             .await
             .context("Failed to stop presenter mode")
+    }
+
+    /// Start extended display streaming to a device
+    pub async fn start_extended_display(&self, device_id: &str) -> Result<()> {
+        info!("Starting extended display for device {}", device_id);
+        self.proxy
+            .start_extended_display(device_id)
+            .await
+            .context("Failed to start extended display")
+    }
+
+    /// Stop extended display streaming
+    pub async fn stop_extended_display(&self, device_id: &str) -> Result<()> {
+        info!("Stopping extended display for device {}", device_id);
+        self.proxy
+            .stop_extended_display(device_id)
+            .await
+            .context("Failed to stop extended display")
     }
 }
 

@@ -56,6 +56,8 @@ use diagnostics::{BuildInfo, Cli, DiagnosticCommand, Metrics};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 use base64::{engine::general_purpose, Engine as _};
+#[cfg(feature = "extendeddisplay")]
+use cosmic_connect_protocol::plugins::extendeddisplay::ExtendedDisplayPluginFactory;
 use cosmic_connect_protocol::plugins::remotedesktop::RemoteDesktopPluginFactory;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
@@ -574,6 +576,14 @@ impl Daemon {
             manager
                 .register_factory(Arc::new(CameraPluginFactory))
                 .context("Failed to register Camera plugin factory")?;
+        }
+
+        #[cfg(feature = "extendeddisplay")]
+        if config.plugins.enable_extendeddisplay {
+            info!("Registering ExtendedDisplay plugin factory");
+            manager
+                .register_factory(Arc::new(ExtendedDisplayPluginFactory::new()))
+                .context("Failed to register ExtendedDisplay plugin factory")?;
         }
 
         info!(
@@ -3260,6 +3270,37 @@ async fn handle_internal_packet(dbus: &dbus::DbusServer, device_id: &str, packet
                 .await
             {
                 error!("Failed to emit sms_conversations_updated signal: {}", e);
+            }
+            true
+        }
+        "cconnect.internal.extendeddisplay.started" => {
+            #[cfg(feature = "extendeddisplay")]
+            if let Err(e) = dbus.emit_extended_display_started(device_id).await {
+                error!("Failed to emit extended_display_started signal: {}", e);
+            }
+            true
+        }
+        "cconnect.internal.extendeddisplay.stopped" => {
+            #[cfg(feature = "extendeddisplay")]
+            if let Err(e) = dbus.emit_extended_display_stopped(device_id).await {
+                error!("Failed to emit extended_display_stopped signal: {}", e);
+            }
+            true
+        }
+        "cconnect.internal.extendeddisplay.error" => {
+            #[cfg(feature = "extendeddisplay")]
+            {
+                let error_msg = packet
+                    .body
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown error");
+                if let Err(e) = dbus
+                    .emit_extended_display_error(device_id, error_msg)
+                    .await
+                {
+                    error!("Failed to emit extended_display_error signal: {}", e);
+                }
             }
             true
         }

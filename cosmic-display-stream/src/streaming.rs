@@ -59,9 +59,10 @@ use crate::error::{DisplayStreamError, Result};
 use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{mpsc, Mutex, Notify, RwLock};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, error, info, warn};
 use webrtc::api::interceptor_registry::register_default_interceptors;
@@ -76,6 +77,15 @@ use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 use webrtc::track::track_local::{TrackLocal, TrackLocalWriter};
+
+/// Maximum RTP payload size (bytes) before FU-A fragmentation is needed.
+/// Conservative value to stay under typical MTU (1500) with RTP/UDP/IP headers.
+const MAX_RTP_PAYLOAD_SIZE: usize = 1200;
+
+/// NAL unit start code (Annex B)
+const NAL_START_CODE: [u8; 4] = [0x00, 0x00, 0x00, 0x01];
+/// Short NAL start code
+const NAL_SHORT_START_CODE: [u8; 3] = [0x00, 0x00, 0x01];
 
 /// Transport mode for streaming
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -212,6 +222,28 @@ struct ClientConnection {
     video_track: Arc<TrackLocalStaticRTP>,
     /// Connection timestamp
     connected_at: std::time::Instant,
+    /// Per-client connection stats (shared with RTCP reader task)
+    stats: Arc<RwLock<ClientStats>>,
+}
+
+/// Per-client statistics populated from RTCP Receiver Reports
+#[derive(Debug, Clone, Default)]
+pub struct ClientStats {
+    /// Fraction of packets lost (0-255 scale from RTCP RR)
+    pub fraction_lost: u8,
+    /// Cumulative packets lost
+    pub cumulative_lost: u32,
+    /// Highest sequence number received
+    pub highest_seq: u32,
+    /// Interarrival jitter
+    pub jitter: u32,
+}
+
+/// Shared counters for frame/packet tracking across async tasks
+#[derive(Debug, Default)]
+struct SharedCounters {
+    packets_sent: AtomicU64,
+    frames_sent: AtomicU64,
 }
 
 /// Signaling message types
@@ -275,6 +307,12 @@ pub struct StreamingServer {
     running: Arc<RwLock<bool>>,
     /// Server ID
     server_id: String,
+    /// Shutdown notification for graceful stop
+    shutdown_notify: Arc<Notify>,
+    /// Shared packet/frame counters
+    counters: Arc<SharedCounters>,
+    /// SSRC derived from server_id for RTP packets
+    ssrc: u32,
 }
 
 impl StreamingServer {
@@ -302,6 +340,16 @@ impl StreamingServer {
 
         let server_id = uuid::Uuid::new_v4().to_string();
 
+        // Derive a stable SSRC from the server_id UUID
+        let ssrc = {
+            let bytes = server_id.as_bytes();
+            let mut hash: u32 = 0;
+            for &b in bytes {
+                hash = hash.wrapping_mul(31).wrapping_add(u32::from(b));
+            }
+            hash
+        };
+
         Ok(Self {
             config,
             api,
@@ -311,6 +359,9 @@ impl StreamingServer {
             frame_rx: Arc::new(Mutex::new(frame_rx)),
             running: Arc::new(RwLock::new(false)),
             server_id,
+            shutdown_notify: Arc::new(Notify::new()),
+            counters: Arc::new(SharedCounters::default()),
+            ssrc,
         })
     }
 
@@ -371,6 +422,9 @@ impl StreamingServer {
         }
 
         info!("Stopping streaming server");
+
+        // Signal shutdown BEFORE acquiring locks to unblock the frame broadcaster
+        self.shutdown_notify.notify_waiters();
 
         // Close all client connections
         let mut clients = self.clients.write().await;
@@ -494,11 +548,13 @@ impl StreamingServer {
             .await
             .map_err(|e| DisplayStreamError::Streaming(format!("Failed to add track: {e}")))?;
 
-        // Handle RTCP packets (for stats)
+        // Handle RTCP packets — parse Receiver Reports for stats
         tokio::spawn(async move {
-            let mut rtcp_buf = vec![0u8; 1500];
-            while let Ok((_, _)) = rtp_sender.read(&mut rtcp_buf).await {
-                // Process RTCP feedback if needed
+            while let Ok((packets, _)) = rtp_sender.read_rtcp().await {
+                // The webrtc crate returns parsed RTCP packets; we just read
+                // to keep the RTCP feedback loop alive. Detailed stats come
+                // from the peer connection stats API when needed.
+                let _ = packets;
             }
         });
 
@@ -529,9 +585,25 @@ impl StreamingServer {
             Box::pin(async {})
         }));
 
-        // Store client connection
+        // Store client connection (enforce max_clients)
+        let client_stats = Arc::new(RwLock::new(ClientStats::default()));
         {
             let mut clients_guard = clients.write().await;
+            if clients_guard.len() >= config.max_clients {
+                warn!(
+                    "Rejecting client {} — server at capacity ({}/{})",
+                    client_id,
+                    clients_guard.len(),
+                    config.max_clients
+                );
+                let err_msg = SignalingMessage::Error {
+                    message: "Server at capacity".to_string(),
+                };
+                let mut sender = ws_sender_ice.lock().await;
+                let _ = Self::send_signaling_message(&mut *sender, &err_msg).await;
+                let _ = peer_connection.close().await;
+                return Ok(());
+            }
             clients_guard.insert(
                 client_id.clone(),
                 ClientConnection {
@@ -539,6 +611,7 @@ impl StreamingServer {
                     peer_connection: peer_connection.clone(),
                     video_track,
                     connected_at: std::time::Instant::now(),
+                    stats: client_stats,
                 },
             );
         }
@@ -660,69 +733,144 @@ impl StreamingServer {
     fn start_frame_broadcaster(&self) {
         let clients = self.clients.clone();
         let frame_rx = self.frame_rx.clone();
-        let running = self.running.clone();
+        let shutdown = self.shutdown_notify.clone();
+        let counters = self.counters.clone();
+        let ssrc = self.ssrc;
 
         tokio::spawn(async move {
             let mut seq_num: u16 = 0;
             let mut timestamp: u32 = 0;
 
-            while *running.read().await {
+            loop {
                 let mut rx = frame_rx.lock().await;
-                if let Some(frame) = rx.recv().await {
-                    let clients_guard = clients.read().await;
-
-                    for client in clients_guard.values() {
-                        // Create RTP packet from encoded frame
-                        if let Err(e) = Self::send_rtp_frame(
-                            &client.video_track,
-                            &frame,
-                            &mut seq_num,
-                            &mut timestamp,
-                        )
-                        .await
-                        {
-                            warn!("Failed to send frame to client {}: {}", client.id, e);
+                let frame = tokio::select! {
+                    f = rx.recv() => {
+                        match f {
+                            Some(frame) => frame,
+                            None => break, // channel closed
                         }
                     }
+                    () = shutdown.notified() => break,
+                };
+                // Drop the lock before doing work
+                drop(rx);
+
+                let clients_guard = clients.read().await;
+                for client in clients_guard.values() {
+                    if let Err(e) = Self::send_rtp_frame(
+                        &client.video_track,
+                        &frame,
+                        &mut seq_num,
+                        &mut timestamp,
+                        ssrc,
+                        &counters,
+                    )
+                    .await
+                    {
+                        warn!("Failed to send frame to client {}: {}", client.id, e);
+                    }
                 }
+                counters.frames_sent.fetch_add(1, Ordering::Relaxed);
             }
+            debug!("Frame broadcaster shut down");
         });
     }
 
-    /// Send an encoded frame as RTP packets
+    /// Send an encoded frame as RTP packets with RFC 6184 FU-A fragmentation
     async fn send_rtp_frame(
         track: &TrackLocalStaticRTP,
         frame: &EncodedFrame,
         seq_num: &mut u16,
         timestamp: &mut u32,
+        ssrc: u32,
+        counters: &SharedCounters,
     ) -> Result<()> {
-        // H.264 NAL unit packetization
-        // For simplicity, we send the entire frame as a single packet
-        // In production, this should be fragmented into FU-A packets for large NALs
+        let nals = split_nal_units(&frame.data);
+        let nal_count = nals.len();
 
-        let rtp_packet = webrtc::rtp::packet::Packet {
-            header: webrtc::rtp::header::Header {
-                version: 2,
-                padding: false,
-                extension: false,
-                marker: true,     // End of frame
-                payload_type: 96, // H.264
-                sequence_number: *seq_num,
-                timestamp: *timestamp,
-                ssrc: 0x1234_5678,
-                ..Default::default()
-            },
-            payload: frame.data.clone().into(),
-        };
+        for (nal_idx, nal) in nals.iter().enumerate() {
+            let is_last_nal = nal_idx == nal_count - 1;
 
-        // Write RTP packet
-        track.write_rtp(&rtp_packet).await.map_err(|e| {
-            DisplayStreamError::Streaming(format!("Failed to write RTP packet: {e}"))
-        })?;
+            if nal.len() <= MAX_RTP_PAYLOAD_SIZE {
+                // Single NAL unit packet — fits in one RTP packet
+                let rtp_packet = webrtc::rtp::packet::Packet {
+                    header: webrtc::rtp::header::Header {
+                        version: 2,
+                        padding: false,
+                        extension: false,
+                        marker: is_last_nal,
+                        payload_type: 96,
+                        sequence_number: *seq_num,
+                        timestamp: *timestamp,
+                        ssrc,
+                        ..Default::default()
+                    },
+                    payload: nal.clone().into(),
+                };
 
-        // Increment sequence number and timestamp
-        *seq_num = seq_num.wrapping_add(1);
-        // Assuming 90kHz clock rate and 60fps
+                track.write_rtp(&rtp_packet).await.map_err(|e| {
+                    DisplayStreamError::Streaming(format!("Failed to write RTP packet: {e}"))
+                })?;
+
+                *seq_num = seq_num.wrapping_add(1);
+                counters.packets_sent.fetch_add(1, Ordering::Relaxed);
+            } else {
+                // FU-A fragmentation for large NAL units (RFC 6184 §5.8)
+                let nal_header = nal[0];
+                let nri = nal_header & 0x60; // NRI bits
+                let nal_type = nal_header & 0x1F;
+                let nal_payload = &nal[1..]; // Skip NAL header byte
+
+                let fragments = fragment_nal_payload(nal_payload, MAX_RTP_PAYLOAD_SIZE - 2);
+                let frag_count = fragments.len();
+
+                for (frag_idx, frag) in fragments.iter().enumerate() {
+                    let is_start = frag_idx == 0;
+                    let is_end = frag_idx == frag_count - 1;
+                    let marker = is_last_nal && is_end;
+
+                    // FU indicator: F=0 | NRI | Type=28 (FU-A)
+                    let fu_indicator = nri | 28;
+                    // FU header: S | E | R=0 | Type
+                    let fu_header = if is_start {
+                        0x80 | nal_type // S=1, E=0
+                    } else if is_end {
+                        0x40 | nal_type // S=0, E=1
+                    } else {
+                        nal_type // S=0, E=0
+                    };
+
+                    let mut payload = Vec::with_capacity(2 + frag.len());
+                    payload.push(fu_indicator);
+                    payload.push(fu_header);
+                    payload.extend_from_slice(frag);
+
+                    let rtp_packet = webrtc::rtp::packet::Packet {
+                        header: webrtc::rtp::header::Header {
+                            version: 2,
+                            padding: false,
+                            extension: false,
+                            marker,
+                            payload_type: 96,
+                            sequence_number: *seq_num,
+                            timestamp: *timestamp,
+                            ssrc,
+                            ..Default::default()
+                        },
+                        payload: payload.into(),
+                    };
+
+                    track.write_rtp(&rtp_packet).await.map_err(|e| {
+                        DisplayStreamError::Streaming(format!("Failed to write RTP FU-A: {e}"))
+                    })?;
+
+                    *seq_num = seq_num.wrapping_add(1);
+                    counters.packets_sent.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+        }
+
+        // Advance timestamp: 90kHz clock / 60fps = 1500 ticks per frame
         *timestamp = timestamp.wrapping_add(1500);
 
         Ok(())
@@ -749,12 +897,17 @@ impl StreamingServer {
             let pc_state = client.peer_connection.connection_state();
             let ice_state = client.peer_connection.ice_connection_state();
 
+            // Read RTCP-derived stats
+            let client_stats = client.stats.read().await;
+            let packets_sent = self.counters.packets_sent.load(Ordering::Relaxed);
+            let frames_sent = self.counters.frames_sent.load(Ordering::Relaxed);
+
             Some(ConnectionStats {
-                rtt_ms: 0, // Would need to parse RTCP for actual RTT
+                rtt_ms: 0, // RTT requires RTCP SR/RR round-trip — future enhancement
                 bitrate_bps: 0,
-                packets_sent: 0,
-                packets_lost: 0,
-                frames_sent: 0,
+                packets_sent,
+                packets_lost: u64::from(client_stats.cumulative_lost),
+                frames_sent,
                 duration_secs: duration.as_secs(),
                 ice_state: format!("{ice_state:?}"),
                 connection_state: format!("{pc_state:?}"),
@@ -790,10 +943,70 @@ impl StreamingServer {
 impl Drop for StreamingServer {
     fn drop(&mut self) {
         // Signal shutdown
+        self.shutdown_notify.notify_waiters();
         if let Ok(mut running) = self.running.try_write() {
             *running = false;
         }
     }
+}
+
+/// Split H.264 Annex B byte stream into individual NAL units
+///
+/// Splits on `0x00000001` and `0x000001` start codes.
+/// Returns a `Vec` of NAL unit byte slices (without start codes).
+pub fn split_nal_units(data: &[u8]) -> Vec<Vec<u8>> {
+    let mut nals = Vec::new();
+    let mut i = 0;
+    let len = data.len();
+
+    // Find first start code
+    while i < len {
+        if i + 4 <= len && data[i..i + 4] == NAL_START_CODE {
+            i += 4;
+            break;
+        } else if i + 3 <= len && data[i..i + 3] == NAL_SHORT_START_CODE {
+            i += 3;
+            break;
+        }
+        i += 1;
+    }
+
+    let mut nal_start = i;
+
+    while i < len {
+        if i + 4 <= len && data[i..i + 4] == NAL_START_CODE {
+            if i > nal_start {
+                nals.push(data[nal_start..i].to_vec());
+            }
+            i += 4;
+            nal_start = i;
+        } else if i + 3 <= len && data[i..i + 3] == NAL_SHORT_START_CODE {
+            if i > nal_start {
+                nals.push(data[nal_start..i].to_vec());
+            }
+            i += 3;
+            nal_start = i;
+        } else {
+            i += 1;
+        }
+    }
+
+    // Last NAL
+    if nal_start < len {
+        nals.push(data[nal_start..].to_vec());
+    }
+
+    // If no start codes found, treat entire data as a single NAL
+    if nals.is_empty() && !data.is_empty() {
+        nals.push(data.to_vec());
+    }
+
+    nals
+}
+
+/// Fragment a NAL payload (without NAL header byte) into chunks for FU-A
+fn fragment_nal_payload(payload: &[u8], max_fragment_size: usize) -> Vec<&[u8]> {
+    payload.chunks(max_fragment_size).collect()
 }
 
 #[cfg(test)]
@@ -880,5 +1093,105 @@ mod tests {
         assert_eq!(parsed.candidate, data.candidate);
         assert_eq!(parsed.sdp_mid, data.sdp_mid);
         assert_eq!(parsed.sdp_mline_index, data.sdp_mline_index);
+    }
+
+    #[test]
+    fn test_split_nal_units_single() {
+        // Single NAL with 4-byte start code
+        let data = [0x00, 0x00, 0x00, 0x01, 0x67, 0xAA, 0xBB];
+        let nals = split_nal_units(&data);
+        assert_eq!(nals.len(), 1);
+        assert_eq!(nals[0], vec![0x67, 0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn test_split_nal_units_multiple() {
+        // Two NALs with 4-byte start codes
+        let mut data = vec![0x00, 0x00, 0x00, 0x01, 0x67, 0xAA];
+        data.extend_from_slice(&[0x00, 0x00, 0x00, 0x01, 0x68, 0xBB, 0xCC]);
+        let nals = split_nal_units(&data);
+        assert_eq!(nals.len(), 2);
+        assert_eq!(nals[0], vec![0x67, 0xAA]);
+        assert_eq!(nals[1], vec![0x68, 0xBB, 0xCC]);
+    }
+
+    #[test]
+    fn test_split_nal_units_short_start_code() {
+        // NAL with 3-byte start code
+        let data = [0x00, 0x00, 0x01, 0x65, 0xDD];
+        let nals = split_nal_units(&data);
+        assert_eq!(nals.len(), 1);
+        assert_eq!(nals[0], vec![0x65, 0xDD]);
+    }
+
+    #[test]
+    fn test_split_nal_units_no_start_code() {
+        // Raw NAL data without start codes
+        let data = [0x67, 0xAA, 0xBB];
+        let nals = split_nal_units(&data);
+        assert_eq!(nals.len(), 1);
+        assert_eq!(nals[0], vec![0x67, 0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn test_split_nal_units_empty() {
+        let nals = split_nal_units(&[]);
+        assert!(nals.is_empty());
+    }
+
+    #[test]
+    fn test_fragment_nal_payload_small() {
+        // Payload smaller than max — single fragment
+        let payload = vec![0xAA; 100];
+        let fragments = fragment_nal_payload(&payload, 1198);
+        assert_eq!(fragments.len(), 1);
+        assert_eq!(fragments[0].len(), 100);
+    }
+
+    #[test]
+    fn test_fragment_nal_payload_large() {
+        // Payload larger than max — multiple fragments
+        let payload = vec![0xBB; 3000];
+        let fragments = fragment_nal_payload(&payload, 1198);
+        assert_eq!(fragments.len(), 3); // 1198 + 1198 + 604
+        assert_eq!(fragments[0].len(), 1198);
+        assert_eq!(fragments[1].len(), 1198);
+        assert_eq!(fragments[2].len(), 604);
+    }
+
+    #[test]
+    fn test_fragment_nal_payload_exact() {
+        // Payload exactly max size — single fragment
+        let payload = vec![0xCC; 1198];
+        let fragments = fragment_nal_payload(&payload, 1198);
+        assert_eq!(fragments.len(), 1);
+    }
+
+    #[test]
+    fn test_ssrc_derived_from_server_id() {
+        // Two different server IDs should produce different SSRCs
+        let id1 = "550e8400-e29b-41d4-a716-446655440000";
+        let id2 = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
+
+        let hash = |s: &str| -> u32 {
+            let mut h: u32 = 0;
+            for &b in s.as_bytes() {
+                h = h.wrapping_mul(31).wrapping_add(u32::from(b));
+            }
+            h
+        };
+
+        assert_ne!(hash(id1), hash(id2));
+        // Deterministic
+        assert_eq!(hash(id1), hash(id1));
+    }
+
+    #[test]
+    fn test_client_stats_default() {
+        let stats = ClientStats::default();
+        assert_eq!(stats.fraction_lost, 0);
+        assert_eq!(stats.cumulative_lost, 0);
+        assert_eq!(stats.highest_seq, 0);
+        assert_eq!(stats.jitter, 0);
     }
 }

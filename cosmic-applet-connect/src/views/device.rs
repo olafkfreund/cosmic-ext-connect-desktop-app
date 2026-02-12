@@ -594,6 +594,32 @@ impl CConnectApplet {
                 ));
             }
 
+            // Extended Display toggle button
+            if device.has_incoming_capability("cconnect.extendeddisplay") {
+                let is_extending = self.extended_display_devices.contains(device_id);
+                let ext_icon = if is_extending {
+                    "video-display-symbolic"
+                } else {
+                    "display-projector-symbolic"
+                };
+                let ext_tooltip = if is_extending {
+                    "Stop extended display"
+                } else {
+                    "Start extended display"
+                };
+                let ext_msg = if is_extending {
+                    Message::StopExtendedDisplay(device_id.to_string())
+                } else {
+                    Message::StartExtendedDisplay(device_id.to_string())
+                };
+                actions = actions.push(
+                    button::icon(icon::from_name(ext_icon).size(ICON_S))
+                        .on_press(ext_msg)
+                        .padding(space_xxxs())
+                        .tooltip(ext_tooltip),
+                );
+            }
+
             // Camera streaming toggle button
             if device.has_incoming_capability("cconnect.camera") {
                 let is_streaming = self
@@ -793,6 +819,26 @@ impl CConnectApplet {
                     "camera-web-symbolic",
                     "Toggle camera",
                     Message::ToggleCameraStreaming(device_id.to_string()),
+                    cosmic::theme::Button::MenuItem,
+                ));
+            }
+
+            if device.has_incoming_capability("cconnect.extendeddisplay") {
+                let is_extending = self.extended_display_devices.contains(device_id);
+                let label = if is_extending {
+                    "Stop extended display"
+                } else {
+                    "Extended display"
+                };
+                let msg = if is_extending {
+                    Message::StopExtendedDisplay(device_id.to_string())
+                } else {
+                    Message::StartExtendedDisplay(device_id.to_string())
+                };
+                menu_items.push(menu_item(
+                    "display-projector-symbolic",
+                    label,
+                    msg,
                     cosmic::theme::Button::MenuItem,
                 ));
             }
