@@ -40,7 +40,7 @@
 
 rustPlatform.buildRustPackage rec {
   pname = "cosmic-connect";
-  version = "0.16.0";
+  version = "0.17.0";
 
   src = fetchFromGitHub {
     owner = "olafkfreund";
