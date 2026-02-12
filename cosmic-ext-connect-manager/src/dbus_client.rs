@@ -627,6 +627,15 @@ trait CConnect {
     /// Resume screen share session
     async fn resume_screen_share(&self, device_id: &str) -> zbus::fdo::Result<()>;
 
+    /// Share our screen to a remote device
+    async fn share_screen_to(&self, device_id: &str) -> zbus::fdo::Result<()>;
+
+    /// Start extended display streaming to a device
+    async fn start_extended_display(&self, device_id: &str) -> zbus::fdo::Result<()>;
+
+    /// Stop extended display streaming
+    async fn stop_extended_display(&self, device_id: &str) -> zbus::fdo::Result<()>;
+
     /// Send screen mirror input
     async fn send_mirror_input(
         &self,
@@ -1536,6 +1545,32 @@ impl DbusClient {
             .resume_screen_share(device_id)
             .await
             .context("Failed to call resume_screen_share")
+    }
+
+    /// Share our screen to a remote device
+    pub async fn share_screen_to(&self, device_id: &str) -> Result<()> {
+        self.proxy
+            .share_screen_to(device_id)
+            .await
+            .context("Failed to call share_screen_to")
+    }
+
+    /// Start extended display streaming to a device
+    pub async fn start_extended_display(&self, device_id: &str) -> Result<()> {
+        info!("Starting extended display for device {}", device_id);
+        self.proxy
+            .start_extended_display(device_id)
+            .await
+            .context("Failed to start extended display")
+    }
+
+    /// Stop extended display streaming
+    pub async fn stop_extended_display(&self, device_id: &str) -> Result<()> {
+        info!("Stopping extended display for device {}", device_id);
+        self.proxy
+            .stop_extended_display(device_id)
+            .await
+            .context("Failed to stop extended display")
     }
 
     /// Send screen mirror input

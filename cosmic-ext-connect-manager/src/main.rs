@@ -118,6 +118,7 @@ pub enum DeviceAction {
 
     // Desktop-only actions (desktop/laptop)
     ScreenShare,
+    ExtendedDisplay,
     Lock,
     Power,
     Wake,
@@ -145,6 +146,7 @@ impl DeviceAction {
             "refresh-battery" => Some(DeviceAction::RefreshBattery),
             "contacts" => Some(DeviceAction::Contacts),
             "screen-share" => Some(DeviceAction::ScreenShare),
+            "extended-display" => Some(DeviceAction::ExtendedDisplay),
             "lock" => Some(DeviceAction::Lock),
             "power" => Some(DeviceAction::Power),
             "wake" => Some(DeviceAction::Wake),
@@ -179,6 +181,7 @@ impl DeviceAction {
 
             // Desktop-only actions
             DeviceAction::ScreenShare
+            | DeviceAction::ExtendedDisplay
             | DeviceAction::Lock
             | DeviceAction::Power
             | DeviceAction::Wake
@@ -209,6 +212,7 @@ impl DeviceAction {
             DeviceAction::RefreshBattery => "battery-symbolic",
             DeviceAction::Contacts => "contact-new-symbolic",
             DeviceAction::ScreenShare => "video-display-symbolic",
+            DeviceAction::ExtendedDisplay => "display-projector-symbolic",
             DeviceAction::Lock => "system-lock-screen-symbolic",
             DeviceAction::Power => "system-shutdown-symbolic",
             DeviceAction::Wake => "system-reboot-symbolic",
@@ -235,6 +239,7 @@ impl DeviceAction {
             DeviceAction::RefreshBattery => "Refresh battery",
             DeviceAction::Contacts => "Browse contacts",
             DeviceAction::ScreenShare => "Screen share",
+            DeviceAction::ExtendedDisplay => "Virtual monitor",
             DeviceAction::Lock => "Lock device",
             DeviceAction::Power => "Power options",
             DeviceAction::Wake => "Wake device",
@@ -265,6 +270,7 @@ fn get_available_actions(device: &DeviceInfo) -> Vec<DeviceAction> {
         DeviceAction::Contacts,
         // Desktop-specific
         DeviceAction::ScreenShare,
+        DeviceAction::ExtendedDisplay,
         DeviceAction::Lock,
         DeviceAction::Power,
         DeviceAction::Wake,
@@ -460,6 +466,10 @@ pub enum Message {
     ExecutePowerAction(String, String), // device_id, action
     // File picker
     FileSelected(String, String),
+    // Extended display state updates
+    ExtendedDisplayStarted(String),
+    ExtendedDisplayStopped(String),
+    ExtendedDisplayError(String, String),
     // Action feedback
     ActionSuccess(String),
     ActionError(String),
@@ -520,11 +530,33 @@ pub struct CosmicConnectManager {
     // Power dialog state
     show_power_dialog: bool,
     power_device_id: Option<String>,
+    // Extended display state
+    extended_display_devices: std::collections::HashSet<String>,
     // Status message for action feedback
     status_message: Option<(String, bool)>, // (message, is_error)
 }
 
 impl CosmicConnectManager {
+    fn status_bar_view(&self) -> Option<Element<'_, Message>> {
+        let (msg, is_error) = self.status_message.as_ref()?;
+        let cosmic_theme = theme::active();
+        let cosmic = cosmic_theme.cosmic();
+        let icon_name = if *is_error {
+            "dialog-error-symbolic"
+        } else {
+            "emblem-ok-symbolic"
+        };
+        Some(
+            row::with_capacity(2)
+                .push(icon::from_name(icon_name).size(16))
+                .push(text(msg).size(14))
+                .spacing(cosmic.space_xs())
+                .padding(cosmic.space_s())
+                .align_y(Alignment::Center)
+                .into(),
+        )
+    }
+
     fn sidebar_view(&self) -> Element<'_, Message> {
         let pages = [
             Page::Devices,
@@ -1929,6 +1961,7 @@ impl Application for CosmicConnectManager {
                 // Power dialog
                 show_power_dialog: false,
                 power_device_id: None,
+                extended_display_devices: std::collections::HashSet::new(),
                 status_message: None,
             },
             connect_task,
@@ -1993,12 +2026,21 @@ impl Application for CosmicConnectManager {
                 .height(Length::Fill)
                 .into()
         } else {
-            row::with_capacity(2)
+            let main_row = row::with_capacity(2)
                 .push(sidebar)
                 .push(content)
                 .width(Length::Fill)
-                .height(Length::Fill)
-                .into()
+                .height(Length::Fill);
+            if let Some(status_bar) = self.status_bar_view() {
+                column::with_capacity(2)
+                    .push(main_row)
+                    .push(status_bar)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into()
+            } else {
+                main_row.into()
+            }
         }
     }
 
@@ -2324,7 +2366,7 @@ impl Application for CosmicConnectManager {
 
                         // Desktop-only actions
                         DeviceAction::ScreenShare => cosmic::task::future(async move {
-                            match client.start_screen_share(&device_id, 5000).await {
+                            match client.share_screen_to(&device_id).await {
                                 Ok(()) => Message::ActionSuccess("Screen share started".to_string()),
                                 Err(e) => {
                                     tracing::error!("Failed to start screen share: {}", e);
@@ -2332,6 +2374,36 @@ impl Application for CosmicConnectManager {
                                 }
                             }
                         }),
+                        DeviceAction::ExtendedDisplay => {
+                            let is_active = self.extended_display_devices.contains(&device_id);
+                            if is_active {
+                                cosmic::task::future(async move {
+                                    match client.stop_extended_display(&device_id).await {
+                                        Ok(()) => Message::ExtendedDisplayStopped(device_id),
+                                        Err(e) => {
+                                            tracing::error!("Failed to stop extended display: {}", e);
+                                            Message::ExtendedDisplayError(
+                                                device_id,
+                                                format!("Failed to stop: {}", e),
+                                            )
+                                        }
+                                    }
+                                })
+                            } else {
+                                cosmic::task::future(async move {
+                                    match client.start_extended_display(&device_id).await {
+                                        Ok(()) => Message::ExtendedDisplayStarted(device_id),
+                                        Err(e) => {
+                                            tracing::error!("Failed to start extended display: {}", e);
+                                            Message::ExtendedDisplayError(
+                                                device_id,
+                                                format!("Failed to start: {}", e),
+                                            )
+                                        }
+                                    }
+                                })
+                            }
+                        }
                         DeviceAction::Lock => cosmic::task::future(async move {
                             if let Err(e) = client.lock_device(&device_id).await {
                                 tracing::error!("Failed to lock device: {}", e);
@@ -2943,6 +3015,29 @@ impl Application for CosmicConnectManager {
                     self.power_device_id = None;
                     Task::none()
                 }
+            }
+            Message::ExtendedDisplayStarted(device_id) => {
+                self.extended_display_devices.insert(device_id);
+                self.status_message = Some(("Extended display started".to_string(), false));
+                cosmic::task::future(async {
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    Message::ClearStatusMessage
+                })
+            }
+            Message::ExtendedDisplayStopped(device_id) => {
+                self.extended_display_devices.remove(&device_id);
+                self.status_message = Some(("Extended display stopped".to_string(), false));
+                cosmic::task::future(async {
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    Message::ClearStatusMessage
+                })
+            }
+            Message::ExtendedDisplayError(_device_id, error_msg) => {
+                self.status_message = Some((format!("Extended display error: {}", error_msg), true));
+                cosmic::task::future(async {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    Message::ClearStatusMessage
+                })
             }
             Message::ActionSuccess(msg) => {
                 self.status_message = Some((msg, false));
