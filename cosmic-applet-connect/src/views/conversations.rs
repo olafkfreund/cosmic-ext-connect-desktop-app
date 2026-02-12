@@ -7,7 +7,9 @@ use cosmic::{
     Element,
 };
 
-use crate::{space_xxs, space_xs, space_xxxs, CConnectApplet, Message, ICON_S};
+use crate::{
+    space_xxs, space_xs, space_xxxs, theme_muted_color, CConnectApplet, Message, ICON_S,
+};
 
 impl CConnectApplet {
     /// Conversations list view — shows all SMS threads for a device
@@ -55,7 +57,11 @@ impl CConnectApplet {
                 } else {
                     String::new()
                 };
-                let preview: String = conv.preview.chars().take(40).collect();
+                let preview: String = if conv.preview.chars().count() > 40 {
+                    format!("{}...", conv.preview.chars().take(40).collect::<String>())
+                } else {
+                    conv.preview.clone()
+                };
                 let time_str = format!("{}{}", format_timestamp(conv.timestamp), unread_badge);
                 let thread_id = conv.thread_id;
                 let dev_id = device_id.to_string();
@@ -139,16 +145,64 @@ impl CConnectApplet {
         .spacing(space_xxxs())
         .align_y(Alignment::Center);
 
-        let placeholder = container(
-            text::caption("Messages will appear here when loaded from your phone."),
-        )
-        .center(Length::Fill)
-        .padding(space_xs());
+        // Display messages or loading placeholder
+        let messages_key = (device_id.to_string(), thread_id);
+        let messages_view: Element<'_, Message> =
+            if let Some(messages) = self.conversation_messages.get(&messages_key) {
+                if messages.is_empty() {
+                    container(text::caption("No messages in this conversation."))
+                        .center(Length::Fill)
+                        .padding(space_xs())
+                        .into()
+                } else {
+                    let mut msg_list = column![].spacing(space_xxxs());
+                    for msg in messages {
+                        let time_str = format_timestamp(msg.timestamp);
+                        let container_class = if msg.is_sent {
+                            cosmic::theme::Container::Card
+                        } else {
+                            cosmic::theme::Container::Secondary
+                        };
+                        let bubble_container = container(
+                            column![
+                                text::body(&msg.body),
+                                text::caption(time_str)
+                                    .class(cosmic::theme::Text::Color(theme_muted_color())),
+                            ]
+                            .spacing(space_xxxs()),
+                        )
+                        .padding(space_xxs())
+                        .class(container_class)
+                        .width(Length::FillPortion(3));
+
+                        let bubble = if msg.is_sent {
+                            row![cosmic::widget::horizontal_space(), bubble_container]
+                        } else {
+                            row![bubble_container, cosmic::widget::horizontal_space()]
+                        };
+                        msg_list = msg_list.push(bubble);
+                    }
+                    scrollable(msg_list).height(Length::Fill).into()
+                }
+            } else {
+                // Loading state — messages not yet fetched
+                container(
+                    column![
+                        icon::from_name("content-loading-symbolic").size(ICON_S),
+                        text::caption("Loading messages..."),
+                    ]
+                    .spacing(space_xxxs())
+                    .align_x(Alignment::Center),
+                )
+                .center(Length::Fill)
+                .padding(space_xs())
+                .into()
+            };
 
         let content = column![
             header,
             divider::horizontal::default(),
-            placeholder,
+            messages_view,
             divider::horizontal::default(),
             reply_row,
         ]

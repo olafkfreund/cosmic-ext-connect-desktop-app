@@ -600,19 +600,21 @@ impl CConnectApplet {
                     .camera_stats
                     .get(device_id)
                     .is_some_and(|s| s.is_streaming);
+                let camera_icon = if is_streaming {
+                    "camera-web-symbolic"
+                } else {
+                    "camera-disabled-symbolic"
+                };
+                let camera_tooltip = if is_streaming {
+                    "Stop camera streaming"
+                } else {
+                    "Start camera streaming"
+                };
                 actions = actions.push(
-                    cosmic::widget::button::icon(if is_streaming {
-                        cosmic::widget::icon::from_name("camera-web-symbolic").size(ICON_S)
-                    } else {
-                        cosmic::widget::icon::from_name("camera-disabled-symbolic").size(ICON_S)
-                    })
-                    .on_press(Message::ToggleCameraStreaming(device_id.to_string()))
-                    .padding(space_xxxs())
-                    .tooltip(if is_streaming {
-                        "Stop camera streaming"
-                    } else {
-                        "Start camera streaming"
-                    }),
+                    button::icon(icon::from_name(camera_icon).size(ICON_S))
+                        .on_press(Message::ToggleCameraStreaming(device_id.to_string()))
+                        .padding(space_xxxs())
+                        .tooltip(camera_tooltip),
                 );
             }
 
@@ -645,7 +647,7 @@ impl CConnectApplet {
         let (label, message, is_loading) = if device.is_paired() {
             (
                 "Unpair",
-                Message::UnpairDevice(device_id.to_string()),
+                Message::ConfirmUnpairDevice(device_id.to_string()),
                 self.pending_operations
                     .contains(&(device_id.to_string(), OperationType::Unpair)),
             )
@@ -837,7 +839,7 @@ impl CConnectApplet {
             menu_items.push(menu_item(
                 "edit-delete-symbolic",
                 "Unpair device",
-                Message::UnpairDevice(device_id.to_string()),
+                Message::ConfirmUnpairDevice(device_id.to_string()),
                 cosmic::theme::Button::Destructive,
             ));
         } else {
@@ -855,7 +857,7 @@ impl CConnectApplet {
             menu_items.push(menu_item(
                 "user-trash-symbolic",
                 "Dismiss device",
-                Message::DismissDevice(device_id.to_string()),
+                Message::ConfirmDismissDevice(device_id.to_string()),
                 cosmic::theme::Button::Destructive,
             ));
         }

@@ -45,6 +45,7 @@ pub enum Message {
     SearchChanged(String),
     PairDevice(String),
     UnpairDevice(String),
+    ConfirmUnpairDevice(String), // device_id - shows confirmation before unpair
     RefreshDevices,
     SendPing(String),
     SendFile(String),
@@ -159,7 +160,9 @@ pub enum Message {
     FileDropped(PathBuf),
     SetDragHoverDevice(Option<String>),
     // Dismiss (forget) device
-    DismissDevice(String), // device_id
+    ConfirmDismissDevice(String), // device_id - shows confirmation before dismiss
+    DismissDevice(String),        // device_id
+    CancelDestructiveConfirmation,
     // Context menu (device)
     ShowContextMenu(String), // device_id
     CloseContextMenu,
