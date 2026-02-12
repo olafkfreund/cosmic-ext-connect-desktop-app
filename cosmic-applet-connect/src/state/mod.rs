@@ -1,10 +1,12 @@
 mod camera;
+mod conversations;
 mod device;
 mod screen_share;
 mod system;
 mod transfer;
 
 pub use camera::CameraStats;
+pub use conversations::{ConversationSummary, SmsMessageDisplay};
 pub use device::{AppNotification, DeviceState, FocusTarget, HistoryEvent, ViewMode};
 pub use screen_share::ActiveScreenShare;
 pub use system::SystemInfo;

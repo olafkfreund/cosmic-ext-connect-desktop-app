@@ -835,7 +835,10 @@ impl CConnectInterface {
         use cosmic_connect_protocol::Packet;
         use serde_json::json;
 
-        let packet = Packet::new("cconnect.telephony.mute", json!({}));
+        let packet = Packet::new(
+            cosmic_connect_protocol::plugins::telephony::PACKET_TYPE_TELEPHONY_MUTE,
+            json!({}),
+        );
 
         // Send packet via ConnectionManager
         let conn_manager = self.connection_manager.read().await;
@@ -885,7 +888,7 @@ impl CConnectInterface {
         use serde_json::json;
 
         let packet = Packet::new(
-            "cconnect.sms.request",
+            cosmic_connect_protocol::plugins::telephony::PACKET_TYPE_SMS_REQUEST,
             json!({
                 "phoneNumber": phone_number,
                 "messageBody": message
@@ -900,6 +903,92 @@ impl CConnectInterface {
             .map_err(|e| zbus::fdo::Error::Failed(format!("Failed to send SMS request: {}", e)))?;
 
         info!("DBus: SMS request sent successfully to {}", device_id);
+        Ok(())
+    }
+
+    /// Request SMS conversation list from a device
+    ///
+    /// Sends a request to fetch the latest message from each conversation thread.
+    async fn request_conversations(
+        &self,
+        device_id: String,
+    ) -> Result<(), zbus::fdo::Error> {
+        info!("DBus: RequestConversations called for {}", device_id);
+
+        let device_manager = self.device_manager.read().await;
+        let device = device_manager
+            .get_device(&device_id)
+            .ok_or_else(|| zbus::fdo::Error::Failed(format!("Device not found: {}", device_id)))?;
+
+        if !device.is_connected() {
+            return Err(zbus::fdo::Error::Failed("Device not connected".to_string()));
+        }
+
+        drop(device_manager);
+
+        use cosmic_connect_protocol::Packet;
+        use serde_json::json;
+
+        let packet = Packet::new(cosmic_connect_protocol::plugins::telephony::PACKET_TYPE_SMS_REQUEST_CONVERSATIONS, json!({}));
+
+        let conn_manager = self.connection_manager.read().await;
+        conn_manager
+            .send_packet(&device_id, &packet)
+            .await
+            .map_err(|e| {
+                zbus::fdo::Error::Failed(format!("Failed to send conversations request: {}", e))
+            })?;
+
+        info!("DBus: Conversations request sent to {}", device_id);
+        Ok(())
+    }
+
+    /// Request messages for a specific SMS conversation thread
+    ///
+    /// # Arguments
+    /// * `device_id` - The device ID to request from
+    /// * `thread_id` - The conversation thread ID
+    async fn request_conversation(
+        &self,
+        device_id: String,
+        thread_id: i64,
+    ) -> Result<(), zbus::fdo::Error> {
+        info!(
+            "DBus: RequestConversation called for {} thread {}",
+            device_id, thread_id
+        );
+
+        let device_manager = self.device_manager.read().await;
+        let device = device_manager
+            .get_device(&device_id)
+            .ok_or_else(|| zbus::fdo::Error::Failed(format!("Device not found: {}", device_id)))?;
+
+        if !device.is_connected() {
+            return Err(zbus::fdo::Error::Failed("Device not connected".to_string()));
+        }
+
+        drop(device_manager);
+
+        use cosmic_connect_protocol::Packet;
+        use serde_json::json;
+
+        let packet = Packet::new(
+            cosmic_connect_protocol::plugins::telephony::PACKET_TYPE_SMS_REQUEST_CONVERSATION,
+            json!({ "threadID": thread_id }),
+        );
+
+        let conn_manager = self.connection_manager.read().await;
+        conn_manager
+            .send_packet(&device_id, &packet)
+            .await
+            .map_err(|e| {
+                zbus::fdo::Error::Failed(format!("Failed to send conversation request: {}", e))
+            })?;
+
+        info!(
+            "DBus: Conversation request sent for {} thread {}",
+            device_id, thread_id
+        );
         Ok(())
     }
 
@@ -3854,6 +3943,64 @@ impl CConnectInterface {
         color: &str,
         width: u8,
     ) -> zbus::Result<()>;
+
+    /// Signal: Incoming phone call
+    ///
+    /// Emitted when a connected phone receives an incoming call.
+    #[zbus(signal)]
+    async fn incoming_call(
+        signal_emitter: &SignalEmitter<'_>,
+        device_id: &str,
+        phone_number: &str,
+        contact_name: &str,
+        event: &str,
+    ) -> zbus::Result<()>;
+
+    /// Signal: Missed phone call
+    ///
+    /// Emitted when a call was missed on a connected phone.
+    #[zbus(signal)]
+    async fn missed_call(
+        signal_emitter: &SignalEmitter<'_>,
+        device_id: &str,
+        phone_number: &str,
+        contact_name: &str,
+    ) -> zbus::Result<()>;
+
+    /// Signal: Call state changed
+    ///
+    /// Emitted when an active call changes state (e.g. ringing -> talking).
+    #[zbus(signal)]
+    async fn call_state_changed(
+        signal_emitter: &SignalEmitter<'_>,
+        device_id: &str,
+        state: &str,
+        phone_number: &str,
+        contact_name: &str,
+    ) -> zbus::Result<()>;
+
+    /// Signal: SMS received
+    ///
+    /// Emitted when an unread SMS is received on a connected phone.
+    #[zbus(signal)]
+    async fn sms_received(
+        signal_emitter: &SignalEmitter<'_>,
+        device_id: &str,
+        thread_id: i64,
+        address: &str,
+        body: &str,
+        timestamp: i64,
+    ) -> zbus::Result<()>;
+
+    /// Signal: SMS conversations updated
+    ///
+    /// Emitted when SMS conversation data has been refreshed.
+    #[zbus(signal)]
+    async fn sms_conversations_updated(
+        signal_emitter: &SignalEmitter<'_>,
+        device_id: &str,
+        count: u32,
+    ) -> zbus::Result<()>;
 }
 
 /// DBus server for the daemon
@@ -4235,6 +4382,107 @@ impl DbusServer {
             "Emitted ScreenShareAnnotation signal for {} ({})",
             device_id, annotation_type
         );
+        Ok(())
+    }
+
+    /// Emit an incoming_call signal
+    pub async fn emit_incoming_call(
+        &self,
+        device_id: &str,
+        phone_number: &str,
+        contact_name: &str,
+        event: &str,
+    ) -> Result<()> {
+        let iface_ref = self.interface_ref().await?;
+        CConnectInterface::incoming_call(
+            iface_ref.signal_emitter(),
+            device_id,
+            phone_number,
+            contact_name,
+            event,
+        )
+        .await?;
+        debug!("Emitted IncomingCall signal for {} from {}", device_id, phone_number);
+        Ok(())
+    }
+
+    /// Emit a missed_call signal
+    pub async fn emit_missed_call(
+        &self,
+        device_id: &str,
+        phone_number: &str,
+        contact_name: &str,
+    ) -> Result<()> {
+        let iface_ref = self.interface_ref().await?;
+        CConnectInterface::missed_call(
+            iface_ref.signal_emitter(),
+            device_id,
+            phone_number,
+            contact_name,
+        )
+        .await?;
+        debug!("Emitted MissedCall signal for {} from {}", device_id, phone_number);
+        Ok(())
+    }
+
+    /// Emit a call_state_changed signal
+    pub async fn emit_call_state_changed(
+        &self,
+        device_id: &str,
+        state: &str,
+        phone_number: &str,
+        contact_name: &str,
+    ) -> Result<()> {
+        let iface_ref = self.interface_ref().await?;
+        CConnectInterface::call_state_changed(
+            iface_ref.signal_emitter(),
+            device_id,
+            state,
+            phone_number,
+            contact_name,
+        )
+        .await?;
+        debug!("Emitted CallStateChanged signal for {} ({})", device_id, state);
+        Ok(())
+    }
+
+    /// Emit an sms_received signal
+    pub async fn emit_sms_received(
+        &self,
+        device_id: &str,
+        thread_id: i64,
+        address: &str,
+        body: &str,
+        timestamp: i64,
+    ) -> Result<()> {
+        let iface_ref = self.interface_ref().await?;
+        CConnectInterface::sms_received(
+            iface_ref.signal_emitter(),
+            device_id,
+            thread_id,
+            address,
+            body,
+            timestamp,
+        )
+        .await?;
+        debug!("Emitted SmsReceived signal for {} from {}", device_id, address);
+        Ok(())
+    }
+
+    /// Emit an sms_conversations_updated signal
+    pub async fn emit_sms_conversations_updated(
+        &self,
+        device_id: &str,
+        count: u32,
+    ) -> Result<()> {
+        let iface_ref = self.interface_ref().await?;
+        CConnectInterface::sms_conversations_updated(
+            iface_ref.signal_emitter(),
+            device_id,
+            count,
+        )
+        .await?;
+        debug!("Emitted SmsConversationsUpdated signal for {} ({} conversations)", device_id, count);
         Ok(())
     }
 }

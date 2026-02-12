@@ -49,6 +49,7 @@ use serde_json::json;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use super::{Plugin, PluginFactory};
@@ -242,6 +243,9 @@ pub struct SendSmsRequest {
 pub struct TelephonyPlugin {
     device_id: Option<String>,
 
+    /// Packet sender for internal D-Bus signal emission
+    packet_sender: Option<mpsc::Sender<(String, Packet)>>,
+
     /// Current call state (if any)
     current_call: Arc<RwLock<Option<TelephonyEvent>>>,
 
@@ -263,6 +267,7 @@ impl TelephonyPlugin {
     pub fn new() -> Self {
         Self {
             device_id: None,
+            packet_sender: None,
             current_call: Arc::new(RwLock::new(None)),
             call_history: Arc::new(RwLock::new(Vec::new())),
             conversations: Arc::new(RwLock::new(HashMap::new())),
@@ -481,33 +486,69 @@ impl TelephonyPlugin {
         )
     }
 
+    /// Emit an internal packet for D-Bus signaling
+    ///
+    /// Internal packets are intercepted by the daemon and converted to D-Bus signals.
+    /// Errors are silently ignored since signal emission is best-effort.
+    async fn emit_internal_packet(&self, device_id: &str, packet_type: &str, body: serde_json::Value) {
+        if let Some(sender) = &self.packet_sender {
+            let packet = Packet::new(packet_type, body);
+            let _ = sender.send((device_id.to_string(), packet)).await;
+        }
+    }
+
     /// Handle a telephony event packet
-    fn handle_telephony_event(&self, packet: &Packet) -> Result<()> {
+    async fn handle_telephony_event(&self, packet: &Packet) -> Result<()> {
         let event: TelephonyEvent = serde_json::from_value(packet.body.clone())
             .map_err(|e| ProtocolError::InvalidPacket(format!("Failed to parse event: {}", e)))?;
 
         let phone = event.phone_number.as_deref().unwrap_or("Unknown");
         let contact = event.contact_name.as_deref().unwrap_or("Unknown contact");
+        let device_id = self.device_id.as_deref().unwrap_or("unknown");
 
         let event_type = CallEvent::from_str(&event.event).unwrap_or_else(|| {
             warn!("Unknown telephony event: {}", event.event);
             CallEvent::Ringing
         });
 
+        // Common body for all telephony internal signals
+        let signal_body = json!({
+            "phoneNumber": event.phone_number,
+            "contactName": event.contact_name,
+        });
+
         match event_type {
             CallEvent::Ringing => {
                 info!("Incoming call from {} ({})", phone, contact);
                 self.update_current_call(Some(event.clone()));
-                self.add_to_history(event);
+                self.add_to_history(event.clone());
+                self.emit_internal_packet(
+                    device_id,
+                    "cconnect.internal.telephony.ringing",
+                    signal_body,
+                )
+                .await;
             }
             CallEvent::Talking => {
                 info!("Call in progress with {} ({})", phone, contact);
-                self.update_current_call(Some(event));
+                self.update_current_call(Some(event.clone()));
+                self.emit_internal_packet(
+                    device_id,
+                    "cconnect.internal.telephony.talking",
+                    signal_body,
+                )
+                .await;
             }
             CallEvent::MissedCall => {
                 info!("Missed call from {} ({})", phone, contact);
                 self.update_current_call(None);
-                self.add_to_history(event);
+                self.add_to_history(event.clone());
+                self.emit_internal_packet(
+                    device_id,
+                    "cconnect.internal.telephony.missed_call",
+                    signal_body,
+                )
+                .await;
             }
             CallEvent::Sms => {
                 debug!("Received deprecated SMS event via telephony packet");
@@ -518,7 +559,7 @@ impl TelephonyPlugin {
     }
 
     /// Handle SMS messages packet
-    fn handle_sms_messages(&self, packet: &Packet) -> Result<()> {
+    async fn handle_sms_messages(&self, packet: &Packet) -> Result<()> {
         let messages: SmsMessages = serde_json::from_value(packet.body.clone())
             .map_err(|e| ProtocolError::InvalidPacket(format!("Failed to parse SMS: {}", e)))?;
 
@@ -526,6 +567,8 @@ impl TelephonyPlugin {
             "Received {} SMS conversations",
             messages.conversations.len()
         );
+
+        let device_id = self.device_id.as_deref().unwrap_or("unknown");
 
         // Log conversation details before caching
         for conversation in &messages.conversations {
@@ -541,11 +584,36 @@ impl TelephonyPlugin {
                     "  Message {}: {} from {} at {}",
                     message.id, preview, message.address, message.date
                 );
+
+                // Emit signal for unread received messages
+                if message.read == 0 && message.message_type == 1 {
+                    self.emit_internal_packet(
+                        device_id,
+                        "cconnect.internal.sms.received",
+                        json!({
+                            "threadId": message.thread_id,
+                            "address": message.address,
+                            "body": message.body,
+                            "date": message.date,
+                        }),
+                    )
+                    .await;
+                }
             }
         }
 
+        let conv_count = messages.conversations.len() as u32;
+
         // Cache conversations (consumes the data)
         self.update_conversations(messages.conversations);
+
+        // Emit conversations updated signal
+        self.emit_internal_packet(
+            device_id,
+            "cconnect.internal.sms.conversations_updated",
+            json!({ "count": conv_count }),
+        )
+        .await;
 
         Ok(())
     }
@@ -593,9 +661,10 @@ impl Plugin for TelephonyPlugin {
     async fn init(
         &mut self,
         device: &Device,
-        _packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>,
+        packet_sender: tokio::sync::mpsc::Sender<(String, Packet)>,
     ) -> Result<()> {
         self.device_id = Some(device.id().to_string());
+        self.packet_sender = Some(packet_sender);
         info!("Telephony plugin initialized for device {}", device.name());
         Ok(())
     }
@@ -613,12 +682,12 @@ impl Plugin for TelephonyPlugin {
     async fn handle_packet(&mut self, packet: &Packet, _device: &mut Device) -> Result<()> {
         if packet.is_type(PACKET_TYPE_TELEPHONY) || packet.is_type("kdeconnect.telephony") {
             debug!("Received telephony event");
-            self.handle_telephony_event(packet)
+            self.handle_telephony_event(packet).await
         } else if packet.is_type(PACKET_TYPE_SMS_MESSAGES)
             || packet.is_type("kdeconnect.sms.messages")
         {
             debug!("Received SMS messages");
-            self.handle_sms_messages(packet)
+            self.handle_sms_messages(packet).await
         } else {
             warn!("Unexpected packet type: {}", packet.packet_type);
             Ok(())
@@ -735,8 +804,8 @@ mod tests {
         assert_eq!(CallEvent::from_str("invalid"), None);
     }
 
-    #[test]
-    fn test_handle_telephony_event() {
+    #[tokio::test]
+    async fn test_handle_telephony_event() {
         let plugin = TelephonyPlugin::new();
 
         let packet = Packet::new(
@@ -748,7 +817,7 @@ mod tests {
             }),
         );
 
-        assert!(plugin.handle_telephony_event(&packet).is_ok());
+        assert!(plugin.handle_telephony_event(&packet).await.is_ok());
 
         // Verify state was updated
         assert!(plugin.is_ringing());
@@ -785,8 +854,8 @@ mod tests {
         assert!(plugin.stop().await.is_ok());
     }
 
-    #[test]
-    fn test_call_state_transitions() {
+    #[tokio::test]
+    async fn test_call_state_transitions() {
         let plugin = TelephonyPlugin::new();
 
         // Initial state
@@ -802,7 +871,7 @@ mod tests {
                 "phoneNumber": "+1234567890"
             }),
         );
-        plugin.handle_telephony_event(&ringing).unwrap();
+        plugin.handle_telephony_event(&ringing).await.unwrap();
         assert!(plugin.is_ringing());
         assert!(!plugin.has_active_call());
 
@@ -814,7 +883,7 @@ mod tests {
                 "phoneNumber": "+1234567890"
             }),
         );
-        plugin.handle_telephony_event(&talking).unwrap();
+        plugin.handle_telephony_event(&talking).await.unwrap();
         assert!(!plugin.is_ringing());
         assert!(plugin.has_active_call());
 
@@ -824,8 +893,8 @@ mod tests {
         assert!(!plugin.has_active_call());
     }
 
-    #[test]
-    fn test_missed_call_handling() {
+    #[tokio::test]
+    async fn test_missed_call_handling() {
         let plugin = TelephonyPlugin::new();
 
         // Missed call event
@@ -837,7 +906,7 @@ mod tests {
                 "contactName": "Jane Doe"
             }),
         );
-        plugin.handle_telephony_event(&missed).unwrap();
+        plugin.handle_telephony_event(&missed).await.unwrap();
 
         // Should clear current call but add to history
         assert!(plugin.get_current_call().is_none());
@@ -845,8 +914,8 @@ mod tests {
         assert_eq!(plugin.missed_call_count(), 1);
     }
 
-    #[test]
-    fn test_sms_conversations() {
+    #[tokio::test]
+    async fn test_sms_conversations() {
         let plugin = TelephonyPlugin::new();
 
         // Initial state
@@ -889,7 +958,7 @@ mod tests {
                 ]
             }),
         );
-        plugin.handle_sms_messages(&sms_packet).unwrap();
+        plugin.handle_sms_messages(&sms_packet).await.unwrap();
 
         assert_eq!(plugin.conversation_count(), 2);
         assert_eq!(plugin.unread_sms_count(), 1);
@@ -904,8 +973,8 @@ mod tests {
         assert!(plugin.get_conversation(999).is_none());
     }
 
-    #[test]
-    fn test_call_history_limit() {
+    #[tokio::test]
+    async fn test_call_history_limit() {
         let mut plugin = TelephonyPlugin::new();
         plugin.max_history = 3;
 
@@ -918,7 +987,7 @@ mod tests {
                     "phoneNumber": format!("+123456789{}", i)
                 }),
             );
-            plugin.handle_telephony_event(&packet).unwrap();
+            plugin.handle_telephony_event(&packet).await.unwrap();
         }
 
         // Should be truncated to max_history

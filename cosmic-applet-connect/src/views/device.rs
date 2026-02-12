@@ -251,7 +251,7 @@ impl CConnectApplet {
         let mut content = column![
             row![
                 container(icon::from_name(device_icon).size(ICON_XL))
-                    .width(Length::Fixed(64.0))
+                    .width(Length::Fixed(f32::from(theme::active().cosmic().space_xxl())))
                     .align_x(Horizontal::Center)
                     .padding(Padding::new(space_xxs_f32())),
                 info_col,
@@ -356,11 +356,7 @@ impl CConnectApplet {
         }
 
         // Apply focus/drag indicator styling with enhanced visual feedback
-        let container_class = if is_focused {
-            // Focused state - use Primary for keyboard navigation emphasis
-            cosmic::theme::Container::Primary
-        } else if is_drag_target {
-            // Drag target state - use Primary for drop zone emphasis
+        let container_class = if is_focused || is_drag_target {
             cosmic::theme::Container::Primary
         } else {
             cosmic::theme::Container::Card
@@ -506,63 +502,67 @@ impl CConnectApplet {
                 ));
             }
 
+            // Telephony - Mute Call button
+            if device.has_incoming_capability("cconnect.telephony") {
+                let is_muting = self
+                    .pending_operations
+                    .contains(&(device_id.to_string(), OperationType::MuteCall));
+                actions = actions.push(action_button_with_tooltip_loading(
+                    "audio-volume-muted-symbolic",
+                    "Mute incoming call",
+                    Message::MuteCall(device_id.to_string()),
+                    is_muting,
+                ));
+            }
+
+            // SMS button
+            if device.has_incoming_capability("cconnect.sms.messages") {
+                actions = actions.push(action_button_with_tooltip(
+                    "mail-message-new-symbolic",
+                    "Send SMS",
+                    Message::ShowSmsDialog(device_id.to_string()),
+                ));
+            }
+
             // Audio Stream toggle button
             if device.has_incoming_capability("cconnect.audiostream") {
                 let is_streaming = self.audio_streaming_devices.contains(device_id);
-
-                // Telephony - Mute Call button
-                if device.has_incoming_capability("cconnect.telephony") {
-                    let is_muting = self
-                        .pending_operations
-                        .contains(&(device_id.to_string(), OperationType::MuteCall));
-                    actions = actions.push(action_button_with_tooltip_loading(
-                        "audio-volume-muted-symbolic",
-                        "Mute incoming call",
-                        Message::MuteCall(device_id.to_string()),
-                        is_muting,
-                    ));
-                }
-
-                // SMS button
-                if device.has_incoming_capability("cconnect.sms") {
-                    actions = actions.push(action_button_with_tooltip(
-                        "mail-message-new-symbolic",
-                        "Send SMS",
-                        Message::ShowSmsDialog(device_id.to_string()),
-                    ));
-                }
+                let audio_icon = if is_streaming {
+                    "audio-volume-high-symbolic"
+                } else {
+                    "audio-volume-muted-symbolic"
+                };
+                let audio_tooltip = if is_streaming {
+                    "Stop audio streaming"
+                } else {
+                    "Start audio streaming"
+                };
                 actions = actions.push(
-                    cosmic::widget::button::icon(if is_streaming {
-                        cosmic::widget::icon::from_name("audio-volume-high-symbolic").size(16)
-                    } else {
-                        cosmic::widget::icon::from_name("audio-volume-muted-symbolic").size(16)
-                    })
-                    .on_press(Message::ToggleAudioStream(device_id.to_string()))
-                    .padding(space_xxxs())
-                    .tooltip(if is_streaming {
-                        "Stop audio streaming"
-                    } else {
-                        "Start audio streaming"
-                    }),
+                    button::icon(icon::from_name(audio_icon).size(ICON_S))
+                        .on_press(Message::ToggleAudioStream(device_id.to_string()))
+                        .padding(space_xxxs())
+                        .tooltip(audio_tooltip),
                 );
             }
 
             // Presenter mode toggle button
             if device.has_incoming_capability("cconnect.presenter") {
                 let is_presenting = self.presenter_mode_devices.contains(device_id);
+                let presenter_icon = if is_presenting {
+                    "x11-cursor-symbolic"
+                } else {
+                    "input-touchpad-symbolic"
+                };
+                let presenter_tooltip = if is_presenting {
+                    "Stop presenter mode"
+                } else {
+                    "Start presenter mode"
+                };
                 actions = actions.push(
-                    cosmic::widget::button::icon(if is_presenting {
-                        cosmic::widget::icon::from_name("x11-cursor-symbolic").size(16)
-                    } else {
-                        cosmic::widget::icon::from_name("input-touchpad-symbolic").size(16)
-                    })
-                    .on_press(Message::TogglePresenterMode(device_id.to_string()))
-                    .padding(space_xxxs())
-                    .tooltip(if is_presenting {
-                        "Stop presenter mode"
-                    } else {
-                        "Start presenter mode"
-                    }),
+                    button::icon(icon::from_name(presenter_icon).size(ICON_S))
+                        .on_press(Message::TogglePresenterMode(device_id.to_string()))
+                        .padding(space_xxxs())
+                        .tooltip(presenter_tooltip),
                 );
             }
             // Battery refresh button
@@ -800,6 +800,15 @@ impl CConnectApplet {
                     "utilities-terminal-symbolic",
                     "Run Commands",
                     Message::ShowRunCommandSettings(device_id.to_string()),
+                    cosmic::theme::Button::MenuItem,
+                ));
+            }
+
+            if device.has_incoming_capability("cconnect.sms.messages") {
+                menu_items.push(menu_item(
+                    "mail-message-new-symbolic",
+                    "SMS Conversations",
+                    Message::ShowConversations(device_id.to_string()),
                     cosmic::theme::Button::MenuItem,
                 ));
             }

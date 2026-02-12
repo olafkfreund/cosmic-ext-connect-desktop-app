@@ -57,6 +57,10 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 use base64::{engine::general_purpose, Engine as _};
 use cosmic_connect_protocol::plugins::remotedesktop::RemoteDesktopPluginFactory;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+/// Placeholder address for Bluetooth connections that lack a real SocketAddr
+const BT_PLACEHOLDER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0);
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -549,11 +553,17 @@ impl Daemon {
             manager
                 .register_factory(Arc::new(NetworkSharePluginFactory))
                 .context("Failed to register NetworkShare plugin factory")?;
+        }
 
+        if config.plugins.enable_systemvolume {
+            info!("Registering SystemVolume plugin factory");
             manager
                 .register_factory(Arc::new(SystemVolumePluginFactory))
                 .context("Failed to register SystemVolume plugin factory")?;
+        }
 
+        if config.plugins.enable_connectivityreport {
+            info!("Registering ConnectivityReport plugin factory");
             manager
                 .register_factory(Arc::new(ConnectivityReportPluginFactory))
                 .context("Failed to register ConnectivityReport plugin factory")?;
@@ -1003,7 +1013,7 @@ impl Daemon {
                             // We don't have remote_addr for Bluetooth, use placeholder
                             ConnectionEvent::Connected {
                                 device_id,
-                                remote_addr: "0.0.0.0:0".parse().unwrap(),
+                                remote_addr: BT_PLACEHOLDER_ADDR,
                             }
                         }
                         TransportManagerEvent::Disconnected {
@@ -1033,7 +1043,7 @@ impl Daemon {
                             ConnectionEvent::PacketReceived {
                                 device_id,
                                 packet,
-                                remote_addr: "0.0.0.0:0".parse().unwrap(),
+                                remote_addr: BT_PLACEHOLDER_ADDR,
                             }
                         }
                         TransportManagerEvent::Started { transport_type } => {
@@ -1808,7 +1818,7 @@ impl Daemon {
 
                 // Emit DBus signal for device state changed
                 if let Some(dbus) = dbus_server {
-                    if let Err(e) = dbus.emit_device_state_changed(&device_id, "paired").await {
+                    if let Err(e) = dbus.emit_device_state_changed(&device_id, "disconnected").await {
                         warn!("Failed to emit DeviceStateChanged signal: {}", e);
                     }
                 }
@@ -1938,21 +1948,24 @@ impl Daemon {
                         .await
                     {
                         error!("Error handling packet from device {}: {}", device_id, e);
+                        if let Some(handler) = error_handler {
+                            handler
+                                .handle_error(&e, "plugin_packet", Some(&device_id))
+                                .await;
+                        }
                     }
 
                     // Handle camera frame payload reception (Issue #139)
                     // When Android sends a camera frame, it includes payloadTransferInfo with a port
                     // We need to connect to that port with TLS, download the frame data, and pass it to the camera plugin
                     #[cfg(feature = "video")]
-                    if packet.packet_type == "cconnect.camera.frame"
-                        && packet.payload_transfer_info.is_some()
-                        && packet.payload_size.is_some()
-                    {
+                    if packet.packet_type == "cconnect.camera.frame" {
+                        if let (Some(payload_info), Some(payload_size)) = (
+                            packet.payload_transfer_info.as_ref(),
+                            packet.payload_size,
+                        ) {
                         use cosmic_connect_protocol::plugins::camera::CameraPlugin;
                         use tokio_rustls::TlsConnector;
-
-                        let payload_info = packet.payload_transfer_info.as_ref().unwrap();
-                        let payload_size = packet.payload_size.unwrap();
 
                         // Extract port from payloadTransferInfo
                         if let Some(port_value) = payload_info.get("port") {
@@ -2056,6 +2069,7 @@ impl Daemon {
                             }
                         } else {
                             warn!("Camera frame payloadTransferInfo missing port field");
+                        }
                         }
                     }
 
@@ -2988,10 +3002,20 @@ impl Daemon {
         info!("Daemon initialized successfully");
         info!("Press Ctrl+C to stop");
 
-        // Wait for shutdown signal
-        tokio::signal::ctrl_c().await?;
+        // Wait for shutdown signal (SIGINT or SIGTERM)
+        use tokio::signal::unix::{signal, SignalKind};
 
-        info!("Received shutdown signal");
+        let mut sigterm = signal(SignalKind::terminate())
+            .context("Failed to create SIGTERM handler")?;
+
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                info!("Received SIGINT (Ctrl+C)");
+            }
+            _ = sigterm.recv() => {
+                info!("Received SIGTERM");
+            }
+        }
 
         Ok(())
     }
@@ -3014,37 +3038,46 @@ impl Daemon {
     async fn shutdown(&mut self) -> Result<()> {
         info!("Shutting down daemon...");
 
-        // Stop discovery service
-        if let Some(mut discovery) = self.discovery_service.take() {
-            let _ = discovery.stop().await;
-        }
+        let shutdown_result = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            async {
+                // Stop discovery service
+                if let Some(mut discovery) = self.discovery_service.take() {
+                    let _ = discovery.stop().await;
+                }
 
-        // Stop transport manager or connection manager
-        if let Some(transport_mgr) = &self.transport_manager {
-            info!("Stopping TransportManager...");
-            transport_mgr.stop().await;
-        } else {
-            // Stop connection manager directly if no TransportManager
-            let connection_manager = self.connection_manager.write().await;
-            connection_manager.stop().await;
-        }
+                // Stop transport manager or connection manager
+                if let Some(transport_mgr) = &self.transport_manager {
+                    info!("Stopping TransportManager...");
+                    transport_mgr.stop().await;
+                } else {
+                    // Stop connection manager directly if no TransportManager
+                    let connection_manager = self.connection_manager.write().await;
+                    connection_manager.stop().await;
+                }
 
-        // Drop DBus server (connection will be closed automatically)
-        if let Some(_dbus) = self.dbus_server.take() {
-            info!("DBus server stopped");
-        }
+                // Drop DBus server (connection will be closed automatically)
+                if let Some(_dbus) = self.dbus_server.take() {
+                    info!("DBus server stopped");
+                }
 
-        // Save device registry
-        let device_manager = self.device_manager.read().await;
-        if let Err(e) = device_manager.save_registry() {
-            error!("Error saving device registry: {}", e);
-        }
-        drop(device_manager);
+                // Save device registry
+                let device_manager = self.device_manager.read().await;
+                if let Err(e) = device_manager.save_registry() {
+                    error!("Error saving device registry: {}", e);
+                }
+                drop(device_manager);
 
-        // Stop all plugins
-        let mut manager = self.plugin_manager.write().await;
-        if let Err(e) = manager.shutdown_all().await {
-            error!("Error stopping plugins: {}", e);
+                // Stop all plugins
+                let mut manager = self.plugin_manager.write().await;
+                if let Err(e) = manager.shutdown_all().await {
+                    error!("Error stopping plugins: {}", e);
+                }
+            }
+        ).await;
+
+        if shutdown_result.is_err() {
+            error!("Shutdown timed out after 30 seconds, forcing exit");
         }
 
         info!("Daemon shutdown complete");
@@ -3147,6 +3180,86 @@ async fn handle_internal_packet(dbus: &dbus::DbusServer, device_id: &str, packet
             );
             if let Err(e) = dbus.emit_screen_share_outgoing_request(device_id).await {
                 error!("Failed to emit screen_share_outgoing_request signal: {}", e);
+            }
+            true
+        }
+        "cconnect.internal.telephony.ringing"
+        | "cconnect.internal.telephony.talking"
+        | "cconnect.internal.telephony.missed_call" => {
+            let phone_number = packet
+                .body
+                .get("phoneNumber")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown");
+            let contact_name = packet
+                .body
+                .get("contactName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown contact");
+
+            let result = match packet.packet_type.as_str() {
+                "cconnect.internal.telephony.ringing" => {
+                    dbus.emit_incoming_call(device_id, phone_number, contact_name, "ringing")
+                        .await
+                }
+                "cconnect.internal.telephony.talking" => {
+                    dbus.emit_call_state_changed(device_id, "talking", phone_number, contact_name)
+                        .await
+                }
+                _ => {
+                    // missed_call
+                    dbus.emit_missed_call(device_id, phone_number, contact_name)
+                        .await
+                }
+            };
+            if let Err(e) = result {
+                error!(
+                    "Failed to emit telephony signal for {}: {}",
+                    packet.packet_type, e
+                );
+            }
+            true
+        }
+        "cconnect.internal.sms.received" => {
+            let thread_id = packet
+                .body
+                .get("threadId")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let address = packet
+                .body
+                .get("address")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown");
+            let body = packet
+                .body
+                .get("body")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let timestamp = packet
+                .body
+                .get("date")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            if let Err(e) = dbus
+                .emit_sms_received(device_id, thread_id, address, body, timestamp)
+                .await
+            {
+                error!("Failed to emit sms_received signal: {}", e);
+            }
+            true
+        }
+        "cconnect.internal.sms.conversations_updated" => {
+            let count = packet
+                .body
+                .get("count")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
+            if let Err(e) = dbus
+                .emit_sms_conversations_updated(device_id, count)
+                .await
+            {
+                error!("Failed to emit sms_conversations_updated signal: {}", e);
             }
             true
         }

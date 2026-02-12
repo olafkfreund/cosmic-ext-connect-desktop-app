@@ -344,6 +344,13 @@ impl CConnectApplet {
     }
 
     pub fn inner_view(&self) -> Element<'_, Message> {
+        // Conversations view (takes priority over other dialogs)
+        if let Some((device_id, thread_id)) = &self.active_conversation {
+            return self.conversation_detail_view(device_id, *thread_id);
+        }
+        if let Some(device_id) = &self.conversations_device {
+            return self.conversations_list_view(device_id);
+        }
         // App Continuity dialog (Open on Phone)
         if let Some(device_id) = &self.open_url_dialog_device {
             return self.open_url_dialog_view(device_id);

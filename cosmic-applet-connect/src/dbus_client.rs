@@ -80,7 +80,6 @@ pub enum NotificationPreference {
     None,
 }
 
-
 impl std::fmt::Display for NotificationPreference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -251,32 +250,19 @@ impl DeviceConfig {
     /// Count how many plugin overrides this device has
     #[allow(dead_code)]
     pub fn count_plugin_overrides(&self) -> usize {
-        let mut count = 0;
-        if self.plugins.enable_ping.is_some() {
-            count += 1;
-        }
-        if self.plugins.enable_battery.is_some() {
-            count += 1;
-        }
-        if self.plugins.enable_notification.is_some() {
-            count += 1;
-        }
-        if self.plugins.enable_share.is_some() {
-            count += 1;
-        }
-        if self.plugins.enable_clipboard.is_some() {
-            count += 1;
-        }
-        if self.plugins.enable_mpris.is_some() {
-            count += 1;
-        }
-        if self.plugins.enable_remotedesktop.is_some() {
-            count += 1;
-        }
-        if self.plugins.enable_findmyphone.is_some() {
-            count += 1;
-        }
-        count
+        [
+            self.plugins.enable_ping,
+            self.plugins.enable_battery,
+            self.plugins.enable_notification,
+            self.plugins.enable_share,
+            self.plugins.enable_clipboard,
+            self.plugins.enable_mpris,
+            self.plugins.enable_remotedesktop,
+            self.plugins.enable_findmyphone,
+        ]
+        .iter()
+        .filter(|opt| opt.is_some())
+        .count()
     }
 }
 
@@ -369,6 +355,42 @@ pub enum DaemonEvent {
     ScreenShareStarted { device_id: String, is_sender: bool },
     /// Screen share session stopped
     ScreenShareStopped { device_id: String },
+    /// Incoming phone call
+    IncomingCall {
+        device_id: String,
+        phone_number: String,
+        contact_name: String,
+        #[allow(dead_code)]
+        event: String,
+    },
+    /// Missed phone call
+    MissedCall {
+        device_id: String,
+        phone_number: String,
+        contact_name: String,
+    },
+    /// Call state changed (e.g. ringing -> talking)
+    CallStateChanged {
+        device_id: String,
+        state: String,
+        phone_number: String,
+        contact_name: String,
+    },
+    /// SMS received
+    SmsReceived {
+        device_id: String,
+        #[allow(dead_code)]
+        thread_id: i64,
+        address: String,
+        body: String,
+        #[allow(dead_code)]
+        timestamp: i64,
+    },
+    /// SMS conversations updated
+    SmsConversationsUpdated {
+        device_id: String,
+        count: u32,
+    },
 }
 
 /// DBus proxy for COSMIC Connect daemon interface
@@ -652,6 +674,12 @@ trait CConnect {
         message: &str,
     ) -> zbus::fdo::Result<()>;
 
+    /// Request SMS conversation list from a device
+    async fn request_conversations(&self, device_id: &str) -> zbus::fdo::Result<()>;
+
+    /// Request messages for a specific SMS conversation thread
+    async fn request_conversation(&self, device_id: &str, thread_id: i64) -> zbus::fdo::Result<()>;
+
     /// Start audio streaming from device
     async fn start_audio_stream(&self, device_id: &str) -> zbus::fdo::Result<()>;
 
@@ -710,6 +738,49 @@ trait CConnect {
         y2: i32,
         color: &str,
         width: u8,
+    ) -> zbus::fdo::Result<()>;
+
+    /// Signal: Incoming phone call
+    #[zbus(signal)]
+    fn incoming_call(
+        device_id: &str,
+        phone_number: &str,
+        contact_name: &str,
+        event: &str,
+    ) -> zbus::fdo::Result<()>;
+
+    /// Signal: Missed phone call
+    #[zbus(signal)]
+    fn missed_call(
+        device_id: &str,
+        phone_number: &str,
+        contact_name: &str,
+    ) -> zbus::fdo::Result<()>;
+
+    /// Signal: Call state changed
+    #[zbus(signal)]
+    fn call_state_changed(
+        device_id: &str,
+        state: &str,
+        phone_number: &str,
+        contact_name: &str,
+    ) -> zbus::fdo::Result<()>;
+
+    /// Signal: SMS received
+    #[zbus(signal)]
+    fn sms_received(
+        device_id: &str,
+        thread_id: i64,
+        address: &str,
+        body: &str,
+        timestamp: i64,
+    ) -> zbus::fdo::Result<()>;
+
+    /// Signal: SMS conversations updated
+    #[zbus(signal)]
+    fn sms_conversations_updated(
+        device_id: &str,
+        count: u32,
     ) -> zbus::fdo::Result<()>;
 }
 
@@ -990,6 +1061,80 @@ impl DbusClient {
                 if let Ok(args) = signal.args() {
                     let _ = event_tx.send(DaemonEvent::ScreenShareStopped {
                         device_id: args.device_id().to_string(),
+                    });
+                }
+            }
+        });
+
+        // Telephony/SMS signal listeners
+        let event_tx = self.event_tx.clone();
+        let mut incoming_call_stream = self.proxy.receive_incoming_call().await?;
+        tokio::spawn(async move {
+            while let Some(signal) = incoming_call_stream.next().await {
+                if let Ok(args) = signal.args() {
+                    let _ = event_tx.send(DaemonEvent::IncomingCall {
+                        device_id: args.device_id().to_string(),
+                        phone_number: args.phone_number().to_string(),
+                        contact_name: args.contact_name().to_string(),
+                        event: args.event().to_string(),
+                    });
+                }
+            }
+        });
+
+        let event_tx = self.event_tx.clone();
+        let mut missed_call_stream = self.proxy.receive_missed_call().await?;
+        tokio::spawn(async move {
+            while let Some(signal) = missed_call_stream.next().await {
+                if let Ok(args) = signal.args() {
+                    let _ = event_tx.send(DaemonEvent::MissedCall {
+                        device_id: args.device_id().to_string(),
+                        phone_number: args.phone_number().to_string(),
+                        contact_name: args.contact_name().to_string(),
+                    });
+                }
+            }
+        });
+
+        let event_tx = self.event_tx.clone();
+        let mut call_state_stream = self.proxy.receive_call_state_changed().await?;
+        tokio::spawn(async move {
+            while let Some(signal) = call_state_stream.next().await {
+                if let Ok(args) = signal.args() {
+                    let _ = event_tx.send(DaemonEvent::CallStateChanged {
+                        device_id: args.device_id().to_string(),
+                        state: args.state().to_string(),
+                        phone_number: args.phone_number().to_string(),
+                        contact_name: args.contact_name().to_string(),
+                    });
+                }
+            }
+        });
+
+        let event_tx = self.event_tx.clone();
+        let mut sms_received_stream = self.proxy.receive_sms_received().await?;
+        tokio::spawn(async move {
+            while let Some(signal) = sms_received_stream.next().await {
+                if let Ok(args) = signal.args() {
+                    let _ = event_tx.send(DaemonEvent::SmsReceived {
+                        device_id: args.device_id().to_string(),
+                        thread_id: *args.thread_id(),
+                        address: args.address().to_string(),
+                        body: args.body().to_string(),
+                        timestamp: *args.timestamp(),
+                    });
+                }
+            }
+        });
+
+        let event_tx = self.event_tx.clone();
+        let mut sms_conv_stream = self.proxy.receive_sms_conversations_updated().await?;
+        tokio::spawn(async move {
+            while let Some(signal) = sms_conv_stream.next().await {
+                if let Ok(args) = signal.args() {
+                    let _ = event_tx.send(DaemonEvent::SmsConversationsUpdated {
+                        device_id: args.device_id().to_string(),
+                        count: *args.count(),
                     });
                 }
             }
@@ -1696,6 +1841,27 @@ impl DbusClient {
             .send_sms(device_id, phone_number, message)
             .await
             .context("Failed to send SMS")
+    }
+
+    /// Request SMS conversation list from a device
+    pub async fn request_conversations(&self, device_id: &str) -> Result<()> {
+        info!("Requesting conversations from device {}", device_id);
+        self.proxy
+            .request_conversations(device_id)
+            .await
+            .context("Failed to request conversations")
+    }
+
+    /// Request messages for a specific SMS conversation thread
+    pub async fn request_conversation(&self, device_id: &str, thread_id: i64) -> Result<()> {
+        info!(
+            "Requesting conversation {} from device {}",
+            thread_id, device_id
+        );
+        self.proxy
+            .request_conversation(device_id, thread_id)
+            .await
+            .context("Failed to request conversation")
     }
 
     /// Start audio streaming from device

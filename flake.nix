@@ -61,7 +61,7 @@
           pipewire
 
           # DMA-BUF / GBM support for zero-copy capture
-          mesa.dev
+          libgbm
 
           # ScreenShare plugin dependencies (GStreamer)
           gst_all_1.gstreamer
@@ -132,6 +132,9 @@
 
           # Library paths for runtime
           export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeInputs}:$LD_LIBRARY_PATH"
+
+          # Linker library path for mesa-libgbm (cosmic-display-stream dependency)
+          export LIBRARY_PATH="${pkgs.libgbm}/lib:$LIBRARY_PATH"
 
           # PKG_CONFIG paths - critical for finding dbus-1.pc and openssl.pc
           export PKG_CONFIG_PATH="${pkgs.lib.makeSearchPath "lib/pkgconfig" buildInputs}:$PKG_CONFIG_PATH"

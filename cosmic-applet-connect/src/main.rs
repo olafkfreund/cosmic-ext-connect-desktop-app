@@ -9,8 +9,8 @@ use std::collections::HashMap;
 
 use messages::{Message, NotificationType, OperationType};
 use state::{
-    ActiveScreenShare, AppNotification, CameraStats, DeviceState, FocusTarget, HistoryEvent,
-    ReceivedFile, SystemInfo, TransferState, ViewMode, MAX_DISPLAYED_HISTORY_ITEMS,
+    ActiveScreenShare, AppNotification, CameraStats, ConversationSummary, DeviceState, FocusTarget,
+    HistoryEvent, ReceivedFile, SystemInfo, TransferState, ViewMode, MAX_DISPLAYED_HISTORY_ITEMS,
     MAX_RECEIVED_FILES_HISTORY,
 };
 
@@ -332,7 +332,7 @@ const PLUGINS: &[PluginMetadata] = &[
         name: "SMS Messages",
         description: "Send and receive SMS",
         icon: "mail-message-new-symbolic",
-        capability: "cconnect.sms",
+        capability: "cconnect.sms.messages",
     },
     PluginMetadata {
         id: "audiostream",
@@ -446,6 +446,10 @@ struct CConnectApplet {
     sms_dialog_device: Option<String>, // device_id showing SMS dialog
     sms_phone_number_input: String,    // Phone number input field
     sms_message_input: String,         // Message body input field
+    // Conversations state
+    conversations_device: Option<String>,  // device_id showing conversations list
+    active_conversation: Option<(String, i64)>, // (device_id, thread_id)
+    conversations_cache: HashMap<String, Vec<ConversationSummary>>, // device_id -> summaries
     // System Monitor state
     system_info: HashMap<String, SystemInfo>, // device_id -> system information
     // Screenshot state
@@ -790,6 +794,9 @@ impl cosmic::Application for CConnectApplet {
             sms_dialog_device: None,
             sms_phone_number_input: String::new(),
             sms_message_input: String::new(),
+            conversations_device: None,
+            active_conversation: None,
+            conversations_cache: HashMap::new(),
             system_info: HashMap::new(),
             screenshots: HashMap::new(),
         };
@@ -1213,6 +1220,70 @@ impl cosmic::Application for CConnectApplet {
                     },
                     cosmic::Action::App,
                 )
+            }
+            Message::ShowConversations(device_id) => {
+                tracing::info!("Show conversations for device: {}", device_id);
+                self.conversations_device = Some(device_id.clone());
+                self.active_conversation = None;
+                // Request conversation list from phone
+                Task::perform(
+                    async move {
+                        if let Ok((client, _)) = DbusClient::connect().await {
+                            if let Err(e) = client.request_conversations(&device_id).await {
+                                tracing::error!("Failed to request conversations: {:?}", e);
+                            }
+                        }
+                        Message::RefreshDevices
+                    },
+                    cosmic::Action::App,
+                )
+            }
+            Message::CloseConversations => {
+                self.conversations_device = None;
+                self.active_conversation = None;
+                self.sms_message_input.clear();
+                Task::none()
+            }
+            Message::SelectConversation(device_id, thread_id) => {
+                tracing::info!(
+                    "Select conversation {} for device {}",
+                    thread_id,
+                    device_id
+                );
+                self.active_conversation = Some((device_id.clone(), thread_id));
+                self.sms_message_input.clear();
+                // Request conversation messages from phone
+                Task::perform(
+                    async move {
+                        if let Ok((client, _)) = DbusClient::connect().await {
+                            if let Err(e) =
+                                client.request_conversation(&device_id, thread_id).await
+                            {
+                                tracing::error!("Failed to request conversation: {:?}", e);
+                            }
+                        }
+                        Message::RefreshDevices
+                    },
+                    cosmic::Action::App,
+                )
+            }
+            Message::CloseConversation => {
+                self.active_conversation = None;
+                self.sms_message_input.clear();
+                Task::none()
+            }
+            Message::ConversationsLoaded(device_id, summaries) => {
+                tracing::info!(
+                    "Loaded {} conversations for {}",
+                    summaries.len(),
+                    device_id
+                );
+                self.conversations_cache.insert(device_id, summaries);
+                Task::none()
+            }
+            Message::ConversationMessagesLoaded(_device_id, _thread_id, _messages) => {
+                // Future: store messages for display in detail view
+                Task::none()
             }
             Message::RequestBatteryUpdate(device_id) => {
                 let id = device_id.clone();
@@ -2703,7 +2774,12 @@ impl cosmic::Application for CConnectApplet {
                             | e @ dbus_client::DaemonEvent::DeviceRemoved { .. }
                             | e @ dbus_client::DaemonEvent::PairingRequest { .. }
                             | e @ dbus_client::DaemonEvent::PairingStatusChanged { .. }
-                            | e @ dbus_client::DaemonEvent::DeviceStateChanged { .. } => {
+                            | e @ dbus_client::DaemonEvent::DeviceStateChanged { .. }
+                            | e @ dbus_client::DaemonEvent::IncomingCall { .. }
+                            | e @ dbus_client::DaemonEvent::MissedCall { .. }
+                            | e @ dbus_client::DaemonEvent::CallStateChanged { .. }
+                            | e @ dbus_client::DaemonEvent::SmsReceived { .. }
+                            | e @ dbus_client::DaemonEvent::SmsConversationsUpdated { .. } => {
                                 Some(Message::DeviceEvent(e))
                             }
                             _ => None,
@@ -3048,6 +3124,124 @@ impl CConnectApplet {
                 return cosmic::task::message(cosmic::Action::App(Message::ScreenShareStopped(
                     device_id.clone(),
                 )));
+            }
+            dbus_client::DaemonEvent::IncomingCall {
+                device_id,
+                phone_number,
+                contact_name,
+                ..
+            } => {
+                let caller = if contact_name.is_empty() || contact_name == "Unknown contact" {
+                    phone_number.clone()
+                } else {
+                    format!("{} ({})", contact_name, phone_number)
+                };
+                let device_name = self
+                    .devices
+                    .iter()
+                    .find(|d| d.device.info.device_id == *device_id)
+                    .map(|d| d.device.name().to_string())
+                    .unwrap_or_else(|| device_id.clone());
+                self.history.push(HistoryEvent {
+                    timestamp,
+                    event_type: "Incoming Call".to_string(),
+                    device_name,
+                    details: format!("From {}", caller),
+                });
+                return cosmic::task::message(cosmic::Action::App(Message::ShowNotification(
+                    format!("Incoming call from {}", caller),
+                    NotificationType::Info,
+                    Some((
+                        "Mute".into(),
+                        Box::new(Message::MuteCall(device_id.clone())),
+                    )),
+                )));
+            }
+            dbus_client::DaemonEvent::MissedCall {
+                device_id,
+                phone_number,
+                contact_name,
+            } => {
+                let caller = if contact_name.is_empty() || contact_name == "Unknown contact" {
+                    phone_number.clone()
+                } else {
+                    format!("{} ({})", contact_name, phone_number)
+                };
+                let device_name = self
+                    .devices
+                    .iter()
+                    .find(|d| d.device.info.device_id == *device_id)
+                    .map(|d| d.device.name().to_string())
+                    .unwrap_or_else(|| device_id.clone());
+                self.history.push(HistoryEvent {
+                    timestamp,
+                    event_type: "Missed Call".to_string(),
+                    device_name,
+                    details: format!("From {}", caller),
+                });
+                return cosmic::task::message(cosmic::Action::App(Message::ShowNotification(
+                    format!("Missed call from {}", caller),
+                    NotificationType::Info,
+                    None,
+                )));
+            }
+            dbus_client::DaemonEvent::CallStateChanged {
+                device_id,
+                state,
+                phone_number,
+                contact_name,
+            } => {
+                let caller = if contact_name.is_empty() || contact_name == "Unknown contact" {
+                    phone_number.clone()
+                } else {
+                    contact_name.clone()
+                };
+                let device_name = self
+                    .devices
+                    .iter()
+                    .find(|d| d.device.info.device_id == *device_id)
+                    .map(|d| d.device.name().to_string())
+                    .unwrap_or_else(|| device_id.clone());
+                self.history.push(HistoryEvent {
+                    timestamp,
+                    event_type: "Call State".to_string(),
+                    device_name,
+                    details: format!("{} with {}", state, caller),
+                });
+            }
+            dbus_client::DaemonEvent::SmsReceived {
+                device_id,
+                address,
+                body,
+                ..
+            } => {
+                let preview: String = body.chars().take(50).collect();
+                let device_name = self
+                    .devices
+                    .iter()
+                    .find(|d| d.device.info.device_id == *device_id)
+                    .map(|d| d.device.name().to_string())
+                    .unwrap_or_else(|| device_id.clone());
+                self.history.push(HistoryEvent {
+                    timestamp,
+                    event_type: "SMS Received".to_string(),
+                    device_name,
+                    details: format!("From {}: {}", address, preview),
+                });
+                return cosmic::task::message(cosmic::Action::App(Message::ShowNotification(
+                    format!("SMS from {}: {}", address, preview),
+                    NotificationType::Info,
+                    Some((
+                        "Reply".into(),
+                        Box::new(Message::ShowSmsDialog(device_id.clone())),
+                    )),
+                )));
+            }
+            dbus_client::DaemonEvent::SmsConversationsUpdated { device_id, count } => {
+                tracing::debug!(
+                    "SMS conversations updated for {}: {} conversations",
+                    device_id, count
+                );
             }
             _ => {}
         }

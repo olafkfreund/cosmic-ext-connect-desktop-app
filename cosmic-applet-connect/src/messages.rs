@@ -233,6 +233,13 @@ pub enum Message {
     UpdateSmsPhoneNumberInput(String), // phone number text
     UpdateSmsMessageInput(String),     // message body text
     SendSms(String, String, String),   // device_id, phone_number, message
+    // Conversations UI
+    ShowConversations(String),    // device_id
+    CloseConversations,
+    SelectConversation(String, i64), // device_id, thread_id
+    CloseConversation,
+    ConversationsLoaded(String, Vec<crate::state::ConversationSummary>), // device_id, summaries
+    ConversationMessagesLoaded(String, i64, Vec<crate::state::SmsMessageDisplay>), // device_id, thread_id, messages
     // Animation
     Tick(std::time::Instant),
     // Recursive loop

@@ -302,6 +302,14 @@ pub struct PluginConfig {
     /// Enable Camera plugin (remote camera/webcam access)
     #[serde(default = "default_true")]
     pub enable_camera: bool,
+
+    /// Enable SystemVolume plugin (remote volume control)
+    #[serde(default = "default_true")]
+    pub enable_systemvolume: bool,
+
+    /// Enable ConnectivityReport plugin (network connectivity status)
+    #[serde(default = "default_true")]
+    pub enable_connectivityreport: bool,
 }
 
 /// Storage paths configuration
@@ -460,6 +468,8 @@ impl Default for PluginConfig {
             enable_mousekeyboardshare: true,
             enable_networkshare: true,
             enable_camera: true,
+            enable_systemvolume: true,
+            enable_connectivityreport: true,
         }
     }
 }
