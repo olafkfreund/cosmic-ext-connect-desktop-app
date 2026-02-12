@@ -13,7 +13,7 @@ A modern, cross-platform device connectivity solution for COSMIC Desktop, writte
 This project is part of a **multi-platform ecosystem**:
 
 - **[cosmic-ext-connect-core](https://github.com/olafkfreund/cosmic-ext-connect-core)** - Shared Rust library (protocol, TLS, plugins)
-- **[cosmic-connect-desktop-app](https://github.com/olafkfreund/cosmic-connect-desktop-app)** - This repository (COSMIC Desktop)
+- **[cosmic-ext-connect-desktop-app](https://github.com/olafkfreund/cosmic-ext-connect-desktop-app)** - This repository (COSMIC Desktop)
 - **[cosmic-connect-android](https://github.com/olafkfreund/cosmic-connect-android)** - Android app with Kotlin FFI bindings
 
 ### Key Innovations
@@ -25,6 +25,7 @@ This project is part of a **multi-platform ecosystem**:
 - **FFI Bindings** - Kotlin/Swift support via uniffi-rs
 - **Modern Async** - Tokio-based concurrent architecture
 - **COSMIC Design Compliance** - Hierarchical text, theme integration, WCAG AA+ accessibility
+- **Trademark Compliant** - Uses `cosmic-ext-` prefix per [COSMIC Trademark Policy](https://github.com/pop-os/cosmic-epoch/blob/master/TRADEMARK.md)
 
 ## Architecture
 
@@ -41,7 +42,11 @@ cosmic-ext-connect-core (Shared Library)
                                 ├──→ Desktop (This Repo)
                                 │    ├── cosmic-ext-connect-protocol
                                 │    ├── cosmic-ext-connect-daemon
-                                │    └── cosmic-ext-applet-connect
+                                │    ├── cosmic-ext-applet-connect
+                                │    ├── cosmic-ext-connect-manager
+                                │    ├── cosmic-ext-display-stream
+                                │    ├── cosmic-ext-messages
+                                │    └── cosmic-ext-messages-popup
                                 │
                                 └──→ Android App
                                      └── Kotlin via FFI
@@ -67,7 +72,7 @@ The **protocol library** implements the CConnect/KDE Connect v7/v8 protocol spec
 - `connection.rs` - TCP/TLS connection management with auto-reconnect
 - `discovery.rs` - UDP broadcast (port 1816) and mDNS discovery
 - `pairing.rs` - Certificate exchange and verification workflow
-- `plugins/` - All 22 plugin implementations (ping, battery, share, etc.)
+- `plugins/` - All 30 plugin implementations
 
 **Usage:** This crate is used internally by the daemon and manager; it's not typically used directly.
 
@@ -81,24 +86,44 @@ The **background service** that handles all device communication, running as a s
 |---------|-------------|
 | **Device Management** | Tracks paired devices, connection state, and trust levels |
 | **Plugin Orchestration** | Loads and manages plugins per device based on capabilities |
-| **DBus Interface** | Exposes `io.github.olafkfreund.CosmicExtConnect` for IPC with applet/manager |
-| **Notification Forwarding** | Captures desktop notifications via DBus and forwards to devices |
+| **D-Bus Interface** | Exposes `io.github.olafkfreund.CosmicExtConnect` for IPC with applet/manager |
+| **Notification Forwarding** | Captures desktop notifications via D-Bus and forwards to devices |
+| **Telephony Signals** | Incoming calls, missed calls, SMS received signals via D-Bus |
 | **Desktop Icons** | Creates `.desktop` files for paired devices in `~/.local/share/applications/` |
+| **Bluetooth Transport** | RFCOMM via BlueZ for Bluetooth device connections |
 
-**DBus Methods:**
+**D-Bus Methods:**
 ```
 io.github.olafkfreund.CosmicExtConnect
 ├── GetDevices() → Array<Device>
 ├── PairDevice(device_id: String)
 ├── UnpairDevice(device_id: String)
+├── ForgetDevice(device_id: String)
 ├── SendPing(device_id: String)
 ├── SendFile(device_id: String, path: String)
 ├── GetClipboard(device_id: String) → String
 ├── SetClipboard(device_id: String, content: String)
+├── StartExtendedDisplay(device_id: String)
+├── StopExtendedDisplay(device_id: String)
+├── ForgetScreenShareSource()
+├── GetSmsConversations(device_id: String) → Array<Conversation>
 └── ... (60+ methods for all plugins)
 ```
 
-**Configuration:** `~/.config/cosmic/com.cosmic.Connect.ron`
+**D-Bus Signals:**
+```
+├── DeviceAdded(device_id)
+├── DeviceRemoved(device_id)
+├── DeviceStateChanged(device_id, state)
+├── IncomingCall(device_id, caller, phone_number)
+├── MissedCall(device_id, caller, phone_number)
+├── SmsReceived(device_id, sender, message)
+├── ExtendedDisplayStarted(device_id)
+├── ExtendedDisplayStopped(device_id)
+└── ExtendedDisplayError(device_id, error)
+```
+
+**Configuration:** `~/.config/cosmic-ext-connect/config.toml`
 
 ---
 
@@ -109,15 +134,18 @@ The **COSMIC panel applet** that provides quick access to device status and comm
 | Feature | Description |
 |---------|-------------|
 | **Status Overview** | Shows connected device count with status indicators |
-| **Quick Actions** | Ping, send file, clipboard sync from dropdown |
-| **Device Cards** | Expandable cards showing battery, connection quality |
+| **Quick Actions** | Ping, send file, clipboard sync, extended display, camera from dropdown |
+| **Device Cards** | Expandable cards showing battery, connection quality, and action buttons |
 | **Onboarding** | First-run wizard for daemon setup and firewall configuration |
 | **Pinned Devices** | Quick access to favorite devices in collapsed view |
+| **SMS Conversations** | View and reply to SMS conversations from connected Android devices |
+| **Call Notifications** | Incoming and missed call notifications with caller info |
+| **Context Menu** | Right-click actions including dismiss device for offline unpaired devices |
 
 **Panel Integration:**
 - Appears in COSMIC panel's system tray area
 - Shows device count badge when devices are connected
-- Dropdown provides device list and "Open Manager" button
+- Dropdown provides device list, action buttons, and "Open Manager" button
 
 ---
 
@@ -133,21 +161,26 @@ The **standalone window application** for comprehensive device management.
 | **File Transfers** | Progress tracking for active transfers |
 | **Plugin Settings** | Per-device enable/disable toggles for each plugin |
 | **Media Controls** | MPRIS remote control for music/video playback |
+| **Unpair/Dismiss** | Two-step destructive confirmation for device removal |
 
 **Device-Type Actions:**
 
 | Action | Mobile | Desktop | Description |
 |--------|--------|---------|-------------|
-| Ping |  |  | Test connectivity |
-| Send File |  |  | Share files via dialog |
-| Clipboard |  |  | Sync clipboard content |
-| Find Phone |  |  | Ring device to locate |
-| SMS |  |  | Compose text messages |
-| Camera |  |  | Use phone as webcam |
-| Contacts |  |  | Sync contact database |
-| Screen Share |  |  | VNC desktop sharing |
-| Run Command |  |  | Execute remote scripts |
-| Power |  |  | Shutdown/suspend remote |
+| Ping | Y | Y | Test connectivity |
+| Send File | Y | Y | Share files via dialog |
+| Clipboard | Y | Y | Sync clipboard content |
+| Find Phone | Y | - | Ring device to locate |
+| SMS | Y | - | View/compose text messages |
+| Camera | Y | - | Use phone as webcam |
+| Audio Stream | Y | - | Stream phone audio to desktop |
+| Contacts | Y | - | Sync contact database |
+| Screen Share | Y | Y | H.264 desktop sharing |
+| Extended Display | Y | - | Use tablet as extra monitor |
+| Remote Desktop | Y | Y | VNC screen sharing |
+| Run Command | Y | Y | Execute remote scripts |
+| Presenter | Y | - | Presentation remote control |
+| Power | Y | Y | Shutdown/suspend remote |
 
 **Launch:**
 ```bash
@@ -169,6 +202,8 @@ The **display streaming library** for using Android tablets as extended displays
 | **WebRTC Transport** | Low-latency streaming using WebRTC data channels |
 | **Input Forwarding** | Touch/stylus input sent back to desktop (libei/reis) |
 | **Multi-Monitor** | Select specific outputs or capture entire workspace |
+| **Display Transforms** | Handles 90/180/270 rotation via PipeWire `SPA_META_VideoTransform` |
+| **RTP Fragmentation** | FU-A fragmentation for reliable H.264 NAL unit delivery |
 
 **Architecture:**
 ```
@@ -185,7 +220,12 @@ The **display streaming library** for using Android tablets as extended displays
                                └──────────────┘
 ```
 
-**Status:** Work in progress - basic streaming functional, input forwarding experimental.
+**Signaling Flow:**
+1. Android sends `cconnect.extendeddisplay.request` to desktop
+2. Desktop starts PipeWire capture + WebRTC signaling server on port 18080
+3. Desktop sends `cconnect.extendeddisplay` with `{ "action": "ready", "address", "port" }`
+4. Android connects WebSocket for SDP/ICE exchange
+5. H.264 RTP stream begins, touch events return via data channel
 
 ---
 
@@ -198,8 +238,19 @@ The **web messenger popup** for responding to messages directly from desktop not
 | **WebView Integration** | Embedded browser using wry/WebKitGTK |
 | **Session Persistence** | Maintains login state per messenger service |
 | **Notification Trigger** | Opens automatically when message notification received |
-| **DBus Interface** | `io.github.olafkfreund.CosmicExtMessagesPopup` for daemon integration |
+| **D-Bus Interface** | `io.github.olafkfreund.CosmicExtMessagesPopup` for daemon integration |
 | **Multi-Service** | Supports Google Messages, WhatsApp, Telegram, Signal, Discord, Slack |
+
+**Supported Messengers:**
+
+| Service | Package Name | Web URL |
+|---------|--------------|---------|
+| Google Messages | com.google.android.apps.messaging | messages.google.com |
+| WhatsApp | com.whatsapp | web.whatsapp.com |
+| Telegram | org.telegram.messenger | web.telegram.org |
+| Signal | org.thoughtcrime.securesms | signal.link |
+| Discord | com.discord | discord.com/app |
+| Slack | com.Slack | app.slack.com |
 
 **Why Web-Based:**
 - Google Messages RCS has no public API
@@ -209,21 +260,21 @@ The **web messenger popup** for responding to messages directly from desktop not
 
 ---
 
-### cosmic-messages
+### cosmic-ext-messages
 
 A **lightweight messages utility** for command-line message operations and testing.
 
 | Feature | Description |
 |---------|-------------|
 | **CLI Interface** | Send/receive messages from terminal |
-| **DBus Client** | Communicates with daemon's message queue |
+| **D-Bus Client** | Communicates with daemon's message queue |
 | **Testing Tool** | Useful for debugging notification flow |
 
 **Usage:**
 ```bash
-cosmic-messages list              # Show message queue
-cosmic-messages send DEVICE TEXT  # Send message to device
-cosmic-messages dismiss ID        # Dismiss notification
+cosmic-ext-messages list              # Show message queue
+cosmic-ext-messages send DEVICE TEXT  # Send message to device
+cosmic-ext-messages dismiss ID        # Dismiss notification
 ```
 
 ---
@@ -232,50 +283,63 @@ cosmic-messages dismiss ID        # Dismiss notification
 
 ### Status: Production Ready
 
-**Version:** 0.1.0
+**Version:** 0.18.0
 **Protocol:** CConnect v7/8 (KDE Connect compatible)
 **Discovery Port:** 1816
-**Plugin Count:** 22 plugins (12 core + 10 advanced)
+**Plugin Count:** 30 plugins
+**Test Suite:** 1,068 tests (901 unit/integration + 167 doc-tests)
 
 #### Core Features
 
 - **Device Discovery** - UDP broadcast + mDNS service discovery
 - **Secure Pairing** - TLS certificate exchange with user verification
 - **Connection Management** - Auto-reconnect, exponential backoff, socket replacement
-- **Background Daemon** - Systemd service with DBus interface
-- **COSMIC Panel Applet** - Modern UI with device cards, details view, and transfer queue
-- **Per-Device Settings** - Plugin enable/disable per device
+- **Background Daemon** - Systemd service with D-Bus interface (60+ methods, 9+ signals)
+- **COSMIC Panel Applet** - Modern UI with device cards, action buttons, SMS conversations view
+- **Per-Device Settings** - Plugin enable/disable per device (all 30 enabled by default)
+- **Bluetooth Transport** - RFCOMM via BlueZ for Bluetooth device connections
+- **Adaptive Bitrate** - AIMD-based bitrate control for screen sharing streams
+- **Display Transforms** - Automatic rotation handling for PipeWire video streams
+- **SIGTERM Handling** - Graceful 30-second shutdown timeout for daemon
 
 #### Implemented Plugins
 
-| Category | Plugin | Status | Description |
-|----------|--------|--------|-------------|
-| **Comm** | Ping |  | Test connectivity |
-| | Battery |  | Monitor battery & charge state |
-| | Notification |  | Mirror notifications |
-| | Share |  | File, text, and URL sharing |
-| | Clipboard |  | Bidirectional clipboard sync |
-| | Telephony |  | Call & SMS notifications |
-| | Contacts |  | Contact synchronization |
-| **Control** | MPRIS |  | Media player remote control |
-| | Remote Input |  | Mouse & keyboard control |
-| | Run Command |  | Execute desktop commands |
-| | Find My Phone |  | Ring remote device |
-| | Presenter |  | Presentation control |
-| **System** | System Monitor |  | Remote CPU/RAM stats |
-| | Lock |  | Remote lock/unlock |
-| | Power |  | Shutdown/reboot/suspend |
-| | Wake-on-LAN |  | Wake sleeping devices |
-| | Screenshot |  | Capture remote screen |
-| | Clipboard History |  | Persistent history |
-| **Files** | Network Share |  | SFTP filesystem mounting |
-| | File Sync |  | Automatic folder sync |
-| **Adv** | Remote Desktop |  | VNC screen sharing (Receiver) |
-| | Screen Mirroring |  | H.264 streaming (In Progress) |
+| Category | Plugin | Description |
+|----------|--------|-------------|
+| **Communication** | Ping | Test connectivity |
+| | Battery | Monitor battery level and charge state |
+| | Notification | Bidirectional notification mirroring with rich content |
+| | Share | File, text, and URL sharing |
+| | Clipboard | Bidirectional clipboard sync |
+| | Clipboard History | Persistent clipboard history with search |
+| | Telephony | Incoming/missed call and SMS notifications |
+| | Contacts | Contact synchronization (SQLite backend) |
+| | Chat | Direct messaging between devices |
+| | Connectivity Report | Network connectivity status reporting |
+| **Media** | MPRIS | Media player remote control (play/pause/skip/volume) |
+| | Audio Stream | Stream phone audio to desktop speakers |
+| | System Volume | Remote volume control |
+| | Presenter | Presentation remote control (next/prev slide) |
+| **Control** | Remote Input | Mouse and keyboard control |
+| | Mouse/Keyboard Share | Cross-device mouse and keyboard sharing |
+| | Run Command | Execute desktop commands remotely |
+| | Find My Phone | Ring remote device to locate |
+| | Macro | Record and replay input sequences |
+| **System** | System Monitor | Remote CPU/RAM/disk stats |
+| | Lock | Remote lock/unlock |
+| | Power | Shutdown/reboot/suspend |
+| | Wake-on-LAN | Wake sleeping devices over network |
+| | Screenshot | Capture remote screen |
+| **Files** | Network Share | SFTP filesystem mounting |
+| | File Sync | Automatic folder synchronization |
+| **Display** | Remote Desktop | VNC screen sharing (receiver) |
+| | Screen Share | H.264 screen sharing with adaptive bitrate |
+| | Extended Display | Use Android tablet as wireless extended monitor |
+| **Auth** | Phone Auth | Phone-based biometric authentication for desktop (D-Bus + Polkit) |
 
 ### Rich Notifications (Desktop to Android)
 
-COSMIC Connect supports forwarding desktop notifications to connected Android devices with full rich content preservation. Notifications are captured via DBus using the freedesktop.org notification specification and transmitted as extended protocol packets.
+COSMIC Connect supports forwarding desktop notifications to connected Android devices with full rich content preservation. Notifications are captured via D-Bus using the freedesktop.org notification specification and transmitted as extended protocol packets.
 
 #### Supported Rich Content
 
@@ -288,118 +352,61 @@ COSMIC Connect supports forwarding desktop notifications to connected Android de
 | **Actions** | Interactive buttons with ID/label pairs (Reply, Mark Read, etc.) |
 | **HTML Body** | Rich text formatting preserved in `richBody` field |
 
-#### Protocol Packet Format
-
-Desktop notifications are sent as `cconnect.notification` packets:
-
-```json
-{
-  "id": 1234567890,
-  "type": "cconnect.notification",
-  "body": {
-    "id": "desktop-Thunderbird-1704067200000",
-    "appName": "Thunderbird",
-    "title": "New Email",
-    "text": "You have a new message from Alice",
-    "ticker": "Thunderbird: New Email - You have...",
-    "isClearable": true,
-    "time": "1704067200000",
-    "silent": "false",
-    "imageData": "<base64-png>",
-    "appIcon": "<base64-png>",
-    "urgency": 1,
-    "category": "email",
-    "actionButtons": [
-      {"id": "reply", "label": "Reply"},
-      {"id": "mark_read", "label": "Mark as Read"}
-    ]
-  }
-}
-```
-
-#### Configuration Options
-
-The notification listener is configured in the daemon configuration file:
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `enabled` | bool | `true` | Enable/disable notification forwarding |
-| `excluded_apps` | string[] | `["CConnect", "cosmic-connect", "cosmic-notifications"]` | Apps to exclude (prevents loops) |
-| `included_apps` | string[] | `[]` | Whitelist mode (empty = all non-excluded) |
-| `include_transient` | bool | `true` | Forward transient notifications |
-| `include_low_urgency` | bool | `true` | Forward low-priority notifications |
-| `max_body_length` | number | `0` | Truncate body text (0 = no limit) |
-
 #### Bidirectional Sync
 
 - **Dismissal Sync**: Dismissing a notification on Android sends `isCancel: true` back to desktop
 - **Action Invocation**: Tapping action buttons sends `cconnect.notification.action` packet with action ID
 - **Request All**: Android can request all active notifications via `cconnect.notification.request`
 
-### Recently Completed (Q1 2026)
+### Telephony and SMS
 
-- **UI Overhaul**: Modern card-based device list, detailed device view, and transfer queue.
-- **Error Handling**: Centralized error reporting, user notifications for failures, and auto-recovery.
-- **New Plugins**: Network Share (SFTP), Contacts (SQLite), Run Command, Remote Input.
-- **Backend Stability**: Fixed DBus interface types, improved connection reliability with backoff.
+Full telephony integration with Android devices through a D-Bus signal pipeline:
 
-## COSMIC Connect Manager
+| Feature | Description |
+|---------|-------------|
+| **Incoming Calls** | Desktop notification with caller name and number |
+| **Missed Calls** | Notification after call ends unanswered |
+| **SMS Received** | Real-time SMS notifications |
+| **Conversations** | Browse SMS conversation history from the applet |
+| **Conversation Detail** | Read individual message threads |
 
-The **COSMIC Connect Manager** is a standalone window application for comprehensive device management, providing a full-featured interface beyond the panel applet.
+The signal flow is: plugin emits internal packet -> daemon routes to D-Bus signal -> applet receives and displays notification/updates UI.
 
-### Features
+### Extended Display (Android as Monitor)
 
-- **Device List**: View all paired devices with real-time status indicators (Connected, Available, Offline)
-- **Media Controls**: MPRIS-based media player remote control with playback, volume, and track navigation
-- **File Transfers**: Monitor and manage file transfer queue with progress tracking
-- **Plugin Settings**: Configure per-device plugin preferences and permissions
+Use your Android tablet as a wireless extended display for your COSMIC Desktop:
 
-### Launching the Manager
+- **PipeWire Capture** - Portal-integrated screen capture with output selection
+- **H.264 Encoding** - GStreamer-based hardware-accelerated encoding
+- **WebRTC Streaming** - Low-latency delivery with ICE/STUN negotiation
+- **Touch Input** - Forward touch and stylus events back to desktop via libei
+- **One-Click Toggle** - Start/stop from applet action buttons or context menu
 
-**From the Panel Applet:**
-Click the "Open Manager" button in the COSMIC Connect applet dropdown.
+### Adaptive Bitrate Control
 
-**From Command Line:**
-```bash
-# Open manager window
-cosmic-ext-connect-manager
+Screen sharing automatically adjusts quality based on network conditions:
 
-# Open with a specific device selected
-cosmic-ext-connect-manager --device <device-id>
-```
+- **AIMD Algorithm** - Additive Increase / Multiplicative Decrease
+- **Congestion Detection** - Throughput monitoring + broadcast lag detection
+- **Per-Viewer Tracking** - Individual network reports per connected viewer
+- **Auto-Recovery** - Bitrate increases after 4-second cooldown when conditions improve
+- **Bounds** - 200 kbps floor, 2x target ceiling
 
-### Window Layout
+### Camera as Webcam
 
-The Manager uses a two-panel layout:
+Use your Android device's camera as a virtual webcam on COSMIC Desktop.
 
-| Panel | Description |
-|-------|-------------|
-| **Sidebar** | Device list with status icons, search, and quick actions |
-| **Content Area** | Device details, plugin controls, and transfer management |
-
-The sidebar provides navigation between devices, while the content area displays context-specific controls based on the selected device and active plugins.
-
-## Camera as Webcam
-
-The **Camera as Webcam** plugin allows you to use your Android device's camera as a virtual webcam on your COSMIC Desktop. This enables video conferencing, streaming, or any application that supports V4L2 video devices.
-
-### System Requirements
-
+**System Requirements:**
 - **v4l2loopback** kernel module installed
 - Linux kernel with V4L2 support
 - Connected and paired Android device with camera access granted
 
-### Setup
-
-Load the v4l2loopback kernel module before using this feature:
-
+**Setup:**
 ```bash
 sudo modprobe v4l2loopback exclusive_caps=1
 ```
 
-For persistent loading, add `v4l2loopback` to `/etc/modules-load.d/` and configure options in `/etc/modprobe.d/`.
-
-### Supported Resolutions
+**Supported Resolutions:**
 
 | Resolution | Aspect Ratio | Use Case |
 |------------|--------------|----------|
@@ -407,117 +414,23 @@ For persistent loading, add `v4l2loopback` to `/etc/modules-load.d/` and configu
 | 720p (1280x720) | 16:9 | Standard video calls |
 | 1080p (1920x1080) | 16:9 | High quality streaming |
 
-### Usage
-
-1. Open the **COSMIC Connect Manager** or panel applet
-2. Select your paired Android device
-3. Navigate to **Camera** controls
-4. Choose resolution and click **Start Webcam**
-5. The virtual camera appears as `/dev/video*` for use in any V4L2-compatible application
-
-## Desktop Device Icons
-
-COSMIC Connect creates desktop integration files for connected devices, allowing quick access to common actions directly from your application launcher or file manager.
-
-### How It Works
+### Desktop Device Icons
 
 When a device is paired, COSMIC Connect generates a `.desktop` file in:
-
 ```
-~/.local/share/applications/cosmic-connect-<device-id>.desktop
-```
-
-These files integrate with COSMIC launcher, providing device-specific actions without opening the full manager.
-
-### Available Actions
-
-| Action | Description |
-|--------|-------------|
-| **Send File** | Opens file picker to send files to the device |
-| **Ping** | Sends a ping notification to locate the device |
-| **Find Phone** | Triggers audible ring on the remote device |
-
-### Icon Behavior
-
-- **Created**: When device is first paired
-- **Updated**: When device name or capabilities change
-- **Removed**: When device is unpaired (optional cleanup)
-
-### Future: Drag-and-Drop Support
-
-Planned integration with COSMIC Files will enable dragging files directly onto device icons in the file manager sidebar for instant sharing.
-
-## Web-based Messaging Popup
-
-The **COSMIC Messages Popup** provides a native COSMIC interface for web-based messaging services. When a message notification arrives from your connected Android device, you can open the corresponding web messenger directly in a popup window.
-
-### Supported Messengers
-
-| Service | Package Name | Web URL |
-|---------|--------------|---------|
-| Google Messages | com.google.android.apps.messaging | messages.google.com |
-| WhatsApp | com.whatsapp | web.whatsapp.com |
-| Telegram | org.telegram.messenger | web.telegram.org |
-| Signal | org.thoughtcrime.securesms | signal.link |
-| Discord | com.discord | discord.com/app |
-| Slack | com.Slack | app.slack.com |
-
-### Architecture
-
-```
-cosmic-ext-connect-daemon
-        │
-        ▼
-  ┌──────────────┐    D-Bus     ┌─────────────────────────────┐
-  │ Notification │─────────────│   cosmic-ext-messages-popup     │
-  │   Service    │              │                             │
-  └──────────────┘              │  ┌───────────────────────┐  │
-                                │  │     WebView (wry)     │  │
-                                │  │ messages.google.com   │  │
-                                │  │ web.whatsapp.com      │  │
-                                │  │ web.telegram.org      │  │
-                                │  └───────────────────────┘  │
-                                └─────────────────────────────┘
+~/.local/share/applications/cosmic-ext-connect-<device-id>.desktop
 ```
 
-### Usage
+These integrate with COSMIC launcher, providing device-specific actions (Send File, Ping, Find Phone) without opening the full manager.
 
-**From Command Line:**
-```bash
-# Open messages popup
-cosmic-ext-messages-popup
+### Phone-Based Authentication
 
-# Open with specific messenger
-cosmic-ext-messages-popup --messenger google-messages --show
+COSMIC Connect includes a D-Bus service for phone-based biometric authentication, allowing you to authenticate desktop actions (sudo, login) using your phone's biometrics.
 
-# Run in daemon mode (D-Bus only)
-cosmic-ext-messages-popup --daemon
-```
+**D-Bus Interface:** `io.github.olafkfreund.CosmicExtPhoneAuth`
+**Polkit Integration:** Four authorization levels (request, cancel, admin, configure)
 
-### Key Features
-
-- **Session Persistence**: WebView sessions are stored per-messenger, maintaining login state
-- **Notification Integration**: Automatically detects messenger from Android notification package
-- **D-Bus Interface**: Accessible from cosmic-connect daemon via `io.github.olafkfreund.CosmicExtMessagesPopup`
-- **Keyboard Shortcuts**: Cmd+1/2/3 to switch between messengers
-- **Configurable Settings**: Enable/disable individual messengers, auto-open behavior
-
-### Configuration
-
-Settings are stored in `~/.config/cosmic/io.github.olafkfreund.CosmicExtMessagesPopup.ron`:
-
-- Enable/disable individual messaging services
-- Popup window size and position
-- Auto-open on notification
-- Sound notification settings
-
-### Why Web-based?
-
-Google Messages RCS has no public API for third-party applications. By using web interfaces:
-- Full RCS messaging support without reverse-engineering
-- Works with any messenger that has a web interface
-- Maintains Google's end-to-end encryption
-- Future-proof as web interfaces are updated
+See **[Phone Auth Guide](docs/cosmic-phone-auth-guide.md)** for setup instructions.
 
 ## Installation
 
@@ -527,22 +440,30 @@ Add to your `flake.nix`:
 
 ```nix
 {
-  inputs.cosmic-connect.url = "github:olafkfreund/cosmic-connect-desktop-app";
-  
-  outputs = { self, nixpkgs, cosmic-connect, ... }:
+  inputs.cosmic-ext-connect.url = "github:olafkfreund/cosmic-ext-connect-desktop-app";
+
+  outputs = { self, nixpkgs, cosmic-ext-connect, ... }:
     {
       nixosConfigurations.your-hostname = nixpkgs.lib.nixosSystem {
         modules = [
-          cosmic-connect.nixosModules.default
+          cosmic-ext-connect.nixosModules.default
           {
-            services.cosmic-connect.enable = true;
-            services.cosmic-connect.openFirewall = true;
+            services.cosmic-ext-connect.enable = true;
+            services.cosmic-ext-connect.openFirewall = true;
           }
         ];
       };
     };
 }
 ```
+
+This installs:
+- `cosmic-ext-connect-daemon` (systemd user service)
+- `cosmic-ext-applet-connect` (panel applet)
+- `cosmic-ext-connect-manager` (standalone manager)
+- `cosmic-ext-messages-popup` (web messenger popup)
+- `cosmic-ext-messages` (CLI utility)
+- D-Bus service files, desktop entries, and icons
 
 ### Manual Installation
 
@@ -558,15 +479,69 @@ sudo install -Dm644 cosmic-ext-connect-daemon/cosmic-ext-connect-daemon.service 
 # Install applet
 sudo install -Dm755 target/release/cosmic-ext-applet-connect /usr/local/bin/
 
+# Install manager
+sudo install -Dm755 target/release/cosmic-ext-connect-manager /usr/local/bin/
+
+# Install D-Bus service
+sudo install -Dm644 io.github.olafkfreund.CosmicExtConnect.service \
+  /usr/share/dbus-1/services/
+
 # Enable and start daemon
 systemctl --user enable --now cosmic-ext-connect-daemon
 ```
+
+### Firewall Configuration
+
+COSMIC Connect uses UDP port 1816 for device discovery and dynamic TCP ports for data transfer:
+
+```bash
+# UFW
+sudo ufw allow 1816/udp
+sudo ufw allow 1716:1764/tcp
+
+# firewalld
+sudo firewall-cmd --permanent --add-port=1816/udp
+sudo firewall-cmd --permanent --add-port=1716-1764/tcp
+sudo firewall-cmd --reload
+```
+
+## D-Bus Interfaces
+
+| Interface | Bus | Purpose |
+|-----------|-----|---------|
+| `io.github.olafkfreund.CosmicExtConnect` | Session | Main daemon IPC (devices, plugins, signals) |
+| `io.github.olafkfreund.CosmicExtMessagesPopup` | Session | Web messenger popup control |
+| `io.github.olafkfreund.CosmicExtPhoneAuth` | Session | Phone-based biometric authentication |
 
 ## Documentation
 
 - **[User Guide](docs/USER_GUIDE.md)** - Setup and usage instructions
 - **[Architecture](docs/architecture/Architecture.md)** - System design
+- **[Phone Auth Guide](docs/cosmic-phone-auth-guide.md)** - Phone authentication setup
+- **[Plugin Testing Guide](docs/PLUGIN_TESTING_GUIDE.md)** - Testing individual plugins
 - **[Contributing](CONTRIBUTING.md)** - Development guide
+
+## Building from Source
+
+```bash
+# Enter Nix development shell (recommended)
+nix develop
+
+# Or install dependencies manually:
+# Rust 1.70+, GStreamer 1.20+, PipeWire 0.3+, BlueZ 5.60+, libei
+
+# Build all workspace members
+cargo build --workspace
+
+# Build with extended display support
+cargo build --workspace --features extendeddisplay
+
+# Run tests
+cargo test --workspace
+
+# Run tests including feature-gated plugins
+cargo test --workspace --features extendeddisplay
+```
 
 ## License
 
