@@ -2745,6 +2745,107 @@ impl CConnectInterface {
         Ok(())
     }
 
+    /// Start extended display streaming to a device
+    ///
+    /// Triggers the ExtendedDisplay plugin to begin screen capture, encoding,
+    /// and WebRTC streaming. The plugin will send a "ready" packet to the
+    /// Android device with the signaling server address.
+    async fn start_extended_display(
+        &self,
+        device_id: String,
+    ) -> Result<(), zbus::fdo::Error> {
+        #[cfg(feature = "extendeddisplay")]
+        {
+            info!("DBus: StartExtendedDisplay called for {}", device_id);
+
+            let mut plugin_manager = self.plugin_manager.write().await;
+
+            if let Some(plugin) =
+                plugin_manager.get_device_plugin_mut(&device_id, "extendeddisplay")
+            {
+                use cosmic_connect_protocol::plugins::extendeddisplay::ExtendedDisplayPlugin;
+
+                if let Some(ed_plugin) =
+                    plugin.as_any_mut().downcast_mut::<ExtendedDisplayPlugin>()
+                {
+                    ed_plugin
+                        .start_session(&device_id, "h264,touch")
+                        .await
+                        .map_err(|e| {
+                            zbus::fdo::Error::Failed(format!(
+                                "Failed to start extended display: {}",
+                                e
+                            ))
+                        })?;
+                    info!("Extended display started for device {}", device_id);
+                    Ok(())
+                } else {
+                    Err(zbus::fdo::Error::Failed(
+                        "Plugin is not ExtendedDisplayPlugin".to_string(),
+                    ))
+                }
+            } else {
+                Err(zbus::fdo::Error::Failed(
+                    "ExtendedDisplay plugin not found".to_string(),
+                ))
+            }
+        }
+        #[cfg(not(feature = "extendeddisplay"))]
+        {
+            let _ = device_id;
+            Err(zbus::fdo::Error::NotSupported(
+                "Extended display feature not enabled".to_string(),
+            ))
+        }
+    }
+
+    /// Stop extended display streaming to a device
+    async fn stop_extended_display(
+        &self,
+        device_id: String,
+    ) -> Result<(), zbus::fdo::Error> {
+        #[cfg(feature = "extendeddisplay")]
+        {
+            info!("DBus: StopExtendedDisplay called for {}", device_id);
+
+            let mut plugin_manager = self.plugin_manager.write().await;
+
+            if let Some(plugin) =
+                plugin_manager.get_device_plugin_mut(&device_id, "extendeddisplay")
+            {
+                use cosmic_connect_protocol::plugins::extendeddisplay::ExtendedDisplayPlugin;
+
+                if let Some(ed_plugin) =
+                    plugin.as_any_mut().downcast_mut::<ExtendedDisplayPlugin>()
+                {
+                    ed_plugin.stop_session(&device_id).await.map_err(|e| {
+                        zbus::fdo::Error::Failed(format!(
+                            "Failed to stop extended display: {}",
+                            e
+                        ))
+                    })?;
+                    info!("Extended display stopped for device {}", device_id);
+                    Ok(())
+                } else {
+                    Err(zbus::fdo::Error::Failed(
+                        "Plugin is not ExtendedDisplayPlugin".to_string(),
+                    ))
+                }
+            } else {
+                Err(zbus::fdo::Error::Failed(
+                    "ExtendedDisplay plugin not found".to_string(),
+                ))
+            }
+        }
+        #[cfg(not(feature = "extendeddisplay"))]
+        {
+            let _ = device_id;
+            Err(zbus::fdo::Error::NotSupported(
+                "Extended display feature not enabled".to_string(),
+            ))
+        }
+    }
+
     /// Request remote device to share their screen with us
     ///
     /// Sends a request to the remote device asking them to share their screen.
@@ -4001,6 +4102,28 @@ impl CConnectInterface {
         device_id: &str,
         count: u32,
     ) -> zbus::Result<()>;
+
+    /// Signal: Extended display session started
+    #[zbus(signal)]
+    async fn extended_display_started(
+        signal_emitter: &SignalEmitter<'_>,
+        device_id: &str,
+    ) -> zbus::Result<()>;
+
+    /// Signal: Extended display session stopped
+    #[zbus(signal)]
+    async fn extended_display_stopped(
+        signal_emitter: &SignalEmitter<'_>,
+        device_id: &str,
+    ) -> zbus::Result<()>;
+
+    /// Signal: Extended display error
+    #[zbus(signal)]
+    async fn extended_display_error(
+        signal_emitter: &SignalEmitter<'_>,
+        device_id: &str,
+        error_message: &str,
+    ) -> zbus::Result<()>;
 }
 
 /// DBus server for the daemon
@@ -4483,6 +4606,45 @@ impl DbusServer {
         )
         .await?;
         debug!("Emitted SmsConversationsUpdated signal for {} ({} conversations)", device_id, count);
+        Ok(())
+    }
+
+    /// Emit an extended_display_started signal
+    #[cfg(feature = "extendeddisplay")]
+    pub async fn emit_extended_display_started(&self, device_id: &str) -> Result<()> {
+        let iface_ref = self.interface_ref().await?;
+        CConnectInterface::extended_display_started(iface_ref.signal_emitter(), device_id).await?;
+        debug!("Emitted ExtendedDisplayStarted signal for {}", device_id);
+        Ok(())
+    }
+
+    /// Emit an extended_display_stopped signal
+    #[cfg(feature = "extendeddisplay")]
+    pub async fn emit_extended_display_stopped(&self, device_id: &str) -> Result<()> {
+        let iface_ref = self.interface_ref().await?;
+        CConnectInterface::extended_display_stopped(iface_ref.signal_emitter(), device_id).await?;
+        debug!("Emitted ExtendedDisplayStopped signal for {}", device_id);
+        Ok(())
+    }
+
+    /// Emit an extended_display_error signal
+    #[cfg(feature = "extendeddisplay")]
+    pub async fn emit_extended_display_error(
+        &self,
+        device_id: &str,
+        error_message: &str,
+    ) -> Result<()> {
+        let iface_ref = self.interface_ref().await?;
+        CConnectInterface::extended_display_error(
+            iface_ref.signal_emitter(),
+            device_id,
+            error_message,
+        )
+        .await?;
+        debug!(
+            "Emitted ExtendedDisplayError signal for {}: {}",
+            device_id, error_message
+        );
         Ok(())
     }
 }

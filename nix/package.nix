@@ -36,6 +36,7 @@
   gobject-introspection,
   gst_all_1,
   libopus,
+  libgbm,
   stdenv,
 }:
 
@@ -113,6 +114,8 @@ rustPlatform.buildRustPackage rec {
     gst_all_1.gst-plugins-ugly # H.264 codec support
     # Opus codec for audio streaming
     libopus
+    # DMA-BUF / GBM support for extended display capture
+    libgbm
   ];
 
   # Build all workspace members with all features enabled
@@ -123,12 +126,13 @@ rustPlatform.buildRustPackage rec {
   #   - video: V4L2 camera support
   #   - audiostream: Audio streaming between devices (requires pipewire)
   #   - audiostream-opus: Opus codec for audio (requires libopus)
+  #   - extendeddisplay: Extended display to Android tablet (requires libgbm, gstreamer)
   #   - low_latency: Performance optimizations for remote desktop
   cargoBuildFlags = [
     "--workspace"
     "--bins"
     "--features"
-    "cosmic-connect-daemon/remotedesktop,cosmic-connect-daemon/screenshare,cosmic-connect-daemon/video,cosmic-connect-daemon/audiostream,cosmic-connect-daemon/audiostream-opus,cosmic-connect-protocol/remotedesktop,cosmic-connect-protocol/screenshare,cosmic-connect-protocol/video,cosmic-connect-protocol/audiostream,cosmic-connect-protocol/audiostream-opus,cosmic-connect-protocol/low_latency,cosmic-applet-connect/screenshare"
+    "cosmic-connect-daemon/remotedesktop,cosmic-connect-daemon/screenshare,cosmic-connect-daemon/video,cosmic-connect-daemon/audiostream,cosmic-connect-daemon/audiostream-opus,cosmic-connect-daemon/extendeddisplay,cosmic-connect-protocol/remotedesktop,cosmic-connect-protocol/screenshare,cosmic-connect-protocol/video,cosmic-connect-protocol/audiostream,cosmic-connect-protocol/audiostream-opus,cosmic-connect-protocol/extendeddisplay,cosmic-connect-protocol/low_latency,cosmic-applet-connect/screenshare"
   ];
 
   # Skip tests for now - test compilation has issues with json! macro imports
@@ -312,6 +316,7 @@ rustPlatform.buildRustPackage rec {
       - Remote input
       - Remote desktop (VNC-based screen sharing)
       - SMS messaging
+      - Extended display (use Android tablet as second monitor)
       - CConnect protocol (port 1816, side-by-side with KDE Connect)
 
       This package includes:

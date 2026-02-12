@@ -102,6 +102,33 @@ impl ScreenCapture {
         })
     }
 
+    /// Create a new screen capture session for any output (skips HDMI dummy check)
+    ///
+    /// Unlike [`ScreenCapture::new`], this constructor allows capturing any display
+    /// output, not just HDMI dummy displays. Used by the extended display plugin
+    /// which uses the portal to let the user pick their source.
+    ///
+    /// # Arguments
+    ///
+    /// * `output_name` - Name of the display output to capture (e.g., "DP-1", "HDMI-2")
+    pub async fn new_any_output(output_name: &str) -> Result<Self> {
+        info!(
+            "Creating screen capture session for any output: {}",
+            output_name
+        );
+
+        let output_info = Self::discover_output(output_name).await?;
+
+        Ok(Self {
+            target_output: output_name.to_string(),
+            state: SessionState::Idle,
+            session_handle: None,
+            pipewire_stream: None,
+            output_info: Some(output_info),
+            frame_sender: None,
+        })
+    }
+
     /// Discover and validate the target output
     ///
     /// This queries the compositor for available outputs and verifies

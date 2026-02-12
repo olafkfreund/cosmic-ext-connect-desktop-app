@@ -110,7 +110,9 @@ pub use input::{
     DesktopCoordinates, DisplayGeometry, InputHandler, InputStatistics, TouchAction, TouchEvent,
 };
 pub use output::OutputInfo;
-pub use streaming::{ConnectionStats, StreamConfig, StreamingServer, TransportMode};
+pub use streaming::{
+    ConnectionStats, StreamConfig, StreamingServer, TransportMode, split_nal_units,
+};
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
