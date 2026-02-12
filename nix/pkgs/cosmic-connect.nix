@@ -53,7 +53,7 @@ rustPlatform.buildRustPackage rec {
   };
 
   cargoLock = {
-    lockFile = ./Cargo.lock;
+    lockFile = "${src}/Cargo.lock";
     outputHashes = {
       # cosmic-connect-core git dependency
       # To get this hash: nix-prefetch-git https://github.com/olafkfreund/cosmic-connect-core.git --rev <COMMIT_HASH>
@@ -174,7 +174,8 @@ rustPlatform.buildRustPackage rec {
 
   # Wrap binaries with required runtime library paths
   postFixup = ''
-    for bin in cosmic-applet-connect cosmic-connect-manager cosmic-messages-popup; do
+    # Wrap GUI binaries with display library paths
+    for bin in cosmic-applet-connect cosmic-connect-manager cosmic-messages-popup cosmic-display-mirror; do
       wrapProgram $out/bin/$bin \
         --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath [
           wayland
@@ -184,6 +185,26 @@ rustPlatform.buildRustPackage rec {
           mesa
         ]}"
     done
+
+    # Wrap daemon with GStreamer plugin paths for video encoding/decoding
+    wrapProgram $out/bin/cosmic-connect-daemon \
+      --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath [
+        wayland
+        libxkbcommon
+        libGL
+        libglvnd
+        mesa
+        pipewire
+        libpulseaudio
+      ]}" \
+      --prefix GST_PLUGIN_SYSTEM_PATH_1_0 : "${lib.makeSearchPathOutput "lib" "lib/gstreamer-1.0" [
+        gst_all_1.gstreamer
+        gst_all_1.gst-plugins-base
+        gst_all_1.gst-plugins-good
+        gst_all_1.gst-plugins-bad
+        gst_all_1.gst-plugins-ugly
+        gst_all_1.gst-libav
+      ]}"
   '';
 
   meta = {

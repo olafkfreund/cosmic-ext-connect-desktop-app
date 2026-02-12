@@ -398,14 +398,17 @@ impl InputHandler {
     #[allow(clippy::cast_possible_truncation)]
     pub fn normalize_to_desktop(&self, normalized_x: f64, normalized_y: f64) -> DesktopCoordinates {
         // Convert normalized coordinates to virtual display space
-        let display_x = (normalized_x * f64::from(self.geometry.size.0)).round();
-        let display_y = (normalized_y * f64::from(self.geometry.size.1)).round();
+        // Clamp to valid i32 range before casting to prevent undefined behavior
+        let display_x = (normalized_x * f64::from(self.geometry.size.0))
+            .round()
+            .clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32;
+        let display_y = (normalized_y * f64::from(self.geometry.size.1))
+            .round()
+            .clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32;
 
-        // Add offset to get desktop coordinates
-        // Note: These casts are intentional and safe since display coordinates
-        // are bounded by display size which fits in i32
-        let desktop_x = self.geometry.offset.0 + display_x as i32;
-        let desktop_y = self.geometry.offset.1 + display_y as i32;
+        // Add offset to get desktop coordinates using saturating arithmetic to prevent overflow
+        let desktop_x = self.geometry.offset.0.saturating_add(display_x);
+        let desktop_y = self.geometry.offset.1.saturating_add(display_y);
 
         trace!(
             "Coordinate conversion: ({:.3}, {:.3}) -> ({}, {}) -> ({}, {})",
@@ -523,9 +526,11 @@ impl InputHandler {
         if let Some(last_coords) = self.active_touches.get_mut(&touch_id) {
             *last_coords = coords;
         } else {
-            warn!("Touch move for untracked touch_id: {}", touch_id);
-            // Treat as new touch
-            return self.handle_touch_down(touch_id, coords);
+            warn!(
+                "Touch move for untracked touch_id {} ignored (no prior touch down)",
+                touch_id
+            );
+            return Ok(());
         }
 
         // Inject pointer move event

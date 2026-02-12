@@ -59,7 +59,7 @@ use crate::error::{DisplayStreamError, Result};
 use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Mutex, Notify, RwLock};
@@ -123,6 +123,8 @@ pub struct StreamConfig {
     pub max_clients: usize,
     /// Enable connection encryption (DTLS)
     pub enable_encryption: bool,
+    /// Target framerate in frames per second
+    pub framerate: u32,
 }
 
 impl Default for StreamConfig {
@@ -137,6 +139,7 @@ impl Default for StreamConfig {
             ],
             max_clients: 1, // Single tablet for now
             enable_encryption: true,
+            framerate: 60,
         }
     }
 }
@@ -177,14 +180,21 @@ impl StreamConfig {
     }
 
     /// Set maximum number of clients
-    #[must_use] 
+    #[must_use]
     pub fn with_max_clients(mut self, max: usize) -> Self {
         self.max_clients = max;
         self
     }
 
+    /// Set the target framerate
+    #[must_use]
+    pub fn with_framerate(mut self, framerate: u32) -> Self {
+        self.framerate = framerate;
+        self
+    }
+
     /// Get the full signaling server address
-    #[must_use] 
+    #[must_use]
     pub fn signaling_address(&self) -> String {
         format!("{}:{}", self.bind_address, self.signaling_port)
     }
@@ -304,15 +314,17 @@ pub struct StreamingServer {
     /// Frame receiver for the broadcast task
     frame_rx: Arc<Mutex<mpsc::Receiver<EncodedFrame>>>,
     /// Server running state
-    running: Arc<RwLock<bool>>,
+    running: Arc<AtomicBool>,
     /// Server ID
     server_id: String,
     /// Shutdown notification for graceful stop
     shutdown_notify: Arc<Notify>,
     /// Shared packet/frame counters
     counters: Arc<SharedCounters>,
-    /// SSRC derived from server_id for RTP packets
+    /// SSRC for RTP packets (random per RFC 3550)
     ssrc: u32,
+    /// RTP timestamp increment per frame (90000 Hz / framerate)
+    rtp_timestamp_increment: u32,
 }
 
 impl StreamingServer {
@@ -343,15 +355,15 @@ impl StreamingServer {
 
         let server_id = uuid::Uuid::new_v4().to_string();
 
-        // Derive a stable SSRC from the server_id UUID
+        // Generate random SSRC per RFC 3550 using UUID bytes
         let ssrc = {
-            let bytes = server_id.as_bytes();
-            let mut hash: u32 = 0;
-            for &b in bytes {
-                hash = hash.wrapping_mul(31).wrapping_add(u32::from(b));
-            }
-            hash
+            let uuid_bytes = uuid::Uuid::new_v4();
+            let bytes = uuid_bytes.as_bytes();
+            u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
         };
+
+        // Compute RTP timestamp increment: 90000 Hz / framerate
+        let rtp_timestamp_increment = 90000 / config.framerate;
 
         Ok(Self {
             config,
@@ -360,11 +372,12 @@ impl StreamingServer {
             signaling_handle: None,
             frame_tx,
             frame_rx: Arc::new(Mutex::new(frame_rx)),
-            running: Arc::new(RwLock::new(false)),
+            running: Arc::new(AtomicBool::new(false)),
             server_id,
             shutdown_notify: Arc::new(Notify::new()),
             counters: Arc::new(SharedCounters::default()),
             ssrc,
+            rtp_timestamp_increment,
         })
     }
 
@@ -394,8 +407,7 @@ impl StreamingServer {
 
     /// Start the streaming server
     pub async fn start(&mut self) -> Result<()> {
-        let mut running = self.running.write().await;
-        if *running {
+        if self.running.load(Ordering::SeqCst) {
             return Ok(());
         }
 
@@ -408,7 +420,7 @@ impl StreamingServer {
         // Start frame broadcast task
         self.start_frame_broadcaster();
 
-        *running = true;
+        self.running.store(true, Ordering::SeqCst);
         info!(
             "Streaming server started on {}",
             self.config.signaling_address()
@@ -419,8 +431,7 @@ impl StreamingServer {
 
     /// Stop the streaming server
     pub async fn stop(&mut self) -> Result<()> {
-        let mut running = self.running.write().await;
-        if !*running {
+        if !self.running.load(Ordering::SeqCst) {
             return Ok(());
         }
 
@@ -441,7 +452,7 @@ impl StreamingServer {
             handle.abort();
         }
 
-        *running = false;
+        self.running.store(false, Ordering::SeqCst);
         info!("Streaming server stopped");
 
         Ok(())
@@ -468,7 +479,7 @@ impl StreamingServer {
             loop {
                 tokio::select! {
                     result = listener.accept() => {
-                        if !*running.read().await {
+                        if !running.load(Ordering::SeqCst) {
                             break;
                         }
                         match result {
@@ -767,15 +778,18 @@ impl StreamingServer {
         let shutdown = self.shutdown_notify.clone();
         let counters = self.counters.clone();
         let ssrc = self.ssrc;
+        let rtp_timestamp_increment = self.rtp_timestamp_increment;
 
         tokio::spawn(async move {
             let mut seq_num: u16 = 0;
             let mut timestamp: u32 = 0;
 
             loop {
-                let mut rx = frame_rx.lock().await;
                 let frame = tokio::select! {
-                    f = rx.recv() => {
+                    f = async {
+                        let mut rx = frame_rx.lock().await;
+                        rx.recv().await
+                    } => {
                         match f {
                             Some(frame) => frame,
                             None => break, // channel closed
@@ -783,8 +797,6 @@ impl StreamingServer {
                     }
                     () = shutdown.notified() => break,
                 };
-                // Drop the lock before doing work
-                drop(rx);
 
                 let clients_guard = clients.read().await;
                 for client in clients_guard.values() {
@@ -794,6 +806,7 @@ impl StreamingServer {
                         &mut seq_num,
                         &mut timestamp,
                         ssrc,
+                        rtp_timestamp_increment,
                         &counters,
                     )
                     .await
@@ -814,6 +827,7 @@ impl StreamingServer {
         seq_num: &mut u16,
         timestamp: &mut u32,
         ssrc: u32,
+        rtp_timestamp_increment: u32,
         counters: &SharedCounters,
     ) -> Result<()> {
         let nals = split_nal_units(&frame.data);
@@ -917,8 +931,8 @@ impl StreamingServer {
             }
         }
 
-        // Advance timestamp: 90kHz clock / 60fps = 1500 ticks per frame
-        *timestamp = timestamp.wrapping_add(1500);
+        // Advance timestamp by configured increment
+        *timestamp = timestamp.wrapping_add(rtp_timestamp_increment);
 
         Ok(())
     }
@@ -971,7 +985,7 @@ impl StreamingServer {
 
     /// Check if the server is running
     pub async fn is_running(&self) -> bool {
-        *self.running.read().await
+        self.running.load(Ordering::SeqCst)
     }
 
     /// Get the server configuration
@@ -991,9 +1005,7 @@ impl Drop for StreamingServer {
     fn drop(&mut self) {
         // Signal shutdown
         self.shutdown_notify.notify_waiters();
-        if let Ok(mut running) = self.running.try_write() {
-            *running = false;
-        }
+        self.running.store(false, Ordering::SeqCst);
     }
 }
 
@@ -1068,6 +1080,7 @@ mod tests {
         assert_eq!(config.transport, TransportMode::WiFi);
         assert_eq!(config.max_clients, 1);
         assert!(config.enable_encryption);
+        assert_eq!(config.framerate, 60);
     }
 
     #[test]
@@ -1076,12 +1089,14 @@ mod tests {
             .with_signaling_port(9000)
             .with_bind_address("127.0.0.1")
             .with_transport(TransportMode::Usb)
-            .with_max_clients(2);
+            .with_max_clients(2)
+            .with_framerate(30);
 
         assert_eq!(config.signaling_port, 9000);
         assert_eq!(config.bind_address, "127.0.0.1");
         assert_eq!(config.transport, TransportMode::Usb);
         assert_eq!(config.max_clients, 2);
+        assert_eq!(config.framerate, 30);
     }
 
     #[test]
@@ -1215,22 +1230,22 @@ mod tests {
     }
 
     #[test]
-    fn test_ssrc_derived_from_server_id() {
-        // Two different server IDs should produce different SSRCs
-        let id1 = "550e8400-e29b-41d4-a716-446655440000";
-        let id2 = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
-
-        let hash = |s: &str| -> u32 {
-            let mut h: u32 = 0;
-            for &b in s.as_bytes() {
-                h = h.wrapping_mul(31).wrapping_add(u32::from(b));
-            }
-            h
+    fn test_ssrc_random_generation() {
+        // Generate multiple SSRCs and ensure they're different (statistically)
+        let ssrc1 = {
+            let uuid_bytes = uuid::Uuid::new_v4();
+            let bytes = uuid_bytes.as_bytes();
+            u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
         };
 
-        assert_ne!(hash(id1), hash(id2));
-        // Deterministic
-        assert_eq!(hash(id1), hash(id1));
+        let ssrc2 = {
+            let uuid_bytes = uuid::Uuid::new_v4();
+            let bytes = uuid_bytes.as_bytes();
+            u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+        };
+
+        // Probability of collision with random u32 is ~1/4 billion
+        assert_ne!(ssrc1, ssrc2);
     }
 
     #[test]

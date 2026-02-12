@@ -136,23 +136,19 @@ impl ScreenCapture {
     async fn discover_output(output_name: &str) -> Result<OutputInfo> {
         debug!("Discovering output: {}", output_name);
 
-        // Query outputs using wl-randr or similar
-        // For now, we create a placeholder that assumes the output exists
-        // In production, this would query the Wayland compositor
-
-        // Try to get output info from wlr-randr if available
+        // Query outputs using wlr-randr
+        // In production, this queries the Wayland compositor for actual resolution
         let output_info = match Self::query_wlr_randr(output_name).await {
             Ok(info) => info,
             Err(e) => {
-                debug!("wlr-randr query failed ({}), using defaults", e);
-                // Fallback to defaults for HDMI outputs
-                OutputInfo::new(
-                    output_name.to_string(),
-                    1920,
-                    1080,
-                    60,
-                    output_name.to_uppercase().contains("HDMI"),
-                )
+                warn!(
+                    "wlr-randr query for '{}' failed: {}. Cannot determine output resolution.",
+                    output_name, e
+                );
+                return Err(DisplayStreamError::OutputNotFound(format!(
+                    "Cannot determine resolution for '{}': wlr-randr failed: {}",
+                    output_name, e
+                )));
             }
         };
 
@@ -318,6 +314,13 @@ impl ScreenCapture {
         let stream_info = &streams.streams()[0];
         let pipewire_node_id = stream_info.pipe_wire_node_id();
         let stream_size = stream_info.size();
+
+        // Validate PipeWire node ID
+        if pipewire_node_id == 0 {
+            return Err(DisplayStreamError::PipeWire(
+                "Portal returned invalid PipeWire node ID (0)".to_string(),
+            ));
+        }
 
         info!(
             "Portal session started - PipeWire node: {}, size: {:?}",

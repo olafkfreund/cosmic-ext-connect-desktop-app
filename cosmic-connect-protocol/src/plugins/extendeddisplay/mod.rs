@@ -60,6 +60,12 @@ const DEFAULT_BITRATE_BPS: u32 = 10_000_000;
 /// Default framerate
 const DEFAULT_FRAMERATE: u32 = 60;
 
+/// Internal packet type emitted when session starts (for D-Bus signal routing)
+const INTERNAL_SESSION_STARTED: &str = "cconnect.internal.extendeddisplay.started";
+
+/// Internal packet type emitted when session stops (for D-Bus signal routing)
+const INTERNAL_SESSION_STOPPED: &str = "cconnect.internal.extendeddisplay.stopped";
+
 /// Extended display session configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtendedDisplayConfig {
@@ -160,6 +166,9 @@ pub struct ExtendedDisplayPlugin {
 
     /// Current display resolution (width, height) for touch coordinate validation
     display_resolution: (u32, u32),
+
+    /// Last touch event timestamp for rate limiting
+    last_touch_time: Option<std::time::Instant>,
 }
 
 impl ExtendedDisplayPlugin {
@@ -177,6 +186,7 @@ impl ExtendedDisplayPlugin {
             config: ExtendedDisplayConfig::default(),
             stop_flag: Arc::new(AtomicBool::new(false)),
             display_resolution: (1920, 1080), // Default resolution
+            last_touch_time: None,
         }
     }
 
@@ -348,7 +358,7 @@ impl ExtendedDisplayPlugin {
         // Emit internal started signal for D-Bus
         self.emit_internal_packet(
             device_id,
-            "cconnect.internal.extendeddisplay.started",
+            INTERNAL_SESSION_STARTED,
             serde_json::json!({}),
         )
         .await;
@@ -418,7 +428,7 @@ impl ExtendedDisplayPlugin {
         // Emit internal stopped signal for D-Bus
         self.emit_internal_packet(
             device_id,
-            "cconnect.internal.extendeddisplay.stopped",
+            INTERNAL_SESSION_STOPPED,
             serde_json::json!({}),
         )
         .await;
@@ -458,6 +468,17 @@ impl ExtendedDisplayPlugin {
         let touch_id = body["pointerId"].as_u64().unwrap_or(0) as u32;
 
         let action_str = body["touchAction"].as_str().unwrap_or("move");
+
+        // Rate-limit touch move events (max ~125Hz)
+        if action_str == "move" {
+            if let Some(last) = self.last_touch_time {
+                if last.elapsed() < std::time::Duration::from_millis(8) {
+                    return;
+                }
+            }
+        }
+        self.last_touch_time = Some(std::time::Instant::now());
+
         let action = match action_str {
             "down" => TouchAction::Down,
             "up" => TouchAction::Up,
@@ -574,7 +595,7 @@ impl Plugin for ExtendedDisplayPlugin {
                 // Emit internal stopped signal for D-Bus
                 self.emit_internal_packet(
                     device_id,
-                    "cconnect.internal.extendeddisplay.stopped",
+                    INTERNAL_SESSION_STOPPED,
                     serde_json::json!({}),
                 )
                 .await;
@@ -630,6 +651,20 @@ impl Plugin for ExtendedDisplayPlugin {
                 let capabilities = packet.body["capabilities"]
                     .as_str()
                     .unwrap_or("h264,touch");
+
+                // Validate required capabilities
+                if !capabilities.contains("h264") {
+                    warn!(
+                        "Device {} requested unsupported capabilities: '{}' (h264 required)",
+                        device_id, capabilities
+                    );
+                    let error_body = serde_json::json!({
+                        "action": "error",
+                        "message": "Unsupported capabilities: h264 codec required",
+                    });
+                    self.send_packet(&device_id, PACKET_TYPE, error_body).await;
+                    return Ok(());
+                }
 
                 // Extract requested resolution from packet if provided
                 let requested_resolution = if let (Some(w), Some(h)) = (
