@@ -32,6 +32,9 @@ cosmic-connect-core = { git = "https://github.com/olafkfreund/cosmic-connect-cor
 # Protocol implementation
 cosmic-connect-protocol = { path = "./cosmic-connect-protocol" }
 
+# Display stream (extended display to Android tablet)
+cosmic-display-stream = { path = "./cosmic-display-stream" }
+
 # Async Runtime
 tokio = { version = "1.40", features = ["full"] }
 async-trait = "0.1"

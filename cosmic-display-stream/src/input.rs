@@ -232,6 +232,9 @@ pub struct InputHandler {
     /// Enigo instance for input injection (wrapped in Arc<Mutex<>> for interior mutability)
     enigo: Arc<Mutex<Option<Enigo>>>,
 
+    /// Whether input injection is available on this system
+    input_available: bool,
+
     /// Statistics
     events_processed: u64,
     events_injected: u64,
@@ -274,6 +277,7 @@ impl InputHandler {
             geometry,
             active_touches: std::collections::HashMap::new(),
             enigo,
+            input_available: true, // Assumed true until first init attempt
             events_processed: 0,
             events_injected: 0,
             events_failed: 0,
@@ -288,7 +292,7 @@ impl InputHandler {
     /// # Errors
     ///
     /// Returns error if enigo initialization fails (e.g., no libei support)
-    fn ensure_enigo_initialized(&self) -> Result<bool> {
+    fn ensure_enigo_initialized(&mut self) -> Result<bool> {
         // mut is needed in non-test builds for the assignment in cfg(not(test)) block
         #[allow(unused_mut)]
         let mut enigo_guard = self.enigo.lock().map_err(|e| {
@@ -300,6 +304,7 @@ impl InputHandler {
             #[cfg(test)]
             {
                 warn!("Skipping enigo initialization in test mode");
+                self.input_available = false;
                 return Ok(false);
             }
 
@@ -309,21 +314,33 @@ impl InputHandler {
                 return match Enigo::new(&Settings::default()) {
                     Ok(enigo) => {
                         *enigo_guard = Some(enigo);
+                        self.input_available = true;
                         debug!("Enigo initialized successfully");
                         Ok(true)
                     }
                     Err(e) => {
                         // In environments without compositor support, this is expected
+                        // Log once here — callers will not retry
                         warn!(
                             "Failed to initialize enigo: {}. Input injection will be simulated.",
                             e
                         );
+                        self.input_available = false;
                         Ok(false)
                     }
                 };
             }
         }
         Ok(true)
+    }
+
+    /// Check whether input injection is available on this system
+    ///
+    /// Returns `true` if enigo/libei initialized successfully, `false` if
+    /// running in a test environment or without compositor support.
+    #[must_use]
+    pub fn is_input_available(&self) -> bool {
+        self.input_available
     }
 
     /// Update the virtual display geometry

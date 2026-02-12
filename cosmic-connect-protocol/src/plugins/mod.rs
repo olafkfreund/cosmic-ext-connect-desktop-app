@@ -139,6 +139,9 @@ pub mod telephony;
 pub mod upower_backend;
 pub mod wol;
 
+#[cfg(feature = "extendeddisplay")]
+pub mod extendeddisplay;
+
 use crate::{Device, Packet, ProtocolError, Result};
 use async_trait::async_trait;
 use std::any::Any;

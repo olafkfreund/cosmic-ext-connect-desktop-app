@@ -199,6 +199,12 @@ pub enum Message {
     TogglePresenterMode(String), // device_id - toggle presenter mode on/off
     PresenterStarted(String),    // device_id - presenter mode started
     PresenterStopped(String),    // device_id - presenter mode stopped
+    // Extended display events
+    StartExtendedDisplay(String),               // device_id
+    StopExtendedDisplay(String),                // device_id
+    ExtendedDisplayStarted(String),             // device_id
+    ExtendedDisplayStopped(String),             // device_id
+    ExtendedDisplayError(String, String),       // device_id, error_message
     // File Transfer events
     TransferProgress(
         String,

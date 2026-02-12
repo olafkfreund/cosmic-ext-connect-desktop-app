@@ -310,6 +310,10 @@ pub struct PluginConfig {
     /// Enable ConnectivityReport plugin (network connectivity status)
     #[serde(default = "default_true")]
     pub enable_connectivityreport: bool,
+
+    /// Enable ExtendedDisplay plugin (wireless extended display to Android tablet)
+    #[serde(default = "default_true")]
+    pub enable_extendeddisplay: bool,
 }
 
 /// Storage paths configuration
@@ -470,6 +474,7 @@ impl Default for PluginConfig {
             enable_camera: true,
             enable_systemvolume: true,
             enable_connectivityreport: true,
+            enable_extendeddisplay: true,
         }
     }
 }

@@ -348,6 +348,13 @@ const PLUGINS: &[PluginMetadata] = &[
         icon: "x-office-presentation-symbolic",
         capability: "cconnect.presenter",
     },
+    PluginMetadata {
+        id: "extendeddisplay",
+        name: "Extended Display",
+        description: "Use device as extended display",
+        icon: "display-projector-symbolic",
+        capability: "cconnect.extendeddisplay",
+    },
 ];
 
 
@@ -425,6 +432,8 @@ struct CConnectApplet {
     audio_streaming_devices: std::collections::HashSet<String>, // device_ids currently streaming audio
     // Presenter mode state
     presenter_mode_devices: std::collections::HashSet<String>, // device_ids in presenter mode
+    // Extended display state
+    extended_display_devices: std::collections::HashSet<String>, // device_ids streaming extended display
     // Pinned devices config
     pinned_devices_config: pinned_devices_config::PinnedDevicesConfig,
     // Camera state
@@ -790,6 +799,7 @@ impl cosmic::Application for CConnectApplet {
             active_screen_share: None,
             audio_streaming_devices: std::collections::HashSet::new(),
             presenter_mode_devices: std::collections::HashSet::new(),
+            extended_display_devices: std::collections::HashSet::new(),
             pinned_devices_config,
             // Camera state initialization
             camera_settings_device: None,
@@ -2514,6 +2524,80 @@ impl cosmic::Application for CConnectApplet {
                 });
                 Task::none()
             }
+            // Extended display events
+            Message::StartExtendedDisplay(device_id) => {
+                let id = device_id.clone();
+                cosmic::task::future(async move {
+                    match dbus_client::DbusClient::connect().await {
+                        Ok((client, _)) => {
+                            if let Err(e) = client.start_extended_display(&id).await {
+                                tracing::error!("Failed to start extended display: {}", e);
+                                return Message::ExtendedDisplayError(
+                                    id,
+                                    format!("Failed to start: {}", e),
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to connect to daemon: {}", e);
+                            return Message::ExtendedDisplayError(
+                                id,
+                                format!("Daemon connection failed: {}", e),
+                            );
+                        }
+                    }
+                    // Actual started signal arrives via D-Bus signal listener
+                    Message::ShowNotification(
+                        "Starting extended display...".to_string(),
+                        NotificationType::Info,
+                        None,
+                    )
+                })
+            }
+            Message::StopExtendedDisplay(device_id) => {
+                let id = device_id.clone();
+                cosmic::task::future(async move {
+                    match dbus_client::DbusClient::connect().await {
+                        Ok((client, _)) => {
+                            if let Err(e) = client.stop_extended_display(&id).await {
+                                tracing::error!("Failed to stop extended display: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to connect to daemon: {}", e);
+                        }
+                    }
+                    // Actual stopped signal arrives via D-Bus signal listener
+                    Message::ExtendedDisplayStopped(id)
+                })
+            }
+            Message::ExtendedDisplayStarted(device_id) => {
+                self.extended_display_devices.insert(device_id.clone());
+                self.notification = Some(AppNotification {
+                    message: "Extended display started".to_string(),
+                    kind: NotificationType::Success,
+                    action: None,
+                });
+                Task::none()
+            }
+            Message::ExtendedDisplayStopped(device_id) => {
+                self.extended_display_devices.remove(&device_id);
+                self.notification = Some(AppNotification {
+                    message: "Extended display stopped".to_string(),
+                    kind: NotificationType::Info,
+                    action: None,
+                });
+                Task::none()
+            }
+            Message::ExtendedDisplayError(device_id, error_msg) => {
+                self.extended_display_devices.remove(&device_id);
+                self.notification = Some(AppNotification {
+                    message: format!("Extended display error: {}", error_msg),
+                    kind: NotificationType::Error,
+                    action: None,
+                });
+                Task::none()
+            }
             // File Transfer events
             Message::TransferProgress(tid, device_id, filename, cur, tot, dir) => {
                 let now = std::time::Instant::now();
@@ -2846,7 +2930,10 @@ impl cosmic::Application for CConnectApplet {
                             | e @ dbus_client::DaemonEvent::MissedCall { .. }
                             | e @ dbus_client::DaemonEvent::CallStateChanged { .. }
                             | e @ dbus_client::DaemonEvent::SmsReceived { .. }
-                            | e @ dbus_client::DaemonEvent::SmsConversationsUpdated { .. } => {
+                            | e @ dbus_client::DaemonEvent::SmsConversationsUpdated { .. }
+                            | e @ dbus_client::DaemonEvent::ExtendedDisplayStarted { .. }
+                            | e @ dbus_client::DaemonEvent::ExtendedDisplayStopped { .. }
+                            | e @ dbus_client::DaemonEvent::ExtendedDisplayError { .. } => {
                                 Some(Message::DeviceEvent(e))
                             }
                             _ => None,
@@ -3310,6 +3397,24 @@ impl CConnectApplet {
                     "SMS conversations updated for {}: {} conversations",
                     device_id, count
                 );
+            }
+            dbus_client::DaemonEvent::ExtendedDisplayStarted { device_id } => {
+                return cosmic::task::message(cosmic::Action::App(
+                    Message::ExtendedDisplayStarted(device_id.clone()),
+                ));
+            }
+            dbus_client::DaemonEvent::ExtendedDisplayStopped { device_id } => {
+                return cosmic::task::message(cosmic::Action::App(
+                    Message::ExtendedDisplayStopped(device_id.clone()),
+                ));
+            }
+            dbus_client::DaemonEvent::ExtendedDisplayError {
+                device_id,
+                error_message,
+            } => {
+                return cosmic::task::message(cosmic::Action::App(
+                    Message::ExtendedDisplayError(device_id.clone(), error_message.clone()),
+                ));
             }
             _ => {}
         }

@@ -35,6 +35,7 @@
   webkitgtk_4_1,
   gobject-introspection,
   gst_all_1,
+  libgbm,
   stdenv,
 }:
 
@@ -102,14 +103,16 @@ rustPlatform.buildRustPackage rec {
     gst_all_1.gst-plugins-bad
     gst_all_1.gst-plugins-ugly
     gst_all_1.gst-libav
+    # DMA-BUF / GBM support for extended display capture
+    libgbm
   ];
 
-  # Build all workspace members with RemoteDesktop feature
+  # Build all workspace members with all plugin features
   cargoBuildFlags = [
     "--workspace"
     "--bins"
     "--features"
-    "cosmic-connect-daemon/remotedesktop,cosmic-connect-protocol/remotedesktop"
+    "cosmic-connect-daemon/remotedesktop,cosmic-connect-daemon/screenshare,cosmic-connect-daemon/video,cosmic-connect-daemon/audiostream,cosmic-connect-daemon/extendeddisplay,cosmic-connect-protocol/remotedesktop,cosmic-connect-protocol/screenshare,cosmic-connect-protocol/video,cosmic-connect-protocol/audiostream,cosmic-connect-protocol/extendeddisplay"
   ];
 
   # Skip tests for now - requires running dbus session
