@@ -132,9 +132,23 @@ impl ScreenCapture {
     /// Discover and validate the target output
     ///
     /// This queries the compositor for available outputs and verifies
-    /// that the target output exists.
+    /// that the target output exists. For portal-based capture, returns
+    /// default resolution since the actual resolution comes from PipeWire.
     async fn discover_output(output_name: &str) -> Result<OutputInfo> {
         debug!("Discovering output: {}", output_name);
+
+        // Portal-based capture: resolution is determined by PipeWire stream,
+        // not by wlr-randr. Use defaults that get overridden at capture time.
+        if output_name == "portal" {
+            info!("Portal capture: using default resolution (actual comes from PipeWire)");
+            return Ok(OutputInfo::new(
+                "portal".to_string(),
+                1920,
+                1080,
+                60,
+                false,
+            ));
+        }
 
         // Query outputs using wlr-randr
         // In production, this queries the Wayland compositor for actual resolution
