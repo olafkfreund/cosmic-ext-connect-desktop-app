@@ -387,8 +387,8 @@ impl VideoEncoder {
                 encoder.set_property("bitrate", config.bitrate / 1000); // kbps
                 encoder.set_property("key-int-max", config.keyframe_interval);
                 if config.low_latency {
-                    encoder.set_property("tune", "zerolatency");
-                    encoder.set_property("speed-preset", "ultrafast");
+                    encoder.set_property("tune", 0x00000004u32); // GstX264EncTune: zerolatency
+                    encoder.set_property("speed-preset", 1u32); // GstX264EncPreset: ultrafast
                 }
             }
         }
