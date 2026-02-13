@@ -521,22 +521,30 @@ impl ConnectionManager {
                 // Update device manager - register device if not exists before marking connected
                 let mut dm = device_manager.write().await;
 
-                // Bug fix: If device doesn't exist, create it from the identity packet
-                // This handles incoming TLS connections where discovery hasn't occurred yet
-                if dm.get_device(id).is_none() {
-                    info!(
-                        "Device {} not in registry, creating from identity packet",
-                        id
-                    );
-                    match DeviceInfo::from_identity_packet(&packet) {
-                        Ok(device_info) => {
+                // Parse device info from the identity packet
+                match DeviceInfo::from_identity_packet(&packet) {
+                    Ok(device_info) => {
+                        if dm.get_device(id).is_none() {
+                            // Device doesn't exist — create it from the identity packet
                             let device = Device::from_discovery(device_info);
                             dm.add_device(device);
                             info!("Registered new device {} from incoming connection", id);
+                        } else if let Some(device) = dm.get_device_mut(id) {
+                            // Device exists — update capabilities from the identity packet
+                            device.info.incoming_capabilities =
+                                device_info.incoming_capabilities;
+                            device.info.outgoing_capabilities =
+                                device_info.outgoing_capabilities;
+                            debug!(
+                                "Updated capabilities for device {} ({} in, {} out)",
+                                id,
+                                device.info.incoming_capabilities.len(),
+                                device.info.outgoing_capabilities.len()
+                            );
                         }
-                        Err(e) => {
-                            warn!("Failed to parse device info from identity packet: {}", e);
-                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to parse device info from identity packet: {}", e);
                     }
                 }
 
