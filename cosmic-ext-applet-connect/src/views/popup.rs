@@ -608,7 +608,8 @@ impl CConnectApplet {
             camera_section,
             self.transfers_view(),
             divider::horizontal::default(),
-            scrollable(content).height(Length::Fill),
+            container(scrollable(content))
+                .max_height(450),
         ]
         .width(Length::Fill);
 

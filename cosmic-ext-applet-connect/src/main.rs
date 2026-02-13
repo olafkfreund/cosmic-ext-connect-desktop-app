@@ -2964,7 +2964,7 @@ impl cosmic::Application for CConnectApplet {
         let btn = self
             .core
             .applet
-            .icon_button("phone-symbolic")
+            .icon_button("cosmic-ext-connect-symbolic")
             .on_press_with_rectangle(move |offset, bounds| {
                 if let Some(id) = have_popup {
                     Message::Surface(destroy_popup(id))
@@ -2988,7 +2988,6 @@ impl cosmic::Application for CConnectApplet {
                             popup_settings.positioner.size_limits = Limits::NONE
                                 .min_width(350.0)
                                 .max_width(500.0)
-                                .min_height(200.0)
                                 .max_height(650.0);
 
                             popup_settings.positioner.anchor_rect = Rectangle {
