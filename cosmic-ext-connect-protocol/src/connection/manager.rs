@@ -521,30 +521,35 @@ impl ConnectionManager {
                 // Update device manager - register device if not exists before marking connected
                 let mut dm = device_manager.write().await;
 
-                // Parse device info from the identity packet
-                match DeviceInfo::from_identity_packet(&packet) {
-                    Ok(device_info) => {
-                        if dm.get_device(id).is_none() {
-                            // Device doesn't exist — create it from the identity packet
+                // Register new device or update capabilities for existing one
+                if dm.get_device(id).is_none() {
+                    // Device doesn't exist — try full parse to create it
+                    match DeviceInfo::from_identity_packet(&packet) {
+                        Ok(device_info) => {
                             let device = Device::from_discovery(device_info);
                             dm.add_device(device);
                             info!("Registered new device {} from incoming connection", id);
-                        } else if let Some(device) = dm.get_device_mut(id) {
-                            // Device exists — update capabilities from the identity packet
-                            device.info.incoming_capabilities =
-                                device_info.incoming_capabilities;
-                            device.info.outgoing_capabilities =
-                                device_info.outgoing_capabilities;
-                            debug!(
-                                "Updated capabilities for device {} ({} in, {} out)",
-                                id,
-                                device.info.incoming_capabilities.len(),
-                                device.info.outgoing_capabilities.len()
-                            );
+                        }
+                        Err(e) => {
+                            warn!("Failed to parse device info from identity: {}", e);
                         }
                     }
-                    Err(e) => {
-                        warn!("Failed to parse device info from identity packet: {}", e);
+                } else if let Some(device) = dm.get_device_mut(id) {
+                    // Device exists — update capabilities from the identity packet
+                    // Use parse_capabilities directly since post-TLS identity
+                    // may not contain all fields required by from_identity_packet
+                    use crate::discovery::parse_capabilities;
+                    let incoming = parse_capabilities(&packet, "incomingCapabilities");
+                    let outgoing = parse_capabilities(&packet, "outgoingCapabilities");
+                    if !incoming.is_empty() || !outgoing.is_empty() {
+                        device.info.incoming_capabilities = incoming;
+                        device.info.outgoing_capabilities = outgoing;
+                        debug!(
+                            "Updated capabilities for device {} ({} in, {} out)",
+                            id,
+                            device.info.incoming_capabilities.len(),
+                            device.info.outgoing_capabilities.len()
+                        );
                     }
                 }
 

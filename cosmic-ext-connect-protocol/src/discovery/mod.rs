@@ -298,7 +298,7 @@ impl DeviceInfo {
 /// Some clients (e.g. Android) send capabilities as a JSON string containing
 /// an array (`"[\"cconnect.ping\"]"`) rather than a native JSON array
 /// (`["cconnect.ping"]`). This helper handles both formats.
-fn parse_capabilities(packet: &Packet, field: &str) -> Vec<String> {
+pub fn parse_capabilities(packet: &Packet, field: &str) -> Vec<String> {
     // Try as a native JSON array first
     if let Some(caps) = packet.get_body_field::<Vec<String>>(field) {
         return caps;
